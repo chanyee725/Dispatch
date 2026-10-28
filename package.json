@@ -5,6 +5,7 @@
   "description": "Web UI for running Claude Code and Codex sessions side by side",
   "type": "module",
   "scripts": {
+    "dev": "scripts/dev.sh",
     "start": "node server/index.js",
     "build": "npm --prefix web run build",
     "dev:web": "npm --prefix web run dev",

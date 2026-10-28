@@ -20,9 +20,12 @@ Dispatch is also a skill: it is linked into `.claude/skills` (Claude Code) and `
 ## Develop
 
 ```bash
-npm --prefix web install
-npm run dev:web     # Vite dev server, proxies /api to a running Dispatch server
-npm run build       # builds web/ into public/, which the server serves
+npm run dev                 # server (:4317) + Vite live-reload UI (:5173) in one terminal; Ctrl+C stops both
+npm run dev -- ../other     # same, for another project
+npm run dev -- --no-web     # server only, serving the last build
+npm run build               # builds web/ into public/, which the server serves
 ```
+
+`scripts/dev.sh` installs `web/` dependencies on first run. Ports can be changed with `DISPATCH_PORT` and `WEB_PORT`.
 
 The server (`server/`) has no npm dependencies. It stores only session metadata and usage totals in `<project>/.dispatch/state.json`; transcripts stay in memory and in each CLI's own history, and login tokens or API keys never pass through it.
