@@ -55,6 +55,27 @@ function usage() {
 }
 
 /* ---------------- HTTP ---------------- */
+const TYPES = { ".html": "text/html; charset=utf-8", ".js": "text/javascript", ".css": "text/css", ".svg": "image/svg+xml",
+  ".woff2": "font/woff2", ".woff": "font/woff", ".png": "image/png", ".ico": "image/x-icon", ".json": "application/json" };
+
+// Serves the built web app from public/; unknown paths fall back to index.html.
+async function serveStatic(pathname, res) {
+  const file = path.normalize(path.join(PUBLIC, decodeURIComponent(pathname)));
+  const inside = file.startsWith(PUBLIC + path.sep) && !file.endsWith(path.sep);
+  const target = inside ? file : path.join(PUBLIC, "index.html");
+  try {
+    const data = await readFile(target);
+    const immutable = target.includes(`${path.sep}assets${path.sep}`);
+    res.writeHead(200, { "content-type": TYPES[path.extname(target)] || "application/octet-stream",
+      "cache-control": immutable ? "public, max-age=31536000, immutable" : "no-store" });
+    res.end(data);
+  } catch {
+    const data = await readFile(path.join(PUBLIC, "index.html"));
+    res.writeHead(200, { "content-type": TYPES[".html"], "cache-control": "no-store" });
+    res.end(data);
+  }
+}
+
 function send(res, code, data) {
   res.writeHead(code, { "content-type": "application/json; charset=utf-8", "cache-control": "no-store" });
   res.end(JSON.stringify(data));
@@ -110,10 +131,7 @@ const routes = [
 const server = http.createServer(async (req, res) => {
   const url = new URL(req.url, `http://${req.headers.host}`);
   try {
-    if (req.method === "GET" && (url.pathname === "/" || url.pathname === "/index.html")) {
-      res.writeHead(200, { "content-type": "text/html; charset=utf-8", "cache-control": "no-store" });
-      return res.end(await readFile(path.join(PUBLIC, "index.html")));
-    }
+    if (req.method === "GET" && !url.pathname.startsWith("/api/")) return serveStatic(url.pathname, res);
     if (req.method === "GET" && url.pathname === "/api/events") {
       res.writeHead(200, { "content-type": "text/event-stream", "cache-control": "no-store", connection: "keep-alive" });
       res.write(`event: snapshot\ndata: ${JSON.stringify(await snapshot())}\n\n`);

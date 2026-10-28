@@ -5,7 +5,10 @@
   "description": "Web UI for running Claude Code and Codex sessions side by side",
   "type": "module",
   "scripts": {
-    "start": "node server/index.js"
+    "start": "node server/index.js",
+    "build": "npm --prefix web run build",
+    "dev:web": "npm --prefix web run dev",
+    "setup": "skills/dispatch/scripts/setup.sh"
   },
   "engines": {
     "node": ">=20"
