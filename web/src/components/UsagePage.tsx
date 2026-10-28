@@ -4,6 +4,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { Meter, Stat } from "@/components/bits";
+import { cn } from "@/lib/utils";
 import { fmtK, fmtUsd, pct, roleColor } from "@/lib/format";
 import { api, useApp } from "@/store";
 import type { Settings, Usage, UsageDay } from "@/types";
@@ -19,19 +20,21 @@ function GuardCard({ settings }: { settings: Settings }) {
   const save = (patch: Partial<Settings["guard"]>) =>
     api("POST", "/api/settings", { guard: patch }).then(() => toast.success("자동 차단 설정을 저장했어요"), (e: Error) => toast.error(e.message));
   const clamp = (n: number) => Math.min(100, Math.max(1, n || 0)) / 100;
+  const on = g.enabled;
   const field = (label: string, value: number, set: (n: number) => void, key: "five" | "seven") => (
-    <label className="flex items-center gap-2 text-sm text-muted-foreground">
+    <label className={cn("flex items-center gap-2 text-sm", on ? "text-primary-foreground/70" : "text-muted-foreground")}>
       <span className="w-10">{label}</span>
       <Input type="number" min={1} max={100} value={value} disabled={!g.enabled} aria-label={`${label} 한도 차단 기준`}
-        className="num h-7 w-14 px-2 text-right" onChange={e => set(+e.target.value)} onBlur={() => save({ [key]: clamp(value) })} />
+        className={cn("num h-7 w-14 px-2 text-right", on && "border-primary-foreground/25 bg-primary-foreground/10 text-primary-foreground hover:border-primary-foreground/50 dark:bg-primary-foreground/5")} onChange={e => set(+e.target.value)} onBlur={() => save({ [key]: clamp(value) })} />
       <span>% 이상</span>
     </label>
   );
   return (
-    <div className="flex flex-col gap-2 rounded-xl border bg-card px-4 py-3.5">
-      <label className="flex items-center justify-between gap-2 text-[13px] text-muted-foreground">
-        한도 가까우면 막기
-        <Checkbox checked={g.enabled} onCheckedChange={v => save({ enabled: v === true })} aria-label="한도 가까우면 새 Claude 세션 막기" />
+    <div className={cn("flex flex-col gap-2 rounded-xl border px-4 py-3.5 transition-colors", on ? "border-transparent bg-primary text-primary-foreground" : "bg-card")}>
+      <label className={cn("flex items-center justify-between gap-2 text-[13px]", on ? "text-primary-foreground/80" : "text-muted-foreground")}>
+        {on ? "한도 가까우면 막는 중" : "한도 가까우면 막기"}
+        <Checkbox checked={g.enabled}
+          className={cn(on && "border-primary-foreground/60 hover:border-primary-foreground data-[state=checked]:border-primary-foreground data-[state=checked]:bg-primary-foreground data-[state=checked]:text-primary dark:data-[state=checked]:bg-primary-foreground")} onCheckedChange={v => save({ enabled: v === true })} aria-label="한도 가까우면 새 Claude 세션 막기" />
       </label>
       {field("5시간", five, setFive, "five")}
       {field("주간", seven, setSeven, "seven")}
@@ -101,8 +104,8 @@ export function UsagePage() {
             {week.map((d, i) => (
               <Tooltip key={d.day}>
                 <TooltipTrigger asChild>
-                  <div className="flex h-full flex-1 flex-col items-center justify-end gap-1.5" tabIndex={0} aria-label={`${d.day} ${fmtUsd(d.cost)}`}>
-                    <div className="w-full max-w-10 rounded-t-md transition-[height]"
+                  <div className="group flex h-full flex-1 flex-col items-center justify-end gap-1.5" tabIndex={0} aria-label={`${d.day} ${fmtUsd(d.cost)}`}>
+                    <div className="w-full max-w-10 rounded-t-md transition-[height,filter] group-hover:brightness-125 group-focus-visible:brightness-125"
                       style={{ height: `${Math.max((d.cost / max) * 100, 1.5)}%`, background: i === week.length - 1 ? "var(--role-impl)" : "color-mix(in oklch, var(--role-impl) 45%, transparent)" }} />
                   </div>
                 </TooltipTrigger>

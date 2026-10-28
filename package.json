@@ -9,7 +9,7 @@
     "start": "node server/index.js",
     "build": "npm --prefix web run build",
     "dev:web": "npm --prefix web run dev",
-    "setup": "skills/dispatch/scripts/setup.sh"
+    "setup": "scripts/setup.sh"
   },
   "engines": {
     "node": ">=20"

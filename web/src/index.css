@@ -111,6 +111,10 @@
     letter-spacing: -0.01em;
   }
   .num { font-variant-numeric: tabular-nums; }
+  /* Everything clickable shows a pointer (Tailwind v4 leaves buttons on the default cursor). */
+  :is(button, a[href], summary, [role="tab"], [role="checkbox"], [role="combobox"], [role="option"], [role="menuitem"], label:has(> button[role="checkbox"])):not(:disabled, [aria-disabled="true"], [data-disabled]) {
+    cursor: pointer;
+  }
   @media (prefers-reduced-motion: reduce) {
     *, *::before, *::after { animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; }
   }
