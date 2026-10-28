@@ -54,7 +54,8 @@ export async function providerStatus() {
   };
 }
 
-export function login(id, onChange) {
+// onDone(ok) fires once the CLI login process exits.
+export function login(id, onChange, onDone = () => {}) {
   const cli = CLI[id];
   if (!cli || state[id].busy) return;
   Object.assign(state[id], { busy: true, url: null, error: null });
@@ -68,7 +69,8 @@ export function login(id, onChange) {
   p.stderr.on("data", scan);
   p.on("error", e => { Object.assign(state[id], { busy: false, error: e.message }); onChange(); });
   p.on("exit", code => {
-    Object.assign(state[id], { busy: false, url: null, error: code === 0 ? null : `로그인 종료 (code ${code})` });
+    Object.assign(state[id], { busy: false, url: null, error: code === 0 ? null : `로그인이 끝나지 않았어요 (code ${code})` });
+    onDone(code === 0);
     onChange();
   });
   state[id].proc = p;

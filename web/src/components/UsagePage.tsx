@@ -4,34 +4,14 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { Meter, Stat } from "@/components/bits";
-import { LEVEL_COLOR, ago, fmtK, fmtUsd, level, pct, roleColor, until } from "@/lib/format";
+import { fmtK, fmtUsd, pct, roleColor } from "@/lib/format";
 import { api, useApp } from "@/store";
 import type { Settings, Usage, UsageDay } from "@/types";
 
-const LEVEL_LABEL = { ok: "여유", warn: "주의", bad: "위험", none: "정보 없음" };
+const WEEK = 7;
 
-function LimitCard({ title, value, reset, updatedAt }: { title: string; value: number | null; reset: number | null; updatedAt: number | null }) {
-  const lv = level(value);
-  return (
-    <div className="flex flex-col gap-3 rounded-xl border bg-card p-5">
-      <div className="flex items-center justify-between text-sm">
-        <span className="text-muted-foreground">{title}</span>
-        <span className="inline-flex items-center gap-1.5 text-xs font-medium">
-          <span className="size-1.5 rounded-full" style={{ background: LEVEL_COLOR[lv] }} />
-          {LEVEL_LABEL[lv]}
-        </span>
-      </div>
-      <div className="num text-4xl font-semibold tracking-tight">{pct(value)}</div>
-      <Meter value={value} className="h-2" />
-      <div className="flex justify-between text-xs text-muted-foreground">
-        <span>{reset ? `초기화까지 ${until(reset)}` : "Claude 세션을 한 번 실행하면 표시돼요"}</span>
-        {updatedAt && <span>{ago(updatedAt)} 기준</span>}
-      </div>
-    </div>
-  );
-}
-
-function Guard({ settings }: { settings: Settings }) {
+// Sits in the KPI row next to the cache hit rate.
+function GuardCard({ settings }: { settings: Settings }) {
   const g = settings.guard;
   const [five, setFive] = useState(Math.round(g.five * 100));
   const [seven, setSeven] = useState(Math.round(g.seven * 100));
@@ -39,30 +19,39 @@ function Guard({ settings }: { settings: Settings }) {
   const save = (patch: Partial<Settings["guard"]>) =>
     api("POST", "/api/settings", { guard: patch }).then(() => toast.success("자동 차단 설정을 저장했어요"), (e: Error) => toast.error(e.message));
   const clamp = (n: number) => Math.min(100, Math.max(1, n || 0)) / 100;
+  const field = (label: string, value: number, set: (n: number) => void, key: "five" | "seven") => (
+    <label className="flex items-center gap-2 text-sm text-muted-foreground">
+      <span className="w-10">{label}</span>
+      <Input type="number" min={1} max={100} value={value} disabled={!g.enabled} aria-label={`${label} 한도 차단 기준`}
+        className="num h-7 w-14 px-2 text-right" onChange={e => set(+e.target.value)} onBlur={() => save({ [key]: clamp(value) })} />
+      <span>% 이상</span>
+    </label>
+  );
   return (
-    <div className="flex flex-wrap items-center gap-x-6 gap-y-3 rounded-xl border bg-card px-5 py-3.5 text-sm">
-      <label className="flex items-center gap-2.5 font-medium">
-        <Checkbox checked={g.enabled} onCheckedChange={v => save({ enabled: v === true })} />
-        한도 가까우면 새 Claude 세션 막기
+    <div className="flex flex-col gap-2 rounded-xl border bg-card px-4 py-3.5">
+      <label className="flex items-center justify-between gap-2 text-[13px] text-muted-foreground">
+        한도 가까우면 막기
+        <Checkbox checked={g.enabled} onCheckedChange={v => save({ enabled: v === true })} aria-label="한도 가까우면 새 Claude 세션 막기" />
       </label>
-      <label className="flex items-center gap-2 text-muted-foreground">
-        5시간
-        <Input type="number" min={1} max={100} value={five} disabled={!g.enabled} className="num h-8 w-16 text-right"
-          onChange={e => setFive(+e.target.value)} onBlur={() => save({ five: clamp(five) })} />
-        % 이상
-      </label>
-      <label className="flex items-center gap-2 text-muted-foreground">
-        주간
-        <Input type="number" min={1} max={100} value={seven} disabled={!g.enabled} className="num h-8 w-16 text-right"
-          onChange={e => setSeven(+e.target.value)} onBlur={() => save({ seven: clamp(seven) })} />
-        % 이상
-      </label>
+      {field("5시간", five, setFive, "five")}
+      {field("주간", seven, setSeven, "seven")}
     </div>
   );
 }
 
+function Panel({ title, note, children }: { title: string; note?: string; children: React.ReactNode }) {
+  return (
+    <section className="flex min-w-0 flex-col rounded-xl border bg-card p-5">
+      <header className="mb-4 flex items-baseline justify-between gap-3">
+        <h2 className="text-[15px] font-semibold">{title}</h2>
+        {note && <span className="num truncate text-sm text-muted-foreground">{note}</span>}
+      </header>
+      {children}
+    </section>
+  );
+}
+
 export function UsagePage() {
-  const limits = useApp(s => s.limits);
   const settings = useApp(s => s.settings);
   const models = useApp(s => s.models);
   const roles = useApp(s => s.roles);
@@ -73,10 +62,11 @@ export function UsagePage() {
     api<{ days: UsageDay[] }>("GET", "/api/usage").then(r => setDays(r.days), (e: Error) => toast.error(e.message));
   }, [sessions]);
 
+  const week = days.slice(-WEEK);
   const agg = useMemo(() => {
     const byModel: Record<string, Usage & { cost: number }> = {};
     const byRole: Record<string, number> = {};
-    for (const d of days) {
+    for (const d of week) {
       for (const [m, u] of Object.entries(d.models)) {
         const t = (byModel[m] ??= { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, cost: 0 });
         t.input += u.input; t.output += u.output; t.cacheRead += u.cacheRead; t.cacheWrite += u.cacheWrite; t.cost += u.cost;
@@ -87,78 +77,78 @@ export function UsagePage() {
   }, [days]);
 
   const sum = (ds: UsageDay[]) => ds.reduce((a, d) => a + d.cost, 0);
-  const week = sum(days.slice(7)), prev = sum(days.slice(0, 7)), all = sum(days);
+  const weekCost = sum(week), prevCost = sum(days.slice(0, -WEEK)), all = sum(days);
   const cache = Object.values(agg.byModel).reduce((a, u) => ({ r: a.r + u.cacheRead, t: a.t + u.cacheRead + u.cacheWrite + u.input }), { r: 0, t: 0 });
-  const max = Math.max(...days.map(d => d.cost), 0.0001);
+  const max = Math.max(...week.map(d => d.cost), 0.0001);
   const roleTotal = Object.values(agg.byRole).reduce((a, b) => a + b, 0) || 1;
   const label = (id: string) => models.find(m => m.id === id)?.label ?? id;
   const isCodex = (id: string) => models.find(m => m.id === id)?.provider === "openai";
+  const modelRows = Object.entries(agg.byModel).sort((a, b) => b[1].cost - a[1].cost || b[1].output - a[1].output);
 
   return (
     <div className="mx-auto flex max-w-[1400px] flex-col gap-4 p-6 max-md:p-4">
-      <div className="grid grid-cols-2 gap-3 max-md:grid-cols-1">
-        <LimitCard title="5시간 한도" value={limits.five} reset={limits.fiveReset} updatedAt={limits.updatedAt} />
-        <LimitCard title="주간 한도" value={limits.seven} reset={limits.sevenReset} updatedAt={limits.updatedAt} />
-      </div>
-      <Guard settings={settings} />
-
-      <div className="mt-2 grid grid-cols-4 gap-3 max-lg:grid-cols-2">
+      <div className="grid grid-cols-5 gap-3 max-xl:grid-cols-3 max-sm:grid-cols-1">
         <Stat label="오늘" value={fmtUsd(days.at(-1)?.cost ?? 0)} hint="Claude API 환산" />
-        <Stat label="최근 7일" value={fmtUsd(week)} hint={prev ? `이전 7일보다 ${week >= prev ? "+" : ""}${Math.round((week / prev - 1) * 100)}%` : "비교할 이전 기록 없음"} />
+        <Stat label="최근 7일" value={fmtUsd(weekCost)} hint={prevCost ? `그 전 7일보다 ${weekCost >= prevCost ? "+" : ""}${Math.round((weekCost / prevCost - 1) * 100)}%` : "비교할 이전 기록 없음"} />
         <Stat label="최근 14일" value={fmtUsd(all)} hint={`하루 평균 ${fmtUsd(all / 14)}`} />
-        <Stat label="캐시 적중률" value={cache.t ? pct(cache.r / cache.t) : "—"} hint="입력 중 캐시에서 읽은 비율" />
+        <Stat label="캐시 적중률" value={cache.t ? pct(cache.r / cache.t) : "—"} hint="최근 7일 입력 중 캐시에서 읽은 비율" />
+        <GuardCard settings={settings} />
       </div>
 
-      <section className="rounded-xl border bg-card p-5">
-        <h2 className="mb-4 text-[15px] font-semibold">일별 비용</h2>
-        <div className="flex h-40 items-end gap-1.5">
-          {days.map((d, i) => (
-            <Tooltip key={d.day}>
-              <TooltipTrigger asChild>
-                <div className="flex h-full flex-1 items-end" tabIndex={0} aria-label={`${d.day} ${fmtUsd(d.cost)}`}>
-                  <div className="w-full rounded-t-md transition-[height]"
-                    style={{ height: `${Math.max(d.cost / max * 100, 1.5)}%`, background: i === days.length - 1 ? "var(--role-impl)" : "color-mix(in oklch, var(--role-impl) 45%, transparent)" }} />
-                </div>
-              </TooltipTrigger>
-              <TooltipContent>{d.day} {fmtUsd(d.cost)}</TooltipContent>
-            </Tooltip>
-          ))}
-        </div>
-        <div className="mt-2 flex gap-1.5 border-t pt-2 text-[11px] text-muted-foreground">
-          {days.map((d, i) => <span key={d.day} className="num flex-1 text-center">{i === days.length - 1 ? "오늘" : d.day.slice(5).replace("-", "/")}</span>)}
-        </div>
-      </section>
+      <div className="grid grid-cols-3 gap-3 max-xl:grid-cols-2 max-lg:grid-cols-1">
+        <Panel title="일별 비용" note={`최근 7일 ${fmtUsd(weekCost)}`}>
+          <div className="flex h-44 items-end gap-2">
+            {week.map((d, i) => (
+              <Tooltip key={d.day}>
+                <TooltipTrigger asChild>
+                  <div className="flex h-full flex-1 flex-col items-center justify-end gap-1.5" tabIndex={0} aria-label={`${d.day} ${fmtUsd(d.cost)}`}>
+                    <div className="w-full max-w-10 rounded-t-md transition-[height]"
+                      style={{ height: `${Math.max((d.cost / max) * 100, 1.5)}%`, background: i === week.length - 1 ? "var(--role-impl)" : "color-mix(in oklch, var(--role-impl) 45%, transparent)" }} />
+                  </div>
+                </TooltipTrigger>
+                <TooltipContent>{d.day} {fmtUsd(d.cost)}</TooltipContent>
+              </Tooltip>
+            ))}
+          </div>
+          <div className="mt-2 flex gap-2 border-t pt-2 text-xs text-muted-foreground">
+            {week.map((d, i) => <span key={d.day} className="num flex-1 text-center">{i === week.length - 1 ? "오늘" : d.day.slice(5).replace("-", "/")}</span>)}
+          </div>
+        </Panel>
 
-      <div className="grid grid-cols-[1.4fr_1fr] gap-3 max-lg:grid-cols-1">
-        <section className="overflow-x-auto rounded-xl border bg-card">
-          <h2 className="px-5 pt-4 pb-2 text-[15px] font-semibold">모델별 사용량 <span className="text-sm font-normal text-muted-foreground">최근 14일</span></h2>
-          <table className="w-full text-sm">
-            <thead className="text-xs text-muted-foreground">
-              <tr className="border-b">
-                <th className="px-5 py-2 text-left font-normal">모델</th>
-                <th className="px-3 py-2 text-right font-normal">입력</th>
-                <th className="px-3 py-2 text-right font-normal">캐시</th>
-                <th className="px-3 py-2 text-right font-normal">출력</th>
-                <th className="px-5 py-2 text-right font-normal">비용</th>
-              </tr>
-            </thead>
-            <tbody className="num">
-              {Object.entries(agg.byModel).sort((a, b) => b[1].cost - a[1].cost).map(([m, u]) => (
-                <tr key={m} className="border-b last:border-0">
-                  <td className="px-5 py-2.5">{label(m)}</td>
-                  <td className="px-3 py-2.5 text-right">{fmtK(u.input)}</td>
-                  <td className="px-3 py-2.5 text-right">{fmtK(u.cacheRead + u.cacheWrite)}</td>
-                  <td className="px-3 py-2.5 text-right">{fmtK(u.output)}</td>
-                  <td className="px-5 py-2.5 text-right">{isCodex(m) ? "—" : fmtUsd(u.cost)}</td>
+        <Panel title="모델별 사용량" note="최근 7일">
+          {modelRows.length ? (
+            <table className="w-full table-fixed text-sm">
+              <thead className="text-xs text-muted-foreground">
+                <tr className="border-b">
+                  <th className="w-[44%] pb-2 text-left font-normal">모델</th>
+                  <th className="pb-2 text-right font-normal">입력</th>
+                  <th className="pb-2 text-right font-normal">출력</th>
+                  <th className="pb-2 text-right font-normal">비용</th>
                 </tr>
-              ))}
-              {Object.keys(agg.byModel).length === 0 && <tr><td colSpan={5} className="px-5 py-6 text-center text-muted-foreground">아직 기록이 없어요</td></tr>}
-            </tbody>
-          </table>
-        </section>
-        <section className="rounded-xl border bg-card p-5">
-          <h2 className="mb-4 text-[15px] font-semibold">역할별 비용 <span className="text-sm font-normal text-muted-foreground">최근 14일</span></h2>
-          <ul className="flex flex-col gap-3">
+              </thead>
+              <tbody className="num">
+                {modelRows.map(([m, u]) => (
+                  <tr key={m} className="border-b last:border-0">
+                    <td className="truncate py-2.5 pr-2" title={label(m)}>{label(m)}</td>
+                    <td className="py-2.5 text-right">
+                      <Tooltip>
+                        <TooltipTrigger className="cursor-default">{fmtK(u.input + u.cacheRead + u.cacheWrite)}</TooltipTrigger>
+                        <TooltipContent>새 입력 {fmtK(u.input)}, 캐시 {fmtK(u.cacheRead + u.cacheWrite)}</TooltipContent>
+                      </Tooltip>
+                    </td>
+                    <td className="py-2.5 text-right">{fmtK(u.output)}</td>
+                    <td className="py-2.5 text-right">{isCodex(m) ? "—" : fmtUsd(u.cost)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          ) : (
+            <p className="py-6 text-center text-sm text-muted-foreground">최근 7일 기록이 없어요</p>
+          )}
+        </Panel>
+
+        <Panel title="역할별 비용" note="최근 7일">
+          <ul className="flex flex-col gap-3.5">
             {roles.map(r => (
               <li key={r.id} className="grid grid-cols-[64px_1fr_64px] items-center gap-3 text-sm">
                 <span>{r.name}</span>
@@ -167,7 +157,7 @@ export function UsagePage() {
               </li>
             ))}
           </ul>
-        </section>
+        </Panel>
       </div>
     </div>
   );

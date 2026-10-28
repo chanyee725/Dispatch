@@ -73,6 +73,8 @@ export interface Role {
 export interface ProviderStatus {
   name: string;
   installed: boolean;
+  /** The CLI itself is logged in on this machine (independent of the Dispatch connection). */
+  cliLoggedIn: boolean;
   cli: string | null;
   connected: boolean;
   method: string | null;

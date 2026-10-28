@@ -22,7 +22,7 @@ function Limit({ label, value, reset }: { label: string; value: number | null; r
   );
 }
 
-export function TopBar({ title, onCreate }: { title: string; onCreate: () => void }) {
+export function TopBar({ title, onCreate, canCreate }: { title: string; onCreate: () => void; canCreate: boolean }) {
   const project = useApp(s => s.project);
   const limits = useApp(s => s.limits);
   return (
@@ -46,7 +46,7 @@ export function TopBar({ title, onCreate }: { title: string; onCreate: () => voi
       <div className="flex shrink-0 items-center gap-5 max-md:w-full max-md:gap-3">
         <Limit label="5시간 한도" value={limits.five} reset={limits.fiveReset} />
         <Limit label="주간 한도" value={limits.seven} reset={limits.sevenReset} />
-        <Button onClick={onCreate} aria-label="새 세션">
+        <Button onClick={onCreate} aria-label="새 세션" disabled={!canCreate} title={canCreate ? undefined : "먼저 에이전트를 연결하세요"}>
           <Plus />
           <span className="max-sm:hidden">새 세션</span>
         </Button>

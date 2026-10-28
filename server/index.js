@@ -21,11 +21,26 @@ await store.load();
 const models = await loadModels();
 const hub = new Hub({ root, store, models, roles: ROLES, port: PORT });
 
-let providers = publicStatus(await providerStatus());
+// A provider counts as connected only after the user connects it in Dispatch, even if its CLI is
+// already logged in on this machine. `cliLoggedIn` keeps the CLI's own state for the UI.
+const enabled = () => store.data.settings.enabled;
+function decorate(raw) {
+  const out = {};
+  for (const [id, p] of Object.entries(publicStatus(raw))) {
+    out[id] = { ...p, cliLoggedIn: p.connected, connected: p.connected && !!enabled()[id] };
+  }
+  return out;
+}
+let providers = decorate(await providerStatus());
 async function refreshProviders() {
-  providers = publicStatus(await providerStatus());
+  providers = decorate(await providerStatus());
   broadcast("providers", providers);
 }
+function setEnabled(id, on) {
+  store.data.settings.enabled = { ...enabled(), [id]: on };
+  store.save();
+}
+hub.isConnected = provider => !!providers[provider]?.connected;
 
 /* ---------------- SSE ---------------- */
 const clients = new Set();
@@ -117,11 +132,23 @@ const routes = [
     hub.respondPermission(id, b.requestId, b.behavior === "allow" ? "allow" : "deny", !!b.always);
     return { ok: true };
   }],
-  ["POST", /^\/api\/providers\/(claude|openai)\/login$/, async ([id]) => { login(id, refreshProviders); return { ok: true }; }],
+  // Already logged in on this machine → just connect; otherwise run the CLI's browser login first.
+  ["POST", /^\/api\/providers\/(claude|openai)\/login$/, async ([id]) => {
+    if (providers[id]?.cliLoggedIn) { setEnabled(id, true); await refreshProviders(); return { ok: true, connected: true }; }
+    login(id, refreshProviders, ok => ok && setEnabled(id, true));
+    return { ok: true, connected: false };
+  }],
   ["POST", /^\/api\/providers\/(claude|openai)\/cancel$/, async ([id]) => { cancelLogin(id); return { ok: true }; }],
-  ["POST", /^\/api\/providers\/(claude|openai)\/logout$/, async ([id]) => { await logout(id); await refreshProviders(); return { ok: true }; }],
+  // Disconnects from Dispatch only; the CLI stays logged in unless `cli: true` is passed.
+  ["POST", /^\/api\/providers\/(claude|openai)\/logout$/, async ([id], b) => {
+    setEnabled(id, false);
+    if (b.cli) await logout(id);
+    await refreshProviders();
+    return { ok: true };
+  }],
   ["POST", /^\/api\/providers\/(claude|openai)\/key$/, async ([id], b) => {
     await loginWithKey(id, String(b.key || ""));
+    setEnabled(id, true);
     await refreshProviders();
     return { ok: true };
   }],

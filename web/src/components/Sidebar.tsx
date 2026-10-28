@@ -65,7 +65,7 @@ export function Sidebar({ page, onPage, onConnect }: { page: Page; onPage: (p: P
               />
               {p.name}
               <span className="ml-auto text-xs text-muted-foreground">
-                {!p.installed ? "미설치" : p.busy ? "로그인 중" : p.connected ? "연결됨" : "미연결"}
+                {!p.installed ? "설치 안 됨" : p.busy ? "로그인 중" : p.connected ? "연결됨" : "연결 안 됨"}
               </span>
             </li>
           ))}

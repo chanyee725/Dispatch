@@ -38,6 +38,7 @@ export class Hub extends EventEmitter {
     this.port = port;
     this.limits = store.data.limits || { five: null, seven: null, fiveReset: null, sevenReset: null, updatedAt: null };
     this.live = new Map(); // id -> { proc, transcript, perms, seenMsgIds }
+    this.isConnected = () => true; // replaced by the server with the Dispatch-level connection check
 
     // Sessions from a previous run have no process; they resume on the next message.
     for (const s of Object.values(store.data.sessions)) {
@@ -88,6 +89,13 @@ export class Hub extends EventEmitter {
   async create({ items, commonPrompt, worktree = true, parent = null }) {
     const total = items.reduce((a, x) => a + (x.n || 1), 0);
     if (!total) throw new Error("만들 세션이 없어요");
+    for (const it of items) {
+      const id = it.model || this.roles.find(r => r.id === it.role)?.model;
+      const provider = this.models.find(m => m.id === id)?.provider;
+      if (provider && !this.isConnected(provider)) {
+        throw new Error(`${provider === "claude" ? "Claude" : "OpenAI Codex"}가 Dispatch에 연결되지 않았어요. 연결하기에서 먼저 연결하세요.`);
+      }
+    }
     // The limit gauges come from Claude, so they only gate Claude sessions.
     const usesClaude = items.some(it => {
       const id = it.model || this.roles.find(r => r.id === it.role)?.model;

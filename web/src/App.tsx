@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { Toaster } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
-import { ConnectDialog } from "@/components/ConnectDialog";
+import { ConnectDialog, LoginGate } from "@/components/ConnectDialog";
 import { CreateSessionDialog } from "@/components/CreateSessionDialog";
 import { SessionSheet } from "@/components/SessionSheet";
 import { SessionsPage } from "@/components/SessionsPage";
@@ -14,6 +14,8 @@ const TITLES: Record<Page, string> = { sessions: "세션", usage: "사용량" };
 
 export default function App() {
   const ready = useApp(s => s.ready);
+  const providers = useApp(s => s.providers);
+  const anyConnected = Object.values(providers).some(p => p.connected);
   const [page, setPage] = useState<Page>("sessions");
   const [creating, setCreating] = useState(false);
   const [connecting, setConnecting] = useState(false);
@@ -29,10 +31,12 @@ export default function App() {
       <div className="grid h-dvh grid-cols-[232px_minmax(0,1fr)] max-md:grid-cols-1 max-md:grid-rows-[auto_minmax(0,1fr)]">
         <Sidebar page={page} onPage={setPage} onConnect={() => setConnecting(true)} />
         <div className="flex min-h-0 min-w-0 flex-col">
-          <TopBar title={TITLES[page]} onCreate={() => setCreating(true)} />
+          <TopBar title={TITLES[page]} onCreate={() => setCreating(true)} canCreate={anyConnected} />
           <main className="min-h-0 flex-1 overflow-y-auto">
             {!ready ? (
               <p className="p-6 text-sm text-muted-foreground">Dispatch 서버에 연결하는 중이에요…</p>
+            ) : !anyConnected && page === "sessions" ? (
+              <LoginGate />
             ) : page === "sessions" ? (
               <SessionsPage onOpen={setOpenId} onCreate={() => setCreating(true)} />
             ) : (

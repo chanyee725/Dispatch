@@ -49,7 +49,7 @@ curl -s http://127.0.0.1:4317/api/sessions/<id>/messages
 curl -s http://127.0.0.1:4317/api/sessions/<id>/diff
 ```
 
-Role ids: `lead` (관리자, can create sessions itself through the Dispatch MCP tools), `impl`, `review`, `test`, `design`, `docs`. Model ids come from `/api/state` → `models`; Claude and Codex models are both listed, and a provider must be logged in (`connected: true`) before its models can be used.
+Role ids: `lead` (관리자, can create sessions itself through the Dispatch MCP tools), `impl`, `review`, `test`, `design`, `docs`. Model ids come from `/api/state` → `models`; Claude and Codex models are both listed, and a provider must be connected in Dispatch (`connected: true`) before its models can be used. Providers start disconnected even when the CLI is already logged in (`cliLoggedIn: true`); the user connects them on the first screen, or you can call `POST /api/providers/<claude|openai>/login` with the `x-dispatch: 1` header (it only connects when the CLI is already logged in, otherwise it starts the CLI's browser login).
 
 ## Things to keep in mind
 

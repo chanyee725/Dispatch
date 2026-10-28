@@ -4,7 +4,6 @@ import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
-import { StatusBadge } from "@/components/bits";
 import { cn } from "@/lib/utils";
 import { api, useApp } from "@/store";
 import type { Provider, ProviderStatus } from "@/types";
@@ -12,41 +11,47 @@ import type { Provider, ProviderStatus } from "@/types";
 const LOGIN: Record<Provider, string> = { claude: "Claude 계정으로 로그인", openai: "ChatGPT 계정으로 로그인" };
 const INSTALL: Record<Provider, string> = { claude: "Claude Code", openai: "Codex CLI" };
 
+function StateLabel({ p }: { p: ProviderStatus }) {
+  if (!p.installed) return <span className="inline-flex items-center gap-1.5 text-xs text-bad"><span className="size-1.5 rounded-full bg-bad" />설치 안 됨</span>;
+  if (p.busy) return <span className="inline-flex items-center gap-1.5 text-xs text-muted-foreground"><Loader2 className="size-3.5 animate-spin" />브라우저에서 로그인 중</span>;
+  if (p.connected) return <span className="inline-flex items-center gap-1.5 text-xs font-medium"><span className="size-1.5 rounded-full bg-ok" />연결됨</span>;
+  return <span className="inline-flex items-center gap-1.5 text-xs text-muted-foreground"><span className="size-1.5 rounded-full bg-muted-foreground" />연결 안 됨</span>;
+}
+
 function ProviderCard({ id, p }: { id: Provider; p: ProviderStatus }) {
   const models = useApp(s => s.models);
   const [keyOpen, setKeyOpen] = useState(false);
   const [key, setKey] = useState("");
-  const call = (path: string, body?: unknown, ok?: string) =>
-    api("POST", `/api/providers/${id}/${path}`, body).then(() => ok && toast.success(ok)).catch((e: Error) => toast.error(e.message));
+  const call = <T,>(path: string, body?: unknown) =>
+    api<T>("POST", `/api/providers/${id}/${path}`, body).catch((e: Error) => { toast.error(e.message); return null; });
 
+  const connect = async () => {
+    const res = await call<{ connected: boolean }>("login");
+    if (res?.connected) toast.success(`${p.name}를 연결했어요`);
+  };
   const saveKey = async () => {
     const k = key.trim();
     setKey("");
     if (!k) return;
-    await call("key", { key: k }, `${p.name}에 연결했어요`);
-    setKeyOpen(false);
+    if (await call("key", { key: k })) { toast.success(`${p.name}를 연결했어요`); setKeyOpen(false); }
   };
+  const disconnect = async () => { if (await call("logout")) toast.success(`${p.name} 연결을 해제했어요`); };
 
   const names = models.filter(m => m.provider === id).map(m => m.label);
   return (
-    <section className={cn("flex flex-col gap-4 rounded-xl border p-4", p.connected && "border-ok/40")}>
+    <section className={cn("flex flex-col gap-4 rounded-xl border bg-card p-4", p.connected && "border-ok/40")}>
       <header className="flex items-center gap-3">
         <div className="min-w-0">
           <h3 className="font-semibold">{p.name}</h3>
           <p className="truncate text-xs text-muted-foreground">{p.cli ?? "설치되지 않음"}</p>
         </div>
-        <span className="ml-auto">
-          {!p.installed ? <StatusBadge status="error" className="[&>span:last-child]:hidden" />
-            : p.busy ? <span className="inline-flex items-center gap-1.5 text-xs text-muted-foreground"><Loader2 className="size-3.5 animate-spin" />브라우저에서 로그인 중</span>
-            : p.connected ? <span className="inline-flex items-center gap-1.5 text-xs font-medium"><span className="size-1.5 rounded-full bg-ok" />연결됨</span>
-            : <span className="inline-flex items-center gap-1.5 text-xs text-muted-foreground"><span className="size-1.5 rounded-full bg-muted-foreground" />연결 안 됨</span>}
-        </span>
+        <span className="ml-auto"><StateLabel p={p} /></span>
       </header>
 
       <dl className="grid grid-cols-[88px_1fr] gap-x-3 gap-y-1.5 text-sm">
-        <dt className="text-muted-foreground">로그인 방식</dt><dd>{p.method ?? "—"}</dd>
+        <dt className="text-muted-foreground">이 컴퓨터</dt>
+        <dd>{!p.installed ? "—" : p.cliLoggedIn ? `${p.method ?? "로그인"}으로 로그인돼 있음` : "로그인 안 됨"}</dd>
         <dt className="text-muted-foreground">모델</dt><dd>{names.join(", ") || "—"}</dd>
-        <dt className="text-muted-foreground">자격 증명</dt><dd><span className="font-mono text-[13px]">{p.store}</span> <span className="text-muted-foreground">(CLI가 보관)</span></dd>
       </dl>
 
       {p.busy && p.url && (
@@ -63,19 +68,21 @@ function ProviderCard({ id, p }: { id: Provider; p: ProviderStatus }) {
         </form>
       )}
 
-      <div className="flex flex-wrap gap-2">
+      <div className="flex flex-wrap items-center gap-2">
         {!p.installed ? (
-          <p className="text-sm text-muted-foreground">{INSTALL[id]}를 설치한 뒤 다시 열어 주세요. 터미널에서 <code className="font-mono">setup.sh --status</code>로 확인할 수 있어요.</p>
+          <p className="text-sm text-muted-foreground">{INSTALL[id]}를 설치한 뒤 다시 열어 주세요.</p>
         ) : p.busy ? (
           <Button size="sm" variant="outline" onClick={() => call("cancel")}>로그인 취소</Button>
         ) : p.connected ? (
+          <Button size="sm" variant="outline" onClick={disconnect}>연결 해제</Button>
+        ) : p.cliLoggedIn ? (
           <>
-            <Button size="sm" variant="outline" onClick={() => call("login")}>다시 로그인</Button>
-            <Button size="sm" variant="ghost" className="text-bad hover:text-bad" onClick={() => call("logout", undefined, "연결을 해제했어요")}>연결 해제</Button>
+            <Button size="sm" onClick={connect}>{p.name} 연결</Button>
+            <span className="text-xs text-muted-foreground">이미 로그인된 계정을 그대로 써요</span>
           </>
         ) : (
           <>
-            <Button size="sm" onClick={() => call("login")}>{LOGIN[id]}</Button>
+            <Button size="sm" onClick={connect}>{LOGIN[id]}</Button>
             {p.keySupported && !keyOpen && <Button size="sm" variant="ghost" onClick={() => setKeyOpen(true)}><KeyRound />API 키로 연결</Button>}
           </>
         )}
@@ -84,22 +91,43 @@ function ProviderCard({ id, p }: { id: Provider; p: ProviderStatus }) {
   );
 }
 
-export function ConnectDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (o: boolean) => void }) {
+export function ProviderList() {
   const providers = useApp(s => s.providers);
+  return (
+    <div className="flex flex-col gap-3">
+      {(Object.entries(providers) as [Provider, ProviderStatus][]).map(([id, p]) => <ProviderCard key={id} id={id} p={p} />)}
+    </div>
+  );
+}
+
+export function ConnectDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (o: boolean) => void }) {
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-xl">
         <DialogHeader>
           <DialogTitle>에이전트 연결</DialogTitle>
-          <DialogDescription>로그인은 각 CLI가 브라우저에서 처리해요. Dispatch는 토큰이나 API 키를 저장하지 않아요.</DialogDescription>
+          <DialogDescription>로그인은 각 CLI가 브라우저에서 처리해요. 연결을 해제해도 터미널의 CLI 로그인은 그대로 남아요.</DialogDescription>
         </DialogHeader>
-        <div className="flex flex-col gap-3">
-          {(Object.entries(providers) as [Provider, ProviderStatus][]).map(([id, p]) => <ProviderCard key={id} id={id} p={p} />)}
-        </div>
+        <ProviderList />
         <DialogFooter>
           <Button variant="outline" onClick={() => onOpenChange(false)}>닫기</Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>
+  );
+}
+
+// Shown in place of the board until at least one provider is connected.
+export function LoginGate() {
+  return (
+    <div className="mx-auto flex max-w-xl flex-col gap-6 px-6 py-16 max-md:px-4 max-md:py-10">
+      <div>
+        <h2 className="text-2xl font-semibold tracking-tight">먼저 에이전트를 연결하세요</h2>
+        <p className="mt-2 text-sm leading-6 text-muted-foreground">
+          세션을 만들려면 Claude나 OpenAI Codex 중 하나 이상을 연결해야 해요. 로그인은 각 CLI가 브라우저에서 처리하고, Dispatch는 토큰이나 API 키를 저장하지 않아요.
+        </p>
+      </div>
+      <ProviderList />
+    </div>
   );
 }
