@@ -41,16 +41,19 @@ fi
 
 body="$(node -e '
   const fs = require("fs");
-  const [rulesPath, task, items, model, effort] = process.argv.slice(1);
+  const [rulesPath, task, items, model, effort, perm] = process.argv.slice(1);
   const rules = fs.readFileSync(rulesPath, "utf8").trim();
-  // DISPATCH_TEAM_MODEL / _EFFORT override every item (cheap test runs: claude-haiku-5-5, low).
-  const list = JSON.parse(items).map((i) => ({ ...i, ...(model && { model }), ...(effort && { effort }) }));
+  // DISPATCH_TEAM_MODEL / _EFFORT / _PERM override every item (cheap test runs: claude-haiku-5-5, low;
+  // a fully hands-off team: auto).
+  const list = JSON.parse(items).map((i) => ({
+    ...i, ...(model && { model }), ...(effort && { effort }), ...(perm && { perm }),
+  }));
   process.stdout.write(JSON.stringify({
     commonPrompt: `${rules}\n\nTask from the user:\n${task}`,
     worktree: true,
     items: list,
   }));
-' "$skill/reference/rules.md" "$task" "$items" "${DISPATCH_TEAM_MODEL:-}" "${DISPATCH_TEAM_EFFORT:-}")"
+' "$skill/reference/rules.md" "$task" "$items" "${DISPATCH_TEAM_MODEL:-}" "${DISPATCH_TEAM_EFFORT:-}" "${DISPATCH_TEAM_PERM:-}")"
 
 resp="$(curl -s -X POST "$url/api/sessions" "${H[@]}" -d "$body")"
 node -e '

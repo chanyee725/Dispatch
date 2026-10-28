@@ -26,6 +26,12 @@ Builds on the `dispatch` skill (a sibling directory of this one): that skill sta
 
 3. **Hand over.** Give the user the URL and the session list. The lead (관리자) now runs the team: it splits the task, steers the others through its Dispatch MCP tools, merges reviewed branches and reports. Answer the user's later questions from `GET /api/state` and the lead's transcript (`GET /api/sessions/<lead-id>/messages`).
 
+## Permission mode for the whole team
+
+When the user wants every session in one mode (e.g. "전체 auto 로 바꿔"), run
+`DISPATCH_PORT=<port> <skill-dir>/scripts/auto-all.sh [auto|acceptEdits|plan|manual]` (default `auto`).
+It calls `POST /api/sessions/<id>/perm` for each open session not already in that mode, so transcripts and context stay. Done when it prints one `name: old → new` line per changed session. New teams can start in auto with `DISPATCH_TEAM_PERM=auto team.sh …`.
+
 ## Team rules
 
 Every session gets [reference/rules.md](reference/rules.md) prepended to its task: branch and merge discipline, one heavy check at a time, review before merge, what only the user may decide, and privacy. Edit that file to change how every future team works; keep it short, since it is sent with every session.
