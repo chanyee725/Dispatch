@@ -1,0 +1,13 @@
+{
+  "name": "dispatch",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Web UI for running Claude Code and Codex sessions side by side",
+  "type": "module",
+  "scripts": {
+    "start": "node server/index.js"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

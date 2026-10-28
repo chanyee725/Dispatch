@@ -1,0 +1,4 @@
+node_modules/
+.dispatch/
+.playwright-mcp/
+dist/
