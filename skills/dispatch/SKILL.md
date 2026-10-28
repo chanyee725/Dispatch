@@ -1,11 +1,22 @@
 ---
 name: dispatch
-description: Start the Dispatch web UI for the current project and run several role-based Claude Code / Codex sessions in parallel (manager, implementer, reviewer, tester, designer, docs). Use when the user wants to open Dispatch, fan work out to multiple agent sessions, check what those sessions are doing, or see session cost, context and usage limits.
+description: Set up (log in to Claude Code / Codex) and start the Dispatch web UI for the current project and run several role-based Claude Code / Codex sessions in parallel (manager, implementer, reviewer, tester, designer, docs). Use when the user wants to open Dispatch, fan work out to multiple agent sessions, check what those sessions are doing, or see session cost, context and usage limits.
 ---
 
 # Dispatch
 
 Dispatch is a local web UI (http://127.0.0.1:4317 by default) that spawns `claude` and `codex` CLI sessions inside the project it was started from. Each session gets a role prompt, a model, a permission mode and (by default) its own git worktree under `.dispatch/wt/`.
+
+## Setup (login)
+
+Run this first when the user asks to set Dispatch up, or when `/api/state` shows a provider with `connected: false`:
+
+```bash
+<skill-dir>/scripts/setup.sh --status          # what is installed / logged in
+<skill-dir>/scripts/setup.sh claude codex      # log in to the ones that are not (skips the rest)
+```
+
+Ask the user which providers they want (Claude, Codex/GPT, or both) and pass only those. Login opens a browser OAuth page through each CLI, so it needs the user's terminal: tell them to run it themselves with `! <skill-dir>/scripts/setup.sh <provider>` instead of running it in a background shell. Never ask the user to paste tokens or keys into the chat.
 
 ## Start or reuse the server
 
