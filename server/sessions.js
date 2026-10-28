@@ -213,6 +213,18 @@ export class Hub extends EventEmitter {
     this.touch(s, { perm });
   }
 
+  // A child's turn ended: hand its last answer to the lead, so a lead that went idle wakes up instead of
+  // waiting to poll. Children have no Dispatch tools of their own to report with.
+  reportToParent(s) {
+    const r = this.live.get(s.id), parent = s.parent && this.get(s.parent);
+    const text = r?.lastText;
+    if (!parent || parent.status === "done" || !text) return;
+    r.lastText = null;
+    try {
+      this.send(parent.id, `[${s.name} 보고${s.branch ? ` · ${s.branch}` : ""}]\n${clip(text, 4000)}`);
+    } catch { /* Codex lead mid-turn: it sees the report with get_session */ }
+  }
+
   stopAll() {
     for (const r of this.live.values()) r.proc?.kill("SIGTERM");
   }
@@ -292,7 +304,7 @@ export class Hub extends EventEmitter {
           this.store.addDaily(s.model, s.role, delta);
         }
         for (const c of msg.content || []) {
-          if (c.type === "text" && c.text.trim()) { this.push(s, { kind: "assistant", text: c.text }); s.last = clip(c.text, 400); }
+          if (c.type === "text" && c.text.trim()) { this.push(s, { kind: "assistant", text: c.text }); s.last = clip(c.text, 400); r.lastText = c.text; }
           else if (c.type === "tool_use") this.push(s, { kind: "tool", name: c.name, text: clip(JSON.stringify(c.input), 600) });
         }
         this.touch(s, { status: r.perms.size ? "waiting" : "running" });
@@ -338,6 +350,7 @@ export class Hub extends EventEmitter {
         if (win) s.ctxWindow = win;
         if (m.is_error) this.push(s, { kind: "error", text: clip(m.result || m.subtype, 400) });
         this.touch(s, { status: "idle", turns: s.turns + 1 });
+        this.reportToParent(s);
         break;
       }
     }
@@ -372,7 +385,7 @@ export class Hub extends EventEmitter {
         break;
       case "item.completed": {
         const it = m.item || {};
-        if (it.type === "agent_message") { this.push(s, { kind: "assistant", text: it.text }); s.last = clip(it.text, 400); }
+        if (it.type === "agent_message") { this.push(s, { kind: "assistant", text: it.text }); s.last = clip(it.text, 400); this.rt(s.id).lastText = it.text; }
         else if (it.type === "command_execution") {
           this.push(s, { kind: "tool", name: "shell", text: clip(it.command, 600) });
           if (it.aggregated_output) this.push(s, { kind: "tool_result", text: clip(it.aggregated_output, 1500), error: it.exit_code !== 0 });
@@ -391,6 +404,7 @@ export class Hub extends EventEmitter {
         s.ctx = (u.input_tokens || 0) + (u.output_tokens || 0);
         this.store.addDaily(s.model, s.role, delta);
         this.touch(s, { status: "idle", turns: s.turns + 1 });
+        this.reportToParent(s);
         break;
       }
       case "turn.failed":

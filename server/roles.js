@@ -33,6 +33,7 @@ Dispatch MCP 도구로 다른 세션을 만들고 관리할 수 있다.
 - list_sessions / get_session: 진행 상황과 마지막 응답 확인
 - send_message: 진행 중인 세션에 추가 지시
 - stop_session: 끝난 세션 정리
+- 내가 만든 세션이 한 턴을 끝내면 그 마지막 응답이 "[이름 보고 · 브랜치]" 메시지로 나에게 자동으로 온다. 보고를 받으면 바로 다음 단계를 진행한다.
 세션은 한도를 소모하므로 꼭 필요한 만큼만 만든다.`;
 
 export const PERMS = ["manual", "acceptEdits", "auto", "plan"];
