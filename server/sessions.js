@@ -4,7 +4,7 @@ import { EventEmitter } from "node:events";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { prepareWorkdir } from "./git.js";
-import { SPAWN_PROMPT } from "./roles.js";
+import { PERMS, SPAWN_PROMPT } from "./roles.js";
 
 const MCP_SCRIPT = path.join(path.dirname(fileURLToPath(import.meta.url)), "mcp.js");
 const MAX_TRANSCRIPT = 400;
@@ -197,6 +197,20 @@ export class Hub extends EventEmitter {
     r.perms.delete(requestId);
     this.push(s, { kind: "system", text: `${req.tool} ${behavior === "allow" ? (always ? "항상 허용" : "허용") : "거부"}` });
     this.touch(s, { status: r.perms.size ? "waiting" : "running" });
+  }
+
+  // Claude: a live process switches at once through the control protocol; otherwise the next turn starts with it.
+  // Codex: the sandbox follows the mode from the next turn.
+  setPerm(id, perm) {
+    const s = this.get(id), r = this.live.get(id);
+    if (!s) throw Object.assign(new Error("세션이 없어요"), { status: 404 });
+    if (!PERMS.includes(perm)) throw Object.assign(new Error("알 수 없는 권한 모드예요"), { status: 400 });
+    if (s.provider === "claude" && r?.proc) {
+      r.proc.stdin.write(JSON.stringify({ type: "control_request", request_id: randomUUID(),
+        request: { subtype: "set_permission_mode", mode: perm } }) + "\n");
+    }
+    this.push(s, { kind: "system", text: `권한 모드 ${s.perm} → ${perm}` });
+    this.touch(s, { perm });
   }
 
   stopAll() {

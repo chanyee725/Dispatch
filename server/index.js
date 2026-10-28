@@ -128,6 +128,7 @@ const routes = [
   ["POST", /^\/api\/sessions\/([\w-]+)\/interrupt$/, async ([id]) => { hub.interrupt(id); return { ok: true }; }],
   ["POST", /^\/api\/sessions\/([\w-]+)\/kill$/, async ([id]) => { hub.kill(id); return { ok: true }; }],
   ["POST", /^\/api\/sessions\/([\w-]+)\/remove$/, async ([id]) => { hub.remove(id); return { ok: true }; }],
+  ["POST", /^\/api\/sessions\/([\w-]+)\/perm$/, async ([id], b) => { hub.setPerm(id, String(b.perm || "")); return { ok: true }; }],
   ["POST", /^\/api\/sessions\/([\w-]+)\/permission$/, async ([id], b) => {
     hub.respondPermission(id, b.requestId, b.behavior === "allow" ? "allow" : "deny", !!b.always);
     return { ok: true };
