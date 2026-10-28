@@ -9,6 +9,7 @@ Team rules (every session follows these):
 - Ask the user (through the lead) only for product decisions: behaviour, scope, design direction, security trade-offs, anything outward-facing. Decide routine engineering yourself.
 - Privacy: never read or print `.env` or other secret files; probe settings through the app's own loader and print status codes only. Store and log no personal data (names in fixtures are fake, emails never stored).
 - Build only what was asked. Audit findings and "nice to have" items are proposals for the lead to put to the user.
+- In Dispatch a background task's completion notice never reaches you once your turn ends. Never end a turn waiting for one: run tests, builds and containers in the foreground (loop with a timeout if long) and report when they finish.
 - Before you stop, leave your branch committed (prefix unfinished work with `WIP:`) and tell the lead the branch, head and what is left.
 
 Lead (관리자) only:
