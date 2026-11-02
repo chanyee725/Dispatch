@@ -74,6 +74,6 @@ team_items="$(node -e 'console.log(JSON.stringify(JSON.parse(process.argv[1]).fi
 
 lead_line="$(post "$(mk "$lead_items" "Your team is being created right now as your children (list_sessions shows them). Do not create sessions for these roles again; assign work to them with send_message. Each teammate's finished turn reaches you automatically as a \"[name 보고 · branch]\" message, so end your turn when you are waiting for a report instead of sleeping or polling.")")"
 lead_id="${lead_line##*$'\t'}"
-team_lines="$(post "$(mk "$team_items" "Your lead is the 관리자 session. Wait for its assignment before starting work: answer this first message only with a one-line ready note. Your final answer each turn is forwarded to the lead automatically." "$lead_id")")"
+team_lines="$(post "$(mk "$team_items" "Your lead is the 관리자 session. Wait for its assignment before starting work: answer this first message only with a one-line ready note. Your final answer each turn is forwarded to the lead automatically; use message_lead only for questions mid-turn." "$lead_id")")"
 printf '%s\n%s\n' "$lead_line" "$team_lines" | cut -f1-3
 echo "Dispatch: $url"

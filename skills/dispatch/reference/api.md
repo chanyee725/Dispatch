@@ -11,14 +11,14 @@ H=(-H 'content-type: application/json' -H 'x-dispatch: 1')
 | Request | Returns |
 |---|---|
 | `GET /api/state` | `project`, `roles`, `perms`, `models`, `providers`, `limits`, `settings`, `sessions` |
-| `GET /api/sessions/<id>/messages` | `{ session, messages }` — transcript of the current server run (kinds: `user`, `assistant`, `tool`, `tool_result`, `perm`, `error`, `system`) |
+| `GET /api/sessions/<id>/messages` | `{ session, messages }` — the last 400 transcript entries, kept across server restarts (kinds: `user`, `assistant`, `tool`, `tool_result`, `perm`, `error`, `system`) |
 | `GET /api/sessions/<id>/diff` | `{ files, add, del, untracked, patch }` for the session's worktree |
 | `GET /api/usage` | `{ days }` — last 14 days of cost and tokens per model and role |
 | `GET /api/events` | Server-sent events: `snapshot`, `session`, `message`, `limits`, `providers`, `settings`, `removed` |
 
-A session object carries `id`, `name`, `role`, `provider`, `model`, `effort`, `perm`, `status` (`starting` · `running` · `waiting` · `idle` · `done` · `error`), `branch`, `cwd`, `parent`, `last`, `turns`, `usage`, `cost`, `ctx`, `ctxWindow`, `pending` (permission requests).
+A session object carries `id`, `name`, `role`, `provider`, `model`, `effort`, `perm`, `status` (`starting` · `running` · `waiting` · `idle` · `done` · `error`), `branch`, `cwd`, `parent`, `last` (its own latest answer, not messages sent to it), `stall` (watchdog warning or null), `interrupted` (cut off by a restart, resumed on start), `turns`, `usage`, `cost`, `ctx`, `ctxWindow`, `pending` (permission requests).
 
-When a session with a `parent` finishes a turn, the server sends its last answer to the parent as a message (`[<name> 보고 · <branch>]` + the text), so an idle lead wakes up without polling.
+When a session with a `parent` finishes a turn, the server sends its last answer to the parent as a message (`[<name> 보고 · <branch>]` + the text), so an idle lead wakes up without polling. A report that cannot be delivered yet (no parent, or a busy Codex lead) is retried until it lands.
 
 ## Create sessions
 
@@ -41,6 +41,7 @@ Per item: `role` (required), `n` (copies, default 1), `model`, `effort` (one of 
 | Request | Body | Effect |
 |---|---|---|
 | `POST /api/sessions/<id>/message` | `{ "text": "..." }` | Sends a follow-up; resumes the CLI session if its process has exited. Codex accepts it only while `idle`. |
+| `POST /api/sessions/<id>/to-lead` | `{ "text": "..." }` | Sends a mid-turn message from a teammate to its lead (what the `message_lead` tool calls). |
 | `POST /api/sessions/<id>/parent` | `{ "parent": "<lead-id>" \| null }` | Attaches a session to a lead (or detaches it). The lead then receives the session's finished turns as reports and sees it in `list_sessions`. Refused when the target is not a lead or already has 8 open children. |
 | `POST /api/sessions/<id>/perm` | `{ "perm": "manual" \| "acceptEdits" \| "auto" \| "plan" }` | Changes the session's permission mode. A live Claude process switches at once; otherwise (and for Codex) the next turn starts in it. The transcript and context stay. |
 | `POST /api/sessions/<id>/permission` | `{ "requestId", "behavior": "allow" \| "deny", "always": false }` | Answers a pending Claude permission request from `session.pending`. |
@@ -61,4 +62,4 @@ Per item: `role` (required), `n` (copies, default 1), `model`, `effort` (one of 
 
 ## Manager MCP tools
 
-`lead` sessions get an MCP server named `dispatch` with `list_roles`, `create_sessions`, `list_sessions`, `get_session`, `send_message`, `stop_session`. Sessions it creates have `parent` set to the manager's id. These tools wrap the endpoints above, so the same rules (connected providers, limit guard, 8 open children per manager) apply.
+`lead` sessions get an MCP server named `dispatch` with `list_roles`, `create_sessions`, `list_sessions`, `get_session`, `send_message`, `stop_session`. Every other session gets the same server with one tool, `message_lead`. Sessions it creates have `parent` set to the manager's id. These tools wrap the endpoints above, so the same rules (connected providers, limit guard, 8 open children per manager) apply.

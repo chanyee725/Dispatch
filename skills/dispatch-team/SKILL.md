@@ -32,6 +32,10 @@ When the user wants every session in one mode (e.g. "전체 auto 로 바꿔"), r
 `DISPATCH_PORT=<port> <skill-dir>/scripts/auto-all.sh [auto|acceptEdits|plan|manual]` (default `auto`).
 It calls `POST /api/sessions/<id>/perm` for each open session not already in that mode, so transcripts and context stay. Done when it prints one `name: old → new` line per changed session. Every role defaults to `auto`; start a stricter team with `DISPATCH_TEAM_PERM=acceptEdits team.sh …`.
 
+## Add one teammate
+
+`DISPATCH_PORT=<port> <skill-dir>/scripts/add.sh "<lead name or id>" <role> "<task>" [model]` creates one session under that lead with the team rules prepended. The server refuses it when the lead already has 8 open children; stop a finished one first.
+
 ## Teams made before parents were set
 
 A teammate without `parent` never reports to the lead, and the lead stalls waiting. Attach each one with `POST /api/sessions/<id>/parent` `{ "parent": "<lead-id>" }` (server must include that route; restart it when it does not) and forward any answers the lead missed.

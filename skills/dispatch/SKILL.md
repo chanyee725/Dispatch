@@ -21,7 +21,7 @@ Dispatch serves http://127.0.0.1:4317 and spawns `claude` / `codex` CLI sessions
 4. **Hand over or drive.** Give the user the URL. When the user asked you to start work, create the sessions through the API in [reference/api.md](reference/api.md), then report each session's name, model and branch.
    Done when every requested session appears in `GET /api/state` with status `running`, `waiting` or `idle`.
 
-Stop the server with `<skill-dir>/scripts/stop.sh "<project-root>"`.
+Stop the server with `<skill-dir>/scripts/stop.sh "<project-root>"`; restart it (to load new server code) with `<skill-dir>/scripts/restart.sh "<project-root>"`. A restart cuts running turns, but those sessions are resumed with a note, and transcripts survive.
 
 ## Roles
 
@@ -41,5 +41,6 @@ Any role can run on any listed model; model ids come from `GET /api/state` → `
 - **Limits.** Claude sessions share the user's 5-hour and weekly limits (`limits.five` / `limits.seven`, 0–1). The server refuses new Claude sessions at or above the guard in `settings.guard` (default 90% / 85%); Codex sessions are not gated by it. Size the fan-out to what the task needs.
 - **Permissions.** Claude sessions in `manual` mode wait for the user to approve tools in the UI (status `waiting`). Codex runs non-interactively: `acceptEdits` / `auto` → workspace-write sandbox, `manual` / `plan` → read-only.
 - **Cost.** Claude reports USD (an API-price estimate, not a bill on subscriptions); Codex reports tokens only, so its cost is `null`.
-- **Privacy.** Dispatch stores only session metadata and usage totals in `<project>/.dispatch/state.json`. Keep transcripts, keys and account details inside Dispatch and the CLIs.
+- **Privacy.** Dispatch stores session metadata and usage totals in `<project>/.dispatch/state.json` and each session's last 400 transcript entries in `<project>/.dispatch/transcripts/<id>.jsonl` (local only, deleted when the session is removed; keep `.dispatch/` gitignored). Keys and account details stay inside the CLIs.
+- **Watchdog.** Every 30 s the server retries undelivered reports and sets `session.stall` (shown on the card) for a teammate with no lead, or a lead whose whole team has been idle over 10 minutes.
 - **Worktrees** need a git repo with at least one commit; otherwise the session runs in the project folder and its transcript says so.
