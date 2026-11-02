@@ -28,11 +28,11 @@ Stop the server with `<skill-dir>/scripts/stop.sh "<project-root>"`.
 | id | name | default model | permission | notes |
 |---|---|---|---|---|
 | `lead` | 관리자 | claude-opus-5-5 | auto | Splits work and creates/steers other sessions through the Dispatch MCP tools (max 8 open children). |
-| `impl` | 구현자 | claude-opus-5-5 | acceptEdits | Implements in small commits, runs tests. |
-| `review` | 리뷰어 | claude-opus-5-5 | plan | Reads only, reports risks in priority order. |
-| `test` | 테스터 | claude-sonnet-5-5 | acceptEdits | Adds edge-case tests. |
-| `design` | 디자이너 | claude-sonnet-5-5 | acceptEdits | Layout, spacing, colour, accessibility; leaves logic alone. |
-| `docs` | 문서화 | claude-haiku-5-5 | acceptEdits | README / CHANGELOG. |
+| `impl` | 구현자 | claude-opus-5-5 | auto | Implements in small commits, runs tests. |
+| `review` | 리뷰어 | claude-opus-5-5 | auto | Reads only, reports risks in priority order. |
+| `test` | 테스터 | claude-sonnet-5-5 | auto | Adds edge-case tests. |
+| `design` | 디자이너 | claude-sonnet-5-5 | auto | Layout, spacing, colour, accessibility; leaves logic alone. |
+| `docs` | 문서화 | claude-haiku-5-5 | auto | README / CHANGELOG. |
 
 Any role can run on any listed model; model ids come from `GET /api/state` → `models` (Codex models are read live from `codex debug models`).
 

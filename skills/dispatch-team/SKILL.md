@@ -30,7 +30,7 @@ Builds on the `dispatch` skill (a sibling directory of this one): that skill sta
 
 When the user wants every session in one mode (e.g. "전체 auto 로 바꿔"), run
 `DISPATCH_PORT=<port> <skill-dir>/scripts/auto-all.sh [auto|acceptEdits|plan|manual]` (default `auto`).
-It calls `POST /api/sessions/<id>/perm` for each open session not already in that mode, so transcripts and context stay. Done when it prints one `name: old → new` line per changed session. New teams can start in auto with `DISPATCH_TEAM_PERM=auto team.sh …`.
+It calls `POST /api/sessions/<id>/perm` for each open session not already in that mode, so transcripts and context stay. Done when it prints one `name: old → new` line per changed session. Every role defaults to `auto`; start a stricter team with `DISPATCH_TEAM_PERM=acceptEdits team.sh …`.
 
 ## Teams made before parents were set
 
