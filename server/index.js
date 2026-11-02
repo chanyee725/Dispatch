@@ -1,6 +1,7 @@
 import http from "node:http";
+import os from "node:os";
 import path from "node:path";
-import { readFile } from "node:fs/promises";
+import { mkdir, readdir, readFile, rm, writeFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 import { cancelLogin, login, loginWithKey, logout, providerStatus, publicStatus } from "./auth.js";
 import { currentBranch, diff, projectRoot } from "./git.js";
@@ -69,6 +70,50 @@ function usage() {
   return { days };
 }
 
+/* ---------------- Other projects ---------------- */
+// Every server registers itself in ~/.dispatch/servers/<port>.json so the UI can list and switch to
+// the other projects running on this machine. Only port, name, path and pid are written.
+const REGISTRY = path.join(os.homedir(), ".dispatch", "servers");
+const SCAN = [4317, 4330]; // servers started before the registry existed are found by probing these ports
+const tilde = p => p.replace(os.homedir(), "~");
+
+async function register() {
+  await mkdir(REGISTRY, { recursive: true });
+  const entry = { port: PORT, name: path.basename(root), path: tilde(root), pid: process.pid, startedAt: Date.now() };
+  await writeFile(path.join(REGISTRY, `${PORT}.json`), JSON.stringify(entry));
+}
+async function unregister() {
+  const file = path.join(REGISTRY, `${PORT}.json`);
+  const cur = JSON.parse(await readFile(file, "utf8").catch(() => "{}"));
+  if (cur.pid === process.pid) await rm(file, { force: true });
+}
+
+const alive = pid => { try { process.kill(pid, 0); return true; } catch (e) { return e.code === "EPERM"; } };
+
+async function probe(port) {
+  try {
+    const res = await fetch(`http://${HOST}:${port}/api/state`, { signal: AbortSignal.timeout(500) });
+    const { project } = await res.json();
+    return project?.path ? { port, name: project.name, path: project.path } : null;
+  } catch { return null; }
+}
+
+async function projects() {
+  const found = new Map();
+  for (const f of await readdir(REGISTRY).catch(() => [])) {
+    if (!f.endsWith(".json")) continue;
+    const e = JSON.parse(await readFile(path.join(REGISTRY, f), "utf8").catch(() => "{}"));
+    if (!e.port) continue;
+    if (e.port !== PORT && !alive(e.pid)) { rm(path.join(REGISTRY, f), { force: true }); continue; }
+    found.set(e.port, { port: e.port, name: e.name, path: e.path });
+  }
+  const ports = [];
+  for (let p = SCAN[0]; p <= SCAN[1]; p++) if (!found.has(p) && p !== PORT) ports.push(p);
+  for (const e of await Promise.all(ports.map(probe))) if (e) found.set(e.port, e);
+  found.set(PORT, { port: PORT, name: path.basename(root), path: tilde(root) });
+  return [...found.values()].map(e => ({ ...e, current: e.port === PORT })).sort((a, b) => a.port - b.port);
+}
+
 /* ---------------- HTTP ---------------- */
 const TYPES = { ".html": "text/html; charset=utf-8", ".js": "text/javascript", ".css": "text/css", ".svg": "image/svg+xml",
   ".woff2": "font/woff2", ".woff": "font/woff", ".png": "image/png", ".ico": "image/x-icon", ".json": "application/json" };
@@ -105,6 +150,7 @@ async function body(req) {
 const routes = [
   ["GET", /^\/api\/state$/, async () => snapshot()],
   ["GET", /^\/api\/usage$/, async () => usage()],
+  ["GET", /^\/api\/projects$/, async () => ({ projects: await projects() })],
   ["POST", /^\/api\/settings$/, async (_, b) => {
     if (b.guard) store.data.settings.guard = { ...store.data.settings.guard, ...b.guard };
     store.save();
@@ -185,6 +231,7 @@ setInterval(() => hub.checkTeams(), 30000);
 
 server.listen(PORT, HOST, () => {
   hub.resumeInterrupted();
+  register().catch(e => console.error("registry:", e.message));
   console.log(`Dispatch → http://${HOST}:${PORT}`);
   console.log(`project  → ${root}`);
   console.log(`models   → ${models.map(m => m.id).join(", ")}`);
@@ -192,6 +239,7 @@ server.listen(PORT, HOST, () => {
 
 async function shutdown() {
   hub.stopAll();
+  await unregister().catch(() => {});
   await store.flush().catch(() => {});
   process.exit(0);
 }

@@ -1,7 +1,8 @@
-import { FolderGit2, GitBranch, Plus } from "lucide-react";
+import { GitBranch, Plus } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { Meter } from "@/components/bits";
+import { ProjectSwitcher } from "@/components/ProjectSwitcher";
 import { pct, until } from "@/lib/format";
 import { useApp } from "@/store";
 
@@ -31,8 +32,7 @@ export function TopBar({ title, onCreate, canCreate }: { title: string; onCreate
         <h1 className="shrink-0 text-base font-semibold">{title}</h1>
         {project.name && (
           <div className="flex min-w-0 items-center gap-2 text-sm text-muted-foreground">
-            <FolderGit2 className="size-4 shrink-0" />
-            <span className="shrink-0 font-medium text-foreground">{project.name}</span>
+            <ProjectSwitcher name={project.name} />
             <span className="truncate max-lg:hidden" title={project.path}>{project.path}</span>
             {project.branch && (
               <span className="inline-flex shrink-0 items-center gap-1 rounded-md bg-muted px-1.5 py-0.5 text-xs">
