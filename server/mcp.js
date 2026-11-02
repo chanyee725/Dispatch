@@ -4,6 +4,8 @@
 
 const BASE = process.env.DISPATCH_URL || "http://127.0.0.1:4317";
 const PARENT = process.env.DISPATCH_PARENT || null;
+const SELF = process.env.DISPATCH_SELF || null;
+const CHILD = process.env.DISPATCH_MODE === "child";
 
 async function api(method, path, body) {
   const res = await fetch(BASE + path, {
@@ -22,7 +24,17 @@ const brief = s => ({
   pendingPermissions: (s.pending || []).length,
 });
 
-const TOOLS = [
+// Teammates get one tool: reach their lead mid-turn.
+const CHILD_TOOLS = [
+  {
+    name: "message_lead",
+    description: "턴 중간에 관리자에게 질문이나 알림을 보낸다. 턴이 끝날 때의 마지막 답변은 따로 보내지 않아도 자동으로 보고된다.",
+    inputSchema: { type: "object", required: ["text"], properties: { text: { type: "string" } } },
+    run: async ({ text }) => { await api("POST", `/api/sessions/${SELF}/to-lead`, { text }); return { ok: true }; },
+  },
+];
+
+const LEAD_TOOLS = [
   {
     name: "list_roles",
     description: "사용할 수 있는 역할 프리셋과 모델 목록을 돌려준다.",
@@ -97,6 +109,8 @@ const TOOLS = [
     run: async ({ session_id }) => { await api("POST", `/api/sessions/${session_id}/kill`); return { ok: true }; },
   },
 ];
+
+const TOOLS = CHILD ? CHILD_TOOLS : LEAD_TOOLS;
 
 function reply(id, result) { process.stdout.write(JSON.stringify({ jsonrpc: "2.0", id, result }) + "\n"); }
 function fail(id, code, message) { process.stdout.write(JSON.stringify({ jsonrpc: "2.0", id, error: { code, message } }) + "\n"); }
