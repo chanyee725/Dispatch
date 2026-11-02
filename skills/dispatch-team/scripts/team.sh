@@ -39,26 +39,41 @@ if [ "$connected" != "true" ]; then
   curl -sf -X POST "$url/api/providers/claude/login" "${H[@]}" -d '{}' >/dev/null
 fi
 
-body="$(node -e '
-  const fs = require("fs");
-  const [rulesPath, task, items, model, effort, perm] = process.argv.slice(1);
-  const rules = fs.readFileSync(rulesPath, "utf8").trim();
-  // DISPATCH_TEAM_MODEL / _EFFORT / _PERM override every item (cheap test runs: claude-haiku-5-5, low;
-  // a fully hands-off team: auto).
-  const list = JSON.parse(items).map((i) => ({
-    ...i, ...(model && { model }), ...(effort && { effort }), ...(perm && { perm }),
-  }));
-  process.stdout.write(JSON.stringify({
-    commonPrompt: `${rules}\n\nTask from the user:\n${task}`,
-    worktree: true,
-    items: list,
-  }));
-' "$skill/reference/rules.md" "$task" "$items" "${DISPATCH_TEAM_MODEL:-}" "${DISPATCH_TEAM_EFFORT:-}" "${DISPATCH_TEAM_PERM:-}")"
+# Lead first, then every teammate created as its child: a child's finished turn is forwarded to the lead,
+# so the lead wakes on reports instead of polling, and its list_sessions shows the team.
+mk() { # mk <items-json> <role-note> [parent-id] → POST body
+  node -e '
+    const fs = require("fs");
+    const [rulesPath, task, items, note, parent, model, effort, perm] = process.argv.slice(1);
+    const rules = fs.readFileSync(rulesPath, "utf8").trim();
+    // DISPATCH_TEAM_MODEL / _EFFORT / _PERM override every item (cheap test runs: claude-haiku-5-5, low;
+    // a fully hands-off team: auto).
+    const list = JSON.parse(items).map((i) => ({
+      ...i, ...(model && { model }), ...(effort && { effort }), ...(perm && { perm }),
+    }));
+    process.stdout.write(JSON.stringify({
+      commonPrompt: `${rules}\n\n${note}\n\nTask from the user:\n${task}`,
+      worktree: true,
+      items: list,
+      ...(parent && { parent }),
+    }));
+  ' "$skill/reference/rules.md" "$task" "$1" "$2" "${3:-}" "${DISPATCH_TEAM_MODEL:-}" "${DISPATCH_TEAM_EFFORT:-}" "${DISPATCH_TEAM_PERM:-}"
+}
+post() { # post <body> → prints sessions, exits on error; sets $ids
+  local resp
+  resp="$(curl -s -X POST "$url/api/sessions" "${H[@]}" -d "$1")"
+  node -e '
+    const r = JSON.parse(process.argv[1]);
+    if (r.error) { console.error(r.error); process.exit(1); }
+    for (const s of r.sessions) console.log(`${s.name}\t${s.model}\t${s.branch ?? "(project folder)"}\t${s.id}`);
+  ' "$resp"
+}
 
-resp="$(curl -s -X POST "$url/api/sessions" "${H[@]}" -d "$body")"
-node -e '
-  const r = JSON.parse(process.argv[1]);
-  if (r.error) { console.error(r.error); process.exit(1); }
-  for (const s of r.sessions) console.log(`${s.name}\t${s.model}\t${s.branch ?? "(project folder)"}`);
-' "$resp"
+lead_items="$(node -e 'console.log(JSON.stringify(JSON.parse(process.argv[1]).filter(i => i.role === "lead")))' "$items")"
+team_items="$(node -e 'console.log(JSON.stringify(JSON.parse(process.argv[1]).filter(i => i.role !== "lead")))' "$items")"
+
+lead_line="$(post "$(mk "$lead_items" "Your team is being created right now as your children (list_sessions shows them). Do not create sessions for these roles again; assign work to them with send_message. Each teammate's finished turn reaches you automatically as a \"[name 보고 · branch]\" message, so end your turn when you are waiting for a report instead of sleeping or polling.")")"
+lead_id="${lead_line##*$'\t'}"
+team_lines="$(post "$(mk "$team_items" "Your lead is the 관리자 session. Wait for its assignment before starting work: answer this first message only with a one-line ready note. Your final answer each turn is forwarded to the lead automatically." "$lead_id")")"
+printf '%s\n%s\n' "$lead_line" "$team_lines" | cut -f1-3
 echo "Dispatch: $url"
