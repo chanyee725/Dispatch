@@ -128,6 +128,7 @@ const routes = [
   ["POST", /^\/api\/sessions\/([\w-]+)\/interrupt$/, async ([id]) => { hub.interrupt(id); return { ok: true }; }],
   ["POST", /^\/api\/sessions\/([\w-]+)\/kill$/, async ([id]) => { hub.kill(id); return { ok: true }; }],
   ["POST", /^\/api\/sessions\/([\w-]+)\/remove$/, async ([id]) => { hub.remove(id); return { ok: true }; }],
+  ["POST", /^\/api\/sessions\/([\w-]+)\/to-lead$/, async ([id], b) => { hub.messageLead(id, String(b.text || "")); return { ok: true }; }],
   ["POST", /^\/api\/sessions\/([\w-]+)\/parent$/, async ([id], b) => { hub.setParent(id, b.parent ? String(b.parent) : null); return { ok: true }; }],
   ["POST", /^\/api\/sessions\/([\w-]+)\/perm$/, async ([id], b) => { hub.setPerm(id, String(b.perm || "")); return { ok: true }; }],
   ["POST", /^\/api\/sessions\/([\w-]+)\/permission$/, async ([id], b) => {
@@ -180,7 +181,10 @@ const server = http.createServer(async (req, res) => {
   }
 });
 
+setInterval(() => hub.checkTeams(), 30000);
+
 server.listen(PORT, HOST, () => {
+  hub.resumeInterrupted();
   console.log(`Dispatch → http://${HOST}:${PORT}`);
   console.log(`project  → ${root}`);
   console.log(`models   → ${models.map(m => m.id).join(", ")}`);

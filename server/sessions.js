@@ -1,14 +1,18 @@
 import { spawn } from "node:child_process";
+import { appendFileSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { randomUUID } from "node:crypto";
 import { EventEmitter } from "node:events";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { prepareWorkdir } from "./git.js";
-import { PERMS, SPAWN_PROMPT } from "./roles.js";
+import { CHILD_PROMPT, PERMS, SPAWN_PROMPT } from "./roles.js";
 
 const MCP_SCRIPT = path.join(path.dirname(fileURLToPath(import.meta.url)), "mcp.js");
 const MAX_TRANSCRIPT = 400;
 const MAX_CHILDREN = 8;
+const STALL_MS = 10 * 60 * 1000;
+const RESUME_TEXT = "[Dispatch] 서버가 재시작되어 직전 턴이 중간에 끊겼다. 작업 폴더와 브랜치 상태를 확인하고 하던 일을 이어서 끝내라.";
+const isOpenStatus = st => !["done", "error"].includes(st);
 const clip = (s, n = 2000) => { s = String(s ?? ""); return s.length > n ? s.slice(0, n) + "…" : s; };
 
 // Splits a child's stdout into JSON lines.
@@ -40,9 +44,13 @@ export class Hub extends EventEmitter {
     this.live = new Map(); // id -> { proc, transcript, perms, seenMsgIds }
     this.isConnected = () => true; // replaced by the server with the Dispatch-level connection check
 
-    // Sessions from a previous run have no process; they resume on the next message.
+    // Transcripts are appended per session under .dispatch/transcripts so a restart keeps them.
+    this.tdir = path.join(root, ".dispatch", "transcripts");
+    mkdirSync(this.tdir, { recursive: true });
+
+    // Sessions from a previous run have no process. Ones cut off mid-turn are resumed by resumeInterrupted().
     for (const s of Object.values(store.data.sessions)) {
-      if (s.status === "running" || s.status === "waiting") s.status = "idle";
+      if (s.status === "running" || s.status === "waiting" || s.status === "starting") { s.status = "idle"; s.interrupted = true; }
     }
   }
 
@@ -50,8 +58,21 @@ export class Hub extends EventEmitter {
   get(id) { return this.store.data.sessions[id]; }
   rt(id) {
     let r = this.live.get(id);
-    if (!r) this.live.set(id, r = { proc: null, transcript: [], perms: new Map(), seenMsgIds: new Set() });
+    if (!r) {
+      const transcript = this.readTranscript(id);
+      this.live.set(id, r = { proc: null, transcript, written: transcript.length, perms: new Map(), seenMsgIds: new Set(), pendingReport: null });
+    }
     return r;
+  }
+
+  tfile(id) { return path.join(this.tdir, `${id}.jsonl`); }
+
+  readTranscript(id) {
+    let lines = [];
+    try { lines = readFileSync(this.tfile(id), "utf8").split("\n"); } catch { return []; }
+    const out = [];
+    for (const l of lines.slice(-MAX_TRANSCRIPT - 1)) { if (l) try { out.push(JSON.parse(l)); } catch { /* torn last line */ } }
+    return out.slice(-MAX_TRANSCRIPT);
   }
 
   publicSession(s) {
@@ -70,10 +91,24 @@ export class Hub extends EventEmitter {
     entry.at = Date.now();
     r.transcript.push(entry);
     if (r.transcript.length > MAX_TRANSCRIPT) r.transcript.splice(0, r.transcript.length - MAX_TRANSCRIPT);
+    try {
+      // Append; compact the file to the in-memory window once it doubles.
+      if (++r.written > MAX_TRANSCRIPT * 2) {
+        writeFileSync(this.tfile(s.id), r.transcript.map(e => JSON.stringify(e)).join("\n") + "\n");
+        r.written = r.transcript.length;
+      } else appendFileSync(this.tfile(s.id), JSON.stringify(entry) + "\n");
+    } catch { /* disk trouble must not stop the session */ }
     this.emit("message", { id: s.id, entry });
   }
 
-  transcript(id) { return this.live.get(id)?.transcript ?? []; }
+  transcript(id) { return this.get(id) ? this.rt(id).transcript : []; }
+
+  // Patch without bumping updatedAt (watchdog flags must not look like activity).
+  mark(s, patch) {
+    Object.assign(s, patch);
+    this.store.save();
+    this.emit("session", this.publicSession(s));
+  }
 
   guardCheck(count) {
     const g = this.store.data.settings.guard;
@@ -151,7 +186,7 @@ export class Hub extends EventEmitter {
     const r = this.rt(id);
     if (s.provider === "claude" && r.proc) {
       r.proc.stdin.write(JSON.stringify({ type: "user", message: { role: "user", content: text } }) + "\n");
-      this.touch(s, { status: "running", last: text });
+      this.touch(s, { status: "running" });
     } else if (s.provider === "openai" && r.proc) {
       throw new Error("Codex는 응답이 끝난 뒤에 다음 메시지를 보낼 수 있어요");
     } else {
@@ -182,6 +217,7 @@ export class Hub extends EventEmitter {
     this.kill(id);
     delete this.store.data.sessions[id];
     this.live.delete(id);
+    rmSync(this.tfile(id), { force: true });
     this.store.save();
     this.emit("removed", { id });
   }
@@ -227,18 +263,64 @@ export class Hub extends EventEmitter {
       if (active + 1 > MAX_CHILDREN) throw Object.assign(new Error(`관리자 한 명이 동시에 둘 수 있는 세션은 ${MAX_CHILDREN}개까지예요 (현재 ${active}개)`), { status: 400 });
     }
     this.touch(s, { parent: parent || null });
+    this.deliverReport(s);
+  }
+
+  // A child asks or tells its lead something mid-turn (message_lead tool).
+  messageLead(id, text) {
+    const s = this.get(id);
+    if (!s) throw Object.assign(new Error("세션이 없어요"), { status: 404 });
+    const p = s.parent && this.get(s.parent);
+    if (!p || p.status === "done") throw Object.assign(new Error("연결된 관리자가 없어요"), { status: 400 });
+    if (!String(text).trim()) throw Object.assign(new Error("보낼 내용이 없어요"), { status: 400 });
+    this.send(p.id, `[${s.name} 메시지${s.branch ? ` · ${s.branch}` : ""}]\n${clip(text, 4000)}`);
+  }
+
+  // Resume every session a restart cut off mid-turn, once its provider is connected.
+  resumeInterrupted() {
+    for (const s of this.sessions) {
+      if (!s.interrupted || !this.isConnected(s.provider)) continue;
+      s.interrupted = false;
+      try { this.send(s.id, RESUME_TEXT); } catch { /* resumes on the next message instead */ }
+    }
+    this.store.save();
+  }
+
+  // Watchdog: retry undelivered reports, flag teammates no lead hears and teams idle for a long time.
+  checkTeams(now = Date.now()) {
+    const leads = this.sessions.filter(s => s.canSpawn && isOpenStatus(s.status));
+    for (const s of this.sessions) {
+      if (this.live.get(s.id)?.pendingReport) this.deliverReport(s);
+      let stall = null;
+      if (isOpenStatus(s.status) && !s.canSpawn && !s.parent && leads.length) {
+        stall = { reason: "관리자에 연결되지 않아 보고가 전달되지 않아요", since: s.startedAt };
+      } else if (isOpenStatus(s.status) && s.canSpawn) {
+        const team = [s, ...this.sessions.filter(x => x.parent === s.id && isOpenStatus(x.status))];
+        const last = Math.max(...team.map(x => x.updatedAt));
+        if (team.length > 1 && team.every(x => x.status === "idle") && now - last > STALL_MS) {
+          stall = { reason: `팀 전체가 ${Math.round((now - last) / 60000)}분째 대기 중이에요. 사용자 확인을 기다리는지, 멈춘 것인지 확인하세요.`, since: last };
+        }
+      }
+      if ((s.stall?.reason ?? null) !== (stall?.reason ?? null)) this.mark(s, { stall });
+    }
   }
 
   // A child's turn ended: hand its last answer to the lead, so a lead that went idle wakes up instead of
   // waiting to poll. Children have no Dispatch tools of their own to report with.
+  // A report waits in pendingReport until it reaches a lead: a session attached later, or a Codex lead
+  // busy mid-turn, gets it from setParent() or the watchdog.
   reportToParent(s) {
-    const r = this.live.get(s.id), parent = s.parent && this.get(s.parent);
-    const text = r?.lastText;
-    if (!parent || parent.status === "done" || !text) return;
+    const r = this.live.get(s.id);
+    if (!r?.lastText) return;
+    r.pendingReport = `[${s.name} 보고${s.branch ? ` · ${s.branch}` : ""}]\n${clip(r.lastText, 4000)}`;
     r.lastText = null;
-    try {
-      this.send(parent.id, `[${s.name} 보고${s.branch ? ` · ${s.branch}` : ""}]\n${clip(text, 4000)}`);
-    } catch { /* Codex lead mid-turn: it sees the report with get_session */ }
+    this.deliverReport(s);
+  }
+
+  deliverReport(s) {
+    const r = this.live.get(s.id), parent = s.parent && this.get(s.parent);
+    if (!r?.pendingReport || !parent || parent.status === "done") return;
+    try { this.send(parent.id, r.pendingReport); r.pendingReport = null; } catch { /* retried by checkTeams */ }
   }
 
   stopAll() {
@@ -247,8 +329,15 @@ export class Hub extends EventEmitter {
 
   /* ---------------- runners ---------------- */
 
+  // Leads get the session-management tools; everyone else gets message_lead only.
   mcpEnv(s) {
-    return { DISPATCH_URL: `http://127.0.0.1:${this.port}`, DISPATCH_PARENT: s.id };
+    return s.canSpawn
+      ? { DISPATCH_URL: `http://127.0.0.1:${this.port}`, DISPATCH_PARENT: s.id }
+      : { DISPATCH_URL: `http://127.0.0.1:${this.port}`, DISPATCH_SELF: s.id, DISPATCH_MODE: "child" };
+  }
+
+  systemPrompt(s) {
+    return [s.prompt, s.canSpawn ? SPAWN_PROMPT : CHILD_PROMPT].filter(Boolean).join("\n\n");
   }
 
   start(s, prompt) {
@@ -284,15 +373,13 @@ export class Hub extends EventEmitter {
     const args = ["-p", "--input-format", "stream-json", "--output-format", "stream-json", "--verbose",
       "--model", s.model, "--permission-mode", s.perm, "--permission-prompt-tool", "stdio"];
     if (s.effort) args.push("--effort", s.effort);
-    const system = [s.prompt, s.canSpawn ? SPAWN_PROMPT : ""].filter(Boolean).join("\n\n");
+    const system = this.systemPrompt(s);
     if (system) args.push("--append-system-prompt", system);
     if (s.providerSessionId) args.push("--resume", s.providerSessionId);
     // Dispatch's own tools are pre-approved; the server enforces the guard and the child-session cap.
-    if (s.canSpawn) {
-      args.push("--mcp-config", JSON.stringify({ mcpServers: { dispatch: {
-        command: process.execPath, args: [MCP_SCRIPT], env: this.mcpEnv(s) } } }),
-        "--allowedTools", "mcp__dispatch");
-    }
+    args.push("--mcp-config", JSON.stringify({ mcpServers: { dispatch: {
+      command: process.execPath, args: [MCP_SCRIPT], env: this.mcpEnv(s) } } }),
+      "--allowedTools", "mcp__dispatch");
     const proc = spawn("claude", args, { cwd: s.cwd, stdio: ["pipe", "pipe", "pipe"] });
     s._costBase = s.cost;
     this.attach(s, proc);
@@ -378,15 +465,15 @@ export class Hub extends EventEmitter {
     const args = ["exec", ...(first ? [] : ["resume", s.providerSessionId]), "--json", "--skip-git-repo-check",
       "-m", s.model, "-c", `sandbox_mode="${sandbox}"`];
     if (s.effort) args.push("-c", `model_reasoning_effort="${s.effort}"`);
-    if (s.canSpawn) {
-      const env = this.mcpEnv(s);
+    {
+      const env = Object.entries(this.mcpEnv(s)).map(([k, v]) => `${k}=${JSON.stringify(v)}`).join(",");
       args.push("-c", `mcp_servers.dispatch.command=${JSON.stringify(process.execPath)}`,
         "-c", `mcp_servers.dispatch.args=[${JSON.stringify(MCP_SCRIPT)}]`,
-        "-c", `mcp_servers.dispatch.env={DISPATCH_URL=${JSON.stringify(env.DISPATCH_URL)},DISPATCH_PARENT=${JSON.stringify(env.DISPATCH_PARENT)}}`,
+        "-c", `mcp_servers.dispatch.env={${env}}`,
         "-c", `mcp_servers.dispatch.default_tools_approval_mode="approve"`);
     }
     // Codex has no system-prompt flag in exec mode, so the role prompt leads the first turn.
-    const system = [s.prompt, s.canSpawn ? SPAWN_PROMPT : ""].filter(Boolean).join("\n\n");
+    const system = this.systemPrompt(s);
     args.push(first && system ? `[역할]\n${system}\n\n[작업]\n${prompt}` : prompt);
     const proc = spawn("codex", args, { cwd: s.cwd, stdio: ["ignore", "pipe", "pipe"] });
     this.attach(s, proc);

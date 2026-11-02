@@ -1,7 +1,8 @@
 import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import path from "node:path";
 
-// Persists session metadata and usage totals only. Transcripts stay in memory (and in each CLI's own history).
+// Persists session metadata and usage totals. Transcripts are appended separately by the Hub to
+// .dispatch/transcripts/<id>.jsonl (local, gitignored, deleted with the session).
 export class Store {
   constructor(root) {
     this.file = path.join(root, ".dispatch", "state.json");
