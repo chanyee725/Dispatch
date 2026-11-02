@@ -22,7 +22,7 @@ Builds on the `dispatch` skill (a sibling directory of this one): that skill sta
 
 2. **Start the team.** Run
    `<skill-dir>/scripts/team.sh "<project-root>" <preset> "<task in the user's words>"`.
-   It starts or reuses the server (via `../dispatch/scripts/start.sh`; set `DISPATCH_PORT` if 4317 serves another project), connects Claude in Dispatch when the CLI is logged in, and creates the sessions with `worktree: true`. Done when it prints one line per session (name, model, branch).
+   It creates the lead first and every teammate as the lead's child, so each teammate's finished turn reaches the lead as a report. It starts or reuses the server (via `../dispatch/scripts/start.sh`; set `DISPATCH_PORT` if 4317 serves another project), connects Claude in Dispatch when the CLI is logged in, and creates the sessions with `worktree: true`. Done when it prints one line per session (name, model, branch).
 
 3. **Hand over.** Give the user the URL and the session list. The lead (관리자) now runs the team: it splits the task, steers the others through its Dispatch MCP tools, merges reviewed branches and reports. Answer the user's later questions from `GET /api/state` and the lead's transcript (`GET /api/sessions/<lead-id>/messages`).
 
@@ -31,6 +31,10 @@ Builds on the `dispatch` skill (a sibling directory of this one): that skill sta
 When the user wants every session in one mode (e.g. "전체 auto 로 바꿔"), run
 `DISPATCH_PORT=<port> <skill-dir>/scripts/auto-all.sh [auto|acceptEdits|plan|manual]` (default `auto`).
 It calls `POST /api/sessions/<id>/perm` for each open session not already in that mode, so transcripts and context stay. Done when it prints one `name: old → new` line per changed session. New teams can start in auto with `DISPATCH_TEAM_PERM=auto team.sh …`.
+
+## Teams made before parents were set
+
+A teammate without `parent` never reports to the lead, and the lead stalls waiting. Attach each one with `POST /api/sessions/<id>/parent` `{ "parent": "<lead-id>" }` (server must include that route; restart it when it does not) and forward any answers the lead missed.
 
 ## Team rules
 

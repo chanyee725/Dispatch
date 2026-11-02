@@ -41,6 +41,7 @@ Per item: `role` (required), `n` (copies, default 1), `model`, `effort` (one of 
 | Request | Body | Effect |
 |---|---|---|
 | `POST /api/sessions/<id>/message` | `{ "text": "..." }` | Sends a follow-up; resumes the CLI session if its process has exited. Codex accepts it only while `idle`. |
+| `POST /api/sessions/<id>/parent` | `{ "parent": "<lead-id>" \| null }` | Attaches a session to a lead (or detaches it). The lead then receives the session's finished turns as reports and sees it in `list_sessions`. Refused when the target is not a lead or already has 8 open children. |
 | `POST /api/sessions/<id>/perm` | `{ "perm": "manual" \| "acceptEdits" \| "auto" \| "plan" }` | Changes the session's permission mode. A live Claude process switches at once; otherwise (and for Codex) the next turn starts in it. The transcript and context stay. |
 | `POST /api/sessions/<id>/permission` | `{ "requestId", "behavior": "allow" \| "deny", "always": false }` | Answers a pending Claude permission request from `session.pending`. |
 | `POST /api/sessions/<id>/interrupt` | — | Stops the current turn; the session stays open. |
