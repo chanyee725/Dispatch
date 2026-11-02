@@ -55,7 +55,7 @@ async function snapshot() {
   return {
     project: { name: path.basename(root), path: root.replace(process.env.HOME || "\0", "~"), branch: await currentBranch(root) },
     roles: ROLES, perms: PERMS, models, providers,
-    limits: hub.limits, settings: store.data.settings,
+    limits: hub.currentLimits(), settings: store.data.settings,
     sessions: hub.sessions.map(s => hub.publicSession(s)),
   };
 }
@@ -136,20 +136,20 @@ const routes = [
     return { ok: true };
   }],
   // Already logged in on this machine → just connect; otherwise run the CLI's browser login first.
-  ["POST", /^\/api\/providers\/(claude|openai)\/login$/, async ([id]) => {
+  ["POST", /^\/api\/providers\/(claude|openai|gemini)\/login$/, async ([id]) => {
     if (providers[id]?.cliLoggedIn) { setEnabled(id, true); await refreshProviders(); return { ok: true, connected: true }; }
     login(id, refreshProviders, ok => ok && setEnabled(id, true));
     return { ok: true, connected: false };
   }],
-  ["POST", /^\/api\/providers\/(claude|openai)\/cancel$/, async ([id]) => { cancelLogin(id); return { ok: true }; }],
+  ["POST", /^\/api\/providers\/(claude|openai|gemini)\/cancel$/, async ([id]) => { cancelLogin(id); return { ok: true }; }],
   // Disconnects from Dispatch only; the CLI stays logged in unless `cli: true` is passed.
-  ["POST", /^\/api\/providers\/(claude|openai)\/logout$/, async ([id], b) => {
+  ["POST", /^\/api\/providers\/(claude|openai|gemini)\/logout$/, async ([id], b) => {
     setEnabled(id, false);
     if (b.cli) await logout(id);
     await refreshProviders();
     return { ok: true };
   }],
-  ["POST", /^\/api\/providers\/(claude|openai)\/key$/, async ([id], b) => {
+  ["POST", /^\/api\/providers\/(claude|openai|gemini)\/key$/, async ([id], b) => {
     await loginWithKey(id, String(b.key || ""));
     setEnabled(id, true);
     await refreshProviders();

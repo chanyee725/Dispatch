@@ -110,11 +110,20 @@ export class Hub extends EventEmitter {
     this.emit("session", this.publicSession(s));
   }
 
+  // A window whose reset time has passed is empty until Claude reports again; stale gauges must not block.
+  currentLimits(now = Date.now()) {
+    const l = { ...this.limits };
+    if (l.fiveReset && l.fiveReset <= now) l.five = 0;
+    if (l.sevenReset && l.sevenReset <= now) l.seven = 0;
+    return l;
+  }
+
   guardCheck(count) {
     const g = this.store.data.settings.guard;
     if (!g.enabled) return null;
-    if (this.limits.five != null && this.limits.five >= g.five) return `5시간 한도 ${Math.round(this.limits.five * 100)}% — 차단 기준 이상이에요`;
-    if (this.limits.seven != null && this.limits.seven >= g.seven) return `주간 한도 ${Math.round(this.limits.seven * 100)}% — 차단 기준 이상이에요`;
+    const limits = this.currentLimits();
+    if (limits.five != null && limits.five >= g.five) return `5시간 한도 ${Math.round(limits.five * 100)}% — 차단 기준 이상이에요`;
+    if (limits.seven != null && limits.seven >= g.seven) return `주간 한도 ${Math.round(limits.seven * 100)}% — 차단 기준 이상이에요`;
     return null;
   }
 
@@ -128,7 +137,8 @@ export class Hub extends EventEmitter {
       const id = it.model || this.roles.find(r => r.id === it.role)?.model;
       const provider = this.models.find(m => m.id === id)?.provider;
       if (provider && !this.isConnected(provider)) {
-        throw new Error(`${provider === "claude" ? "Claude" : "OpenAI Codex"}가 Dispatch에 연결되지 않았어요. 연결하기에서 먼저 연결하세요.`);
+        const name = provider === "claude" ? "Claude" : provider === "gemini" ? "Gemini" : "OpenAI Codex";
+        throw new Error(`${name}가 Dispatch에 연결되지 않았어요. 연결하기에서 먼저 연결하세요.`);
       }
     }
     // The limit gauges come from Claude, so they only gate Claude sessions.
@@ -189,6 +199,8 @@ export class Hub extends EventEmitter {
       this.touch(s, { status: "running" });
     } else if (s.provider === "openai" && r.proc) {
       throw new Error("Codex는 응답이 끝난 뒤에 다음 메시지를 보낼 수 있어요");
+    } else if (s.provider === "gemini" && r.proc) {
+      throw new Error("Gemini는 응답이 끝난 뒤에 다음 메시지를 보낼 수 있어요");
     } else {
       this.start(s, text);
     }
@@ -343,6 +355,7 @@ export class Hub extends EventEmitter {
   start(s, prompt) {
     s._killed = false;
     if (s.provider === "claude") this.startClaude(s, prompt);
+    else if (s.provider === "gemini") this.startGemini(s, prompt);
     else this.startCodex(s, prompt);
   }
 
@@ -517,6 +530,78 @@ export class Hub extends EventEmitter {
       case "error":
         this.push(s, { kind: "error", text: clip(m.message, 400) });
         break;
+    }
+  }
+
+  startGemini(s, prompt) {
+    const mode = s.perm === "acceptEdits" || s.perm === "auto" ? "auto" : s.perm === "plan" ? "plan" : "auto";
+    const first = !s.providerSessionId;
+    const system = this.systemPrompt(s);
+    const textPrompt = first && system ? `[역할]\n${system}\n\n[작업]\n${prompt}` : prompt;
+    const args = [
+      "-p", textPrompt,
+      "--output-format", "stream-json",
+      "--model", s.model,
+      "--mode", mode,
+      "--dangerously-skip-permissions",
+    ];
+    if (s.effort) args.push("--effort", s.effort);
+    if (s.providerSessionId) args.push("--conversation", s.providerSessionId);
+
+    const env = { ...process.env, ...this.mcpEnv(s) };
+    const proc = spawn("agy", args, { cwd: s.cwd, env, stdio: ["ignore", "pipe", "pipe"] });
+    this.attach(s, proc);
+    onJsonLines(proc.stdout, m => this.onGemini(s, m));
+    this.touch(s, { status: "running", error: null });
+  }
+
+  onGemini(s, m) {
+    switch (m.event) {
+      case "init":
+        if (m.conversation_id) this.touch(s, { providerSessionId: m.conversation_id });
+        break;
+      case "step_update": {
+        const su = m.step_update || {};
+        if (su.step_type === "agent_response") {
+          if (su.text_delta && su.text_delta.trim()) {
+            this.push(s, { kind: "assistant", text: su.text_delta });
+            s.last = clip(su.text_delta, 400);
+            this.rt(s.id).lastText = su.text_delta;
+          }
+          if (su.usage) {
+            const u = su.usage;
+            const delta = { input: u.input_tokens || 0, output: u.output_tokens || 0, cacheRead: u.cache_read_tokens || 0, cacheWrite: 0 };
+            for (const k in delta) s.usage[k] += delta[k];
+            s.ctx = delta.input + delta.output;
+            this.store.addDaily(s.model, s.role, delta);
+          }
+        } else if (su.step_type === "tool") {
+          if (su.state === "ACTIVE") {
+            const params = su.tool_info?.parameters || {};
+            this.push(s, { kind: "tool", name: su.tool_name, text: clip(JSON.stringify(params), 600) });
+          } else if (su.state === "DONE") {
+            const out = su.tool_info?.output || "";
+            this.push(s, { kind: "tool_result", text: clip(out, 1500), error: false });
+          }
+        }
+        this.touch(s);
+        break;
+      }
+      case "result": {
+        const res = m.result || {};
+        if (res.response && res.response.trim()) {
+          s.last = clip(res.response, 400);
+          this.rt(s.id).lastText = res.response;
+        }
+        if (res.status === "ERROR") {
+          this.push(s, { kind: "error", text: clip(res.error || "Turn failed", 400) });
+          this.touch(s, { status: "error", error: clip(res.error || "Turn failed", 300) });
+        } else {
+          this.touch(s, { status: "idle", turns: s.turns + 1 });
+          this.reportToParent(s);
+        }
+        break;
+      }
     }
   }
 }
