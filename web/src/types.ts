@@ -39,6 +39,8 @@ export interface Session {
   cost: number | null;
   providerSessionId: string | null;
   error: string | null;
+  /** Watchdog flag: a teammate no lead hears, or a whole team idle for a long time. */
+  stall?: { reason: string; since: number } | null;
   pending: Pending[];
 }
 

@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { CornerDownRight, GitBranch, Plus, ShieldAlert } from "lucide-react";
+import { CornerDownRight, GitBranch, Plus, ShieldAlert, TriangleAlert } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Meter, Stat, StatusBadge } from "@/components/bits";
@@ -27,7 +27,7 @@ function SessionCard({ s, parent, onOpen }: { s: Session; parent?: Session; onOp
       onClick={onOpen}
       className={cn(
         "group flex min-w-0 flex-col gap-3 rounded-xl border bg-card p-4 text-left transition-colors hover:border-foreground/20 focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none",
-        waiting && "border-warn/60 bg-warn/5",
+        (waiting || s.stall) && "border-warn/60 bg-warn/5",
       )}
     >
       <div className="flex items-start justify-between gap-3">
@@ -50,6 +50,13 @@ function SessionCard({ s, parent, onOpen }: { s: Session; parent?: Session; onOp
         <div className="-mt-1 flex items-center gap-1 text-xs text-muted-foreground">
           <CornerDownRight className="size-3" />
           {parent.name}이(가) 만든 세션
+        </div>
+      )}
+
+      {s.stall && (
+        <div className="-mt-1 flex items-start gap-1.5 rounded-lg border border-warn/50 bg-warn/5 px-2.5 py-1.5 text-xs text-foreground">
+          <TriangleAlert className="mt-px size-3.5 shrink-0 text-warn" />
+          <span>{s.stall.reason}</span>
         </div>
       )}
 
