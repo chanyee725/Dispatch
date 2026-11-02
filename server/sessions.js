@@ -12,6 +12,10 @@ const MAX_TRANSCRIPT = 400;
 const MAX_CHILDREN = 8;
 const STALL_MS = 10 * 60 * 1000;
 const RESUME_TEXT = "[Dispatch] 서버가 재시작되어 직전 턴이 중간에 끊겼다. 작업 폴더와 브랜치 상태를 확인하고 하던 일을 이어서 끝내라.";
+// Browser tools in team sessions run headless, each in its own throwaway profile, so checks never pop
+// windows on the user's screen or steer another session's tab. A session can still opt out via its own env.
+const SESSION_ENV = { PLAYWRIGHT_MCP_HEADLESS: "true", PLAYWRIGHT_MCP_ISOLATED: "true" };
+const sessionEnv = () => ({ ...SESSION_ENV, ...process.env });
 const isOpenStatus = st => !["done", "error"].includes(st);
 const clip = (s, n = 2000) => { s = String(s ?? ""); return s.length > n ? s.slice(0, n) + "…" : s; };
 
@@ -393,7 +397,7 @@ export class Hub extends EventEmitter {
     args.push("--mcp-config", JSON.stringify({ mcpServers: { dispatch: {
       command: process.execPath, args: [MCP_SCRIPT], env: this.mcpEnv(s) } } }),
       "--allowedTools", "mcp__dispatch");
-    const proc = spawn("claude", args, { cwd: s.cwd, stdio: ["pipe", "pipe", "pipe"] });
+    const proc = spawn("claude", args, { cwd: s.cwd, env: sessionEnv(), stdio: ["pipe", "pipe", "pipe"] });
     s._costBase = s.cost;
     this.attach(s, proc);
     onJsonLines(proc.stdout, m => this.onClaude(s, m));
@@ -488,7 +492,7 @@ export class Hub extends EventEmitter {
     // Codex has no system-prompt flag in exec mode, so the role prompt leads the first turn.
     const system = this.systemPrompt(s);
     args.push(first && system ? `[역할]\n${system}\n\n[작업]\n${prompt}` : prompt);
-    const proc = spawn("codex", args, { cwd: s.cwd, stdio: ["ignore", "pipe", "pipe"] });
+    const proc = spawn("codex", args, { cwd: s.cwd, env: sessionEnv(), stdio: ["ignore", "pipe", "pipe"] });
     this.attach(s, proc);
     onJsonLines(proc.stdout, m => this.onCodex(s, m));
     this.touch(s, { status: "running", error: null });
