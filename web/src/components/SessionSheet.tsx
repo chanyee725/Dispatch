@@ -86,7 +86,7 @@ function Chat({ s }: { s: Session }) {
     <div
       ref={box}
       onScroll={e => { const el = e.currentTarget; stick.current = el.scrollHeight - el.scrollTop - el.clientHeight < 80; }}
-      className="flex h-full flex-col gap-4 overflow-y-auto px-6 py-5"
+      className="flex h-full flex-col gap-4 overflow-y-auto px-6 py-5 [&>*]:shrink-0"
     >
       {!entries && <p className="text-sm text-muted-foreground">대화를 불러오는 중이에요…</p>}
       {entries?.length === 0 && (
