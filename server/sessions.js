@@ -213,6 +213,22 @@ export class Hub extends EventEmitter {
     this.touch(s, { perm });
   }
 
+  // Attach a session to a lead after the fact (teams made before parents were set, or a lead replaced).
+  // parent null detaches it.
+  setParent(id, parent) {
+    const s = this.get(id);
+    if (!s) throw Object.assign(new Error("세션이 없어요"), { status: 404 });
+    if (parent) {
+      const p = this.get(parent);
+      if (!p) throw Object.assign(new Error("관리자 세션이 없어요"), { status: 404 });
+      if (p.id === s.id) throw Object.assign(new Error("자기 자신을 관리자로 둘 수 없어요"), { status: 400 });
+      if (!p.canSpawn) throw Object.assign(new Error(`${p.name}은 관리자 역할이 아니에요`), { status: 400 });
+      const active = this.sessions.filter(x => x.parent === p.id && x.id !== s.id && !["done", "error"].includes(x.status)).length;
+      if (active + 1 > MAX_CHILDREN) throw Object.assign(new Error(`관리자 한 명이 동시에 둘 수 있는 세션은 ${MAX_CHILDREN}개까지예요 (현재 ${active}개)`), { status: 400 });
+    }
+    this.touch(s, { parent: parent || null });
+  }
+
   // A child's turn ended: hand its last answer to the lead, so a lead that went idle wakes up instead of
   // waiting to poll. Children have no Dispatch tools of their own to report with.
   reportToParent(s) {
