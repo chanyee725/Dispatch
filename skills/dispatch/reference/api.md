@@ -14,6 +14,7 @@ H=(-H 'content-type: application/json' -H 'x-dispatch: 1')
 | `GET /api/sessions/<id>/messages` | `{ session, messages }` — the last 400 transcript entries, kept across server restarts (kinds: `user`, `assistant`, `tool`, `tool_result`, `perm`, `error`, `system`) |
 | `GET /api/sessions/<id>/diff` | `{ files, add, del, untracked, patch }` for the session's worktree |
 | `GET /api/usage` | `{ days }` — last 14 days of cost and tokens per model and role |
+| `GET /api/projects` | `{ projects: [{ port, name, path, current }] }` — Dispatch servers running on this machine, one per project. Each server registers itself in `~/.dispatch/servers/<port>.json`; older servers on ports 4317–4330 are found by probing. The UI's project selector switches by opening the chosen port. |
 | `GET /api/events` | Server-sent events: `snapshot`, `session`, `message`, `limits`, `providers`, `settings`, `removed` |
 
 A session object carries `id`, `name`, `role`, `provider`, `model`, `effort`, `perm`, `status` (`starting` · `running` · `waiting` · `idle` · `done` · `error`), `branch`, `cwd`, `parent`, `last` (its own latest answer, not messages sent to it), `stall` (watchdog warning or null), `interrupted` (cut off by a restart, resumed on start), `turns`, `usage`, `cost`, `ctx`, `ctxWindow`, `pending` (permission requests).
