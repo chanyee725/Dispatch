@@ -42,13 +42,24 @@ function Stepper({ stage }: { stage: TaskStage }) {
   );
 }
 
-function Row({ t, lead, now }: { t: BoardTask; lead?: string; now: number }) {
+function Row({ t, lead, now, onOpen }: { t: BoardTask; lead?: string; now: number; onOpen?: () => void }) {
   const done = t.stage === "done";
   const left = t.etaAt ? mins(t.etaAt - now) : null;
   const over = t.etaAt != null && t.etaAt < now && !done;
   const label = done ? "완료" : t.stage === "blocked" ? "막힘" : STEPS[stepIndex(t.stage)]?.label ?? t.stage;
   return (
-    <li className={cn("group grid grid-cols-[minmax(0,1fr)_auto_auto] items-center gap-x-4 gap-y-0.5 px-3 py-2", done && "opacity-60")}>
+    <li
+      role={onOpen ? "button" : undefined}
+      tabIndex={onOpen ? 0 : undefined}
+      onClick={onOpen}
+      onKeyDown={e => { if (onOpen && (e.key === "Enter" || e.key === " ")) { e.preventDefault(); onOpen(); } }}
+      title={onOpen ? "세션 열기" : undefined}
+      className={cn(
+        "group grid grid-cols-[minmax(0,1fr)_auto_auto] items-center gap-x-4 gap-y-0.5 px-3 py-2 focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-ring",
+        onOpen && "cursor-pointer hover:bg-accent/50",
+        done && "text-muted-foreground",
+      )}
+    >
       <div className="min-w-0">
         <div className="flex min-w-0 items-center gap-2">
           {done ? <CircleCheck className="size-3.5 shrink-0 text-ok" /> : t.stage === "blocked" ? <TriangleAlert className="size-3.5 shrink-0 text-warn" /> : null}
@@ -69,8 +80,8 @@ function Row({ t, lead, now }: { t: BoardTask; lead?: string; now: number }) {
         <button
           aria-label="보드에서 지우기"
           title="보드에서 지우기"
-          onClick={() => api("POST", `/api/tasks/${t.id}/remove`).catch(() => {})}
-          className="hidden size-5 place-items-center rounded text-muted-foreground hover:bg-accent group-hover:grid"
+          onClick={e => { e.stopPropagation(); api("POST", `/api/tasks/${t.id}/remove`).catch(() => {}); }}
+          className="grid size-5 place-items-center rounded text-muted-foreground opacity-0 transition-opacity group-hover:opacity-100 hover:bg-accent focus-visible:opacity-100"
         >
           <X className="size-3" />
         </button>
@@ -92,11 +103,17 @@ function useBoard() {
 }
 
 /** "작업 n · ~m분" button at the right of the filter row; opens the board in a dialog. */
-export function TaskBoardButton() {
+export function TaskBoardButton({ onOpen }: { onOpen?: (id: string) => void }) {
   const { tasks, active, now, first, last } = useBoard();
   const sessions = useApp(s => s.sessions);
   const names = useMemo(() => new Map(sessions.map(s => [s.id, s.name])), [sessions]);
+  const byName = useMemo(() => new Map(sessions.map(s => [s.name.replace(/\s+/g, ""), s.id])), [sessions]);
   const [open, setOpen] = useState(false);
+  // The row opens its owner's session (owner is a name like "구현자 #69"), else the lead's.
+  const target = (t: BoardTask) => {
+    const m = /(관리자|구현자|리뷰어|테스터|디자이너|문서화)\s*#\d+/.exec(t.owner ?? "");
+    return (m && byName.get(m[0].replace(/\s+/g, ""))) || t.lead || null;
+  };
   return (
     <>
       <Button variant="outline" size="sm" onClick={() => setOpen(true)} className="shrink-0 gap-2">
@@ -120,7 +137,13 @@ export function TaskBoardButton() {
           {tasks.length ? (
             <ul className="max-h-[60vh] divide-y overflow-y-auto rounded-lg border">
               {[...active, ...tasks.filter(t => t.stage === "done")].map(t => (
-                <Row key={t.id} t={t} lead={t.lead ? names.get(t.lead) : undefined} now={now} />
+                <Row
+                  key={t.id}
+                  t={t}
+                  lead={t.lead ? names.get(t.lead) : undefined}
+                  now={now}
+                  onOpen={onOpen && target(t) ? () => { setOpen(false); onOpen(target(t)!); } : undefined}
+                />
               ))}
             </ul>
           ) : (

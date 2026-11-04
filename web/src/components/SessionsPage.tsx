@@ -127,7 +127,7 @@ export function SessionsPage({ onOpen, onCreate }: { onOpen: (id: string) => voi
               ))}
             </TabsList>
           </Tabs>
-          <TaskBoardButton />
+          <TaskBoardButton onOpen={onOpen} />
           </div>
 
           {list.length === 0 && <p className="py-10 text-center text-sm text-muted-foreground">이 상태의 세션이 없어요.</p>}
