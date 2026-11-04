@@ -49,7 +49,7 @@ function broadcast(event, data) {
   const msg = `event: ${event}\ndata: ${JSON.stringify(data)}\n\n`;
   for (const res of clients) res.write(msg);
 }
-for (const ev of ["session", "message", "limits", "removed"]) hub.on(ev, d => broadcast(ev, d));
+for (const ev of ["session", "message", "limits", "removed", "tasks"]) hub.on(ev, d => broadcast(ev, d));
 setInterval(() => { for (const res of clients) res.write(": ping\n\n"); }, 25000);
 
 async function snapshot() {
@@ -59,6 +59,7 @@ async function snapshot() {
     limits: hub.currentLimits(), settings: store.data.settings,
     sessions: hub.sessions.map(s => hub.publicSession(s)),
     prefs: await readPrefs(),
+    tasks: hub.tasks,
   };
 }
 
@@ -213,6 +214,9 @@ const routes = [
   ["POST", /^\/api\/sessions\/([\w-]+)\/remove$/, async ([id]) => { hub.remove(id); return { ok: true }; }],
   ["POST", /^\/api\/sessions\/clear$/, async () => ({ removed: hub.clearAll() })],
   ["GET", /^\/api\/limits$/, async () => hub.providerLimits()],
+  ["GET", /^\/api\/tasks$/, async () => ({ tasks: hub.tasks })],
+  ["POST", /^\/api\/tasks$/, async (_, b) => hub.setTask(b.lead || null, b || {})],
+  ["POST", /^\/api\/tasks\/([\w-]+)\/remove$/, async ([id]) => { hub.removeTask(id); return { ok: true }; }],
   ["POST", /^\/api\/sessions\/([\w-]+)\/to-lead$/, async ([id], b) => { hub.messageLead(id, String(b.text || "")); return { ok: true }; }],
   ["POST", /^\/api\/sessions\/([\w-]+)\/parent$/, async ([id], b) => { hub.setParent(id, b.parent ? String(b.parent) : null); return { ok: true }; }],
   ["POST", /^\/api\/sessions\/([\w-]+)\/perm$/, async ([id], b) => { hub.setPerm(id, String(b.perm || "")); return { ok: true }; }],

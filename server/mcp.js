@@ -103,6 +103,26 @@ const LEAD_TOOLS = [
     run: async ({ session_id, text }) => { await api("POST", `/api/sessions/${session_id}/message`, { text }); return { ok: true }; },
   },
   {
+    name: "set_task",
+    description: "작업 보드를 갱신한다. 맡은 일 하나마다 작업을 만들고(제목), 단계가 바뀔 때마다 stage와 남은 예상 시간(eta_minutes)을 고친다. 사용자가 화면에서 남은 시간을 본다. id 없이 같은 제목을 다시 보내면 그 작업을 고친다.",
+    inputSchema: {
+      type: "object",
+      required: ["title"],
+      properties: {
+        id: { type: "string" },
+        title: { type: "string", description: "짧은 작업 이름 (예: 홈 레이아웃 정리)" },
+        stage: { type: "string", enum: ["plan", "impl", "review", "test", "merge", "done", "blocked"] },
+        owner: { type: "string", description: "지금 맡은 세션 이름 (예: 구현자 #69)" },
+        eta_minutes: { type: "number", description: "끝날 때까지 남은 예상 분" },
+        note: { type: "string", description: "한 줄 상태" },
+      },
+    },
+    run: async args => {
+      const t = await api("POST", "/api/tasks", { ...args, lead: PARENT });
+      return { id: t.id, title: t.title, stage: t.stage };
+    },
+  },
+  {
     name: "stop_session",
     description: "세션을 종료한다.",
     inputSchema: { type: "object", required: ["session_id"], properties: { session_id: { type: "string" } } },

@@ -7,6 +7,7 @@ import { turn } from "@/lib/turn";
 import { fmtK, fmtUsd, isOpen, pct, roleColor, totalTok } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import { ModelBreakdown } from "@/components/ModelBreakdown";
+import { TaskBoard } from "@/components/TaskBoard";
 import { useApp } from "@/store";
 import type { Session, Status } from "@/types";
 
@@ -106,6 +107,7 @@ export function SessionsPage({ onOpen, onCreate }: { onOpen: (id: string) => voi
         <Stat label="토큰" value={fmtK(total)} hint="입력 + 캐시 + 출력" onClick={() => setBreakdown(true)} />
       </section>
       <ModelBreakdown sessions={sessions} open={breakdown} onOpenChange={setBreakdown} />
+      <TaskBoard />
 
       {sessions.length === 0 ? (
         <div className="flex flex-col items-center gap-3 rounded-xl border border-dashed px-6 py-16 text-center">

@@ -3,16 +3,24 @@ import type { Entry, Limits, ProviderStatus, Provider, Session, Settings, Snapsh
 
 export type ThemeChoice = "system" | "light" | "dark";
 
+export type TaskStage = "plan" | "impl" | "review" | "test" | "merge" | "done" | "blocked";
+export interface BoardTask {
+  id: string; lead: string | null; title: string; stage: TaskStage; owner: string | null;
+  createdAt: number; stageAt: number; updatedAt: number; etaAt: number | null; note: string;
+}
+
 export interface AppState extends Snapshot {
   /** UI preferences shared by every project's server (~/.dispatch/prefs.json). */
   prefs: { theme: ThemeChoice };
+  /** Leads' task board (set_task). */
+  tasks: BoardTask[];
   ready: boolean;
   online: boolean;
   transcripts: Record<string, Entry[]>;
 }
 
 let state: AppState = {
-  ready: false, online: false, transcripts: {}, prefs: { theme: readLocalTheme() },
+  ready: false, online: false, transcripts: {}, prefs: { theme: readLocalTheme() }, tasks: [],
   project: { name: "", path: "", branch: null }, roles: [], perms: [], models: [],
   providers: {} as Record<Provider, ProviderStatus>,
   limits: { five: null, seven: null, fiveReset: null, sevenReset: null, updatedAt: null },
@@ -68,6 +76,7 @@ export function connect() {
     set({ sessions });
   });
   on<AppState["prefs"]>("prefs", prefs => set({ prefs }));
+  on<BoardTask[]>("tasks", tasks => set({ tasks }));
   on<{ id: string }>("removed", ({ id }) => set({ sessions: state.sessions.filter(s => s.id !== id) }));
   on<{ id: string; entry: Entry }>("message", ({ id, entry }) => {
     const cur = state.transcripts[id];

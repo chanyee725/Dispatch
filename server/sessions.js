@@ -152,6 +152,46 @@ export class Hub extends EventEmitter {
     };
   }
 
+  /* ---------------- Task board ---------------- */
+  // Leads keep a small board of what they are doing: one entry per piece of work with its stage,
+  // owner and an ETA, so the UI can show what is left without reading transcripts.
+
+  get tasks() {
+    const cut = Date.now() - 6 * 3600_000; // finished work drops off after six hours
+    return Object.values(this.store.data.tasks ||= {})
+      .filter(t => t.stage !== "done" || t.updatedAt > cut)
+      .sort((a, b) => a.createdAt - b.createdAt);
+  }
+
+  /** Creates or updates a task (matched by id, else by lead + title). */
+  setTask(lead, input) {
+    const STAGES = ["plan", "impl", "review", "test", "merge", "done", "blocked"];
+    const all = (this.store.data.tasks ||= {});
+    const title = String(input.title || "").trim().slice(0, 120);
+    let t = (input.id && all[input.id]) || Object.values(all).find(x => x.lead === lead && x.title === title && x.stage !== "done");
+    if (!t) {
+      if (!title) throw new Error("title이 필요해요");
+      t = { id: randomUUID(), lead, title, stage: "plan", createdAt: Date.now(), stageAt: Date.now(), owner: null, etaAt: null, note: "" };
+      all[t.id] = t;
+    }
+    if (title) t.title = title;
+    if (input.stage && STAGES.includes(input.stage) && input.stage !== t.stage) { t.stage = input.stage; t.stageAt = Date.now(); }
+    if (input.owner !== undefined) t.owner = input.owner ? String(input.owner).slice(0, 60) : null;
+    if (input.eta_minutes !== undefined) t.etaAt = input.eta_minutes == null ? null : Date.now() + Math.max(0, Number(input.eta_minutes)) * 60_000;
+    if (t.stage === "done") t.etaAt = null;
+    if (input.note !== undefined) t.note = String(input.note || "").slice(0, 200);
+    t.updatedAt = Date.now();
+    this.store.save();
+    this.emit("tasks", this.tasks);
+    return t;
+  }
+
+  removeTask(id) {
+    delete (this.store.data.tasks ||= {})[id];
+    this.store.save();
+    this.emit("tasks", this.tasks);
+  }
+
   /** Stops and removes every session of this project. */
   clearAll() {
     const ids = this.sessions.map(s => s.id);
