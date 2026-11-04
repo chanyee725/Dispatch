@@ -5,6 +5,13 @@ const run = promisify(execFile);
 
 const CLAUDE_EFFORTS = ["low", "medium", "high", "xhigh", "max"];
 
+const GEMINI_EFFORTS = ["low", "medium", "high", "xhigh", "max"];
+const GEMINI_MODELS = [
+  { id: "gemini-3.8-flash-high", label: "Gemini 3.8 Flash (High)" },
+  { id: "gemini-3.8-flash-medium", label: "Gemini 3.8 Flash (Medium)" },
+  { id: "gemini-3.8-flash-low", label: "Gemini 3.8 Flash (Low)" },
+].map(m => ({ ...m, provider: "gemini", efforts: GEMINI_EFFORTS, defaultEffort: "high", contextWindow: 1000000 }));
+
 const CLAUDE_MODELS = [
   { id: "claude-opus-5-5", label: "Opus 5.5" },
   { id: "claude-sonnet-5-5", label: "Sonnet 5.5" },
@@ -35,5 +42,5 @@ async function codexModels() {
 }
 
 export async function loadModels() {
-  return [...CLAUDE_MODELS, ...(await codexModels())];
+  return [...GEMINI_MODELS, ...CLAUDE_MODELS, ...(await codexModels())];
 }

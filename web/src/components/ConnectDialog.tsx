@@ -8,8 +8,8 @@ import { cn } from "@/lib/utils";
 import { api, useApp } from "@/store";
 import type { Provider, ProviderStatus } from "@/types";
 
-const LOGIN: Record<Provider, string> = { claude: "Claude 계정으로 로그인", openai: "ChatGPT 계정으로 로그인" };
-const INSTALL: Record<Provider, string> = { claude: "Claude Code", openai: "Codex CLI" };
+const LOGIN: Record<Provider, string> = { gemini: "Google Antigravity로 연결", claude: "Claude 계정으로 로그인", openai: "ChatGPT 계정으로 로그인" };
+const INSTALL: Record<Provider, string> = { gemini: "Antigravity CLI (agy)", claude: "Claude Code", openai: "Codex CLI" };
 
 function StateLabel({ p }: { p: ProviderStatus }) {
   if (!p.installed) return <span className="inline-flex items-center gap-1.5 text-xs text-bad"><span className="size-1.5 rounded-full bg-bad" />설치 안 됨</span>;

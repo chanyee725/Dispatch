@@ -76,7 +76,7 @@ export function CreateSessionDialog({ open, onOpenChange, onCreated }: { open: b
     } catch (e) { setError((e as Error).message); } finally { setBusy(false); }
   };
 
-  const groups = (["claude", "openai"] as const).filter(p => models.some(m => m.provider === p));
+  const groups = (["gemini", "claude", "openai"] as const).filter(p => models.some(m => m.provider === p));
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>

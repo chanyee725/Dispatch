@@ -1,4 +1,4 @@
-export type Provider = "claude" | "openai";
+export type Provider = "claude" | "openai" | "gemini";
 export type Status = "starting" | "running" | "waiting" | "idle" | "done" | "error";
 
 export interface Usage { input: number; output: number; cacheRead: number; cacheWrite: number }
