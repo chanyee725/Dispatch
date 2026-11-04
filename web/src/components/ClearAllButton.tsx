@@ -26,9 +26,8 @@ export function ClearAllButton() {
   };
   return (
     <>
-      <Button variant="outline" onClick={() => setOpen(true)} disabled={!sessions.length} aria-label="정리하기" title="이 프로젝트의 세션 모두 정리">
+      <Button variant="ghost" size="icon" onClick={() => setOpen(true)} disabled={!sessions.length} aria-label="정리하기" title="정리하기 — 이 프로젝트의 세션 모두 정리">
         <BrushCleaning />
-        <span className="max-sm:hidden">정리하기</span>
       </Button>
       <Dialog open={open} onOpenChange={setOpen}>
         <DialogContent className="sm:max-w-md">

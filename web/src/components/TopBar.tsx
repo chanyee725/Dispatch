@@ -24,7 +24,7 @@ export function TopBar({ title, onCreate, canCreate }: { title: string; onCreate
           </div>
         )}
       </div>
-      <div className="flex shrink-0 items-center gap-5 max-md:w-full max-md:gap-3">
+      <div className="flex shrink-0 items-center gap-3 max-md:w-full max-md:gap-2">
         <ProviderLimits />
         <Button onClick={onCreate} aria-label="새 세션" disabled={!canCreate} title={canCreate ? undefined : "먼저 에이전트를 연결하세요"}>
           <Plus />
