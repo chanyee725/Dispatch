@@ -7,7 +7,7 @@ import { turn } from "@/lib/turn";
 import { fmtK, fmtUsd, isOpen, pct, roleColor, totalTok } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import { ModelBreakdown } from "@/components/ModelBreakdown";
-import { TaskBoard } from "@/components/TaskBoard";
+import { TaskBoardButton } from "@/components/TaskBoard";
 import { useApp } from "@/store";
 import type { Session, Status } from "@/types";
 
@@ -107,7 +107,6 @@ export function SessionsPage({ onOpen, onCreate }: { onOpen: (id: string) => voi
         <Stat label="토큰" value={fmtK(total)} hint="입력 + 캐시 + 출력" onClick={() => setBreakdown(true)} />
       </section>
       <ModelBreakdown sessions={sessions} open={breakdown} onOpenChange={setBreakdown} />
-      <TaskBoard />
 
       {sessions.length === 0 ? (
         <div className="flex flex-col items-center gap-3 rounded-xl border border-dashed px-6 py-16 text-center">
@@ -117,7 +116,8 @@ export function SessionsPage({ onOpen, onCreate }: { onOpen: (id: string) => voi
         </div>
       ) : (
         <>
-          <Tabs value={filter} onValueChange={v => setFilter(v as typeof filter)} className="max-w-full overflow-x-auto overflow-y-hidden [scrollbar-width:none]">
+          <div className="flex items-center justify-between gap-3">
+          <Tabs value={filter} onValueChange={v => setFilter(v as typeof filter)} className="min-w-0 max-w-full overflow-x-auto overflow-y-hidden [scrollbar-width:none]">
             <TabsList>
               {FILTERS.map(f => (
                 <TabsTrigger key={f.id} value={f.id} className="gap-1.5">
@@ -127,6 +127,8 @@ export function SessionsPage({ onOpen, onCreate }: { onOpen: (id: string) => voi
               ))}
             </TabsList>
           </Tabs>
+          <TaskBoardButton />
+          </div>
 
           {list.length === 0 && <p className="py-10 text-center text-sm text-muted-foreground">이 상태의 세션이 없어요.</p>}
 

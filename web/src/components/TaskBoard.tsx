@@ -1,5 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
-import { ChevronDown, CircleCheck, TriangleAlert, X } from "lucide-react";
+import { CircleCheck, ListChecks, TriangleAlert, X } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { cn } from "@/lib/utils";
 import { api, useApp, type BoardTask, type TaskStage } from "@/store";
 
@@ -77,36 +79,55 @@ function Row({ t, lead, now }: { t: BoardTask; lead?: string; now: number }) {
   );
 }
 
-/** Leads' work items with stage, owner and time left; collapsed to a one-line summary. */
-export function TaskBoard() {
+function useBoard() {
   const tasks = useApp(s => s.tasks ?? []);
-  const sessions = useApp(s => s.sessions);
   const now = useNow();
-  const [open, setOpen] = useState(true);
-  const names = useMemo(() => new Map(sessions.map(s => [s.id, s.name])), [sessions]);
-  if (!tasks.length) return null;
   const active = tasks.filter(t => t.stage !== "done");
   const etas = active.map(t => t.etaAt).filter((x): x is number => x != null);
-  const last = etas.length ? mins(Math.max(...etas) - now) : null;
-  const first = etas.length ? mins(Math.min(...etas) - now) : null;
+  return {
+    tasks, active, now,
+    first: etas.length ? mins(Math.min(...etas) - now) : null,
+    last: etas.length ? mins(Math.max(...etas) - now) : null,
+  };
+}
+
+/** "작업 n · ~m분" button at the right of the filter row; opens the board in a dialog. */
+export function TaskBoardButton() {
+  const { tasks, active, now, first, last } = useBoard();
+  const sessions = useApp(s => s.sessions);
+  const names = useMemo(() => new Map(sessions.map(s => [s.id, s.name])), [sessions]);
+  const [open, setOpen] = useState(false);
   return (
-    <section aria-label="작업" className="rounded-xl border bg-card">
-      <button onClick={() => setOpen(o => !o)} className="flex w-full items-center gap-3 px-4 py-3 text-left">
-        <span className="text-[15px] font-semibold">작업</span>
-        <span className="num text-sm text-muted-foreground">
-          진행 중 {active.length}
-          {first != null ? ` · 가장 빠른 완료 ~${fmtMin(first)}` : ""}
-          {last != null && last !== first ? ` · 전부 ~${fmtMin(last)}` : ""}
+    <>
+      <Button variant="outline" size="sm" onClick={() => setOpen(true)} className="shrink-0 gap-2">
+        <ListChecks />
+        작업
+        <span className="num text-xs text-muted-foreground">
+          {active.length}
+          {first != null ? ` · ~${fmtMin(first)}` : ""}
         </span>
-        <ChevronDown className={cn("ml-auto size-4 text-muted-foreground transition-transform", !open && "-rotate-90")} />
-      </button>
-      {open && (
-        <ul className="divide-y border-t">
-          {[...active, ...tasks.filter(t => t.stage === "done")].map(t => (
-            <Row key={t.id} t={t} lead={t.lead ? names.get(t.lead) : undefined} now={now} />
-          ))}
-        </ul>
-      )}
-    </section>
+      </Button>
+      <Dialog open={open} onOpenChange={setOpen}>
+        <DialogContent className="gap-3 sm:max-w-3xl">
+          <DialogHeader>
+            <DialogTitle>작업</DialogTitle>
+            <DialogDescription className="num">
+              진행 중 {active.length}
+              {first != null ? ` · 가장 빠른 완료 ~${fmtMin(first)}` : ""}
+              {last != null && last !== first ? ` · 전부 ~${fmtMin(last)}` : ""}
+            </DialogDescription>
+          </DialogHeader>
+          {tasks.length ? (
+            <ul className="max-h-[60vh] divide-y overflow-y-auto rounded-lg border">
+              {[...active, ...tasks.filter(t => t.stage === "done")].map(t => (
+                <Row key={t.id} t={t} lead={t.lead ? names.get(t.lead) : undefined} now={now} />
+              ))}
+            </ul>
+          ) : (
+            <p className="py-8 text-center text-sm text-muted-foreground">관리자가 올린 작업이 없어요</p>
+          )}
+        </DialogContent>
+      </Dialog>
+    </>
   );
 }
