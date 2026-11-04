@@ -103,36 +103,36 @@ function useBoard() {
 }
 
 const until = (t: number | null, now: number) => (t ? fmtMin(mins(t - now)) : "?");
-const TICKET_STATE: Record<Ticket["status"], string> = { open: "대기", resumed: "재개됨", closed: "닫음", orphaned: "관리자 없음" };
 
 /** Tickets saved at the usage limit: what was left per lead, resumed after the reset. */
 function Tickets({ tickets, now }: { tickets: Ticket[]; now: number }) {
+  const open = tickets.filter(t => t.status === "open");
+  const past = tickets.length - open.length;
   if (!tickets.length) return null;
   return (
-    <section className="flex flex-col gap-2">
+    <section className="flex min-w-0 flex-col gap-2">
       <h3 className="flex items-center gap-1.5 text-sm font-semibold"><TicketIcon className="size-4" />티켓</h3>
-      <ul className="divide-y rounded-lg border">
-        {tickets.map(t => (
-          <li key={t.id} className={cn("flex flex-col gap-1 px-3 py-2", t.status !== "open" && "text-muted-foreground")}>
-            <div className="flex items-center gap-2 text-sm">
-              <span className="font-medium">{t.leadName ?? "관리자"}</span>
-              <span className="text-xs text-muted-foreground">{t.reason} · 작업 {t.items.length}개 · {TICKET_STATE[t.status]}</span>
-              {t.status === "open" && (
-                <span className="num ml-auto text-xs text-muted-foreground">초기화까지 {until(t.resetAt, now)}</span>
+      {open.length > 0 && (
+        <ul className="divide-y overflow-hidden rounded-lg border">
+          {open.map(t => (
+            <li key={t.id} className="flex min-w-0 flex-col gap-1 px-3 py-2">
+              <div className="flex min-w-0 items-center gap-2 text-sm">
+                <span className="shrink-0 font-medium">{t.leadName ?? "관리자"}</span>
+                <span className="truncate text-xs text-muted-foreground">{t.reason} · 작업 {t.items.length}개</span>
+                <span className="num ml-auto shrink-0 text-xs text-muted-foreground">초기화까지 {until(t.resetAt, now)}</span>
+              </div>
+              {t.items.length > 0 && (
+                <p className="truncate text-xs text-muted-foreground">{t.items.map(i => i.title).join(" · ")}</p>
               )}
-            </div>
-            {t.items.length > 0 && (
-              <p className="truncate text-xs text-muted-foreground">{t.items.map(i => i.title).join(" · ")}</p>
-            )}
-            {t.status === "open" && (
               <div className="flex gap-2">
                 <Button size="sm" variant="outline" onClick={() => api("POST", `/api/tickets/${t.id}/resume`).catch(() => {})}>지금 재개</Button>
                 <Button size="sm" variant="ghost" onClick={() => api("POST", `/api/tickets/${t.id}/close`).catch(() => {})}>닫기</Button>
               </div>
-            )}
-          </li>
-        ))}
-      </ul>
+            </li>
+          ))}
+        </ul>
+      )}
+      {past > 0 && <p className="text-xs text-muted-foreground">지난 티켓 {past}개 (재개·종료됨)</p>}
     </section>
   );
 }
@@ -165,7 +165,7 @@ export function TaskBoardButton({ onOpen }: { onOpen?: (id: string) => void }) {
         )}
       </Button>
       <Dialog open={open} onOpenChange={setOpen}>
-        <DialogContent className="gap-3 sm:max-w-3xl">
+        <DialogContent className="gap-3 overflow-hidden sm:max-w-3xl">
           <DialogHeader>
             <DialogTitle>작업</DialogTitle>
             <DialogDescription className="num">
