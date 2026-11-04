@@ -7,6 +7,7 @@ import { fileURLToPath } from "node:url";
 import { prepareWorkdir } from "./git.js";
 import { CHILD_PROMPT, PERMS, SPAWN_PROMPT } from "./roles.js";
 import { replyStyle } from "./style.js";
+import { codexLimits, geminiResetFrom, isQuotaError } from "./limits.js";
 
 const MCP_SCRIPT = path.join(path.dirname(fileURLToPath(import.meta.url)), "mcp.js");
 const MAX_TRANSCRIPT = 400;
@@ -121,6 +122,34 @@ export class Hub extends EventEmitter {
     if (l.fiveReset && l.fiveReset <= now) l.five = 0;
     if (l.sevenReset && l.sevenReset <= now) l.seven = 0;
     return l;
+  }
+
+  setGeminiQuota(text) {
+    this.store.data.geminiQuota = { reached: true, reset: geminiResetFrom(text), at: Date.now() };
+    this.store.save();
+    this.emit("limits", this.currentLimits());
+  }
+
+  /** Limits per provider for the top bar: Claude windows, Codex windows, Gemini reached/ok. */
+  async providerLimits(now = Date.now()) {
+    const c = this.currentLimits(now);
+    const g = this.store.data.geminiQuota;
+    const geminiReached = !!g?.reached && (!g.reset || g.reset > now);
+    return {
+      claude: { windows: [
+        { label: "5시간", used: c.five, reset: c.fiveReset },
+        { label: "주간", used: c.seven, reset: c.sevenReset },
+      ] },
+      openai: await codexLimits(),
+      gemini: { reached: geminiReached, reset: geminiReached ? g.reset ?? null : null },
+    };
+  }
+
+  /** Stops and removes every session of this project. */
+  clearAll() {
+    const ids = this.sessions.map(s => s.id);
+    for (const id of ids) this.remove(id);
+    return ids.length;
   }
 
   guardCheck(count) {
@@ -602,6 +631,7 @@ export class Hub extends EventEmitter {
           this.rt(s.id).lastText = res.response;
         }
         if (res.status === "ERROR") {
+          if (isQuotaError(res.error)) this.setGeminiQuota(res.error);
           this.push(s, { kind: "error", text: clip(res.error || "Turn failed", 400) });
           this.touch(s, { status: "error", error: clip(res.error || "Turn failed", 300) });
         } else {
