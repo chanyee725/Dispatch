@@ -29,7 +29,7 @@ export function TopBar({ title, onCreate, canCreate }: { title: string; onCreate
   return (
     <header className="sticky top-0 z-10 flex items-center gap-6 border-b bg-background/85 px-6 py-3 backdrop-blur max-md:flex-wrap max-md:gap-3 max-md:px-4">
       <div className="flex min-w-0 flex-1 items-center gap-3">
-        <h1 className="shrink-0 text-base font-semibold">{title}</h1>
+        <h1 className="sr-only">{title}</h1>
         {project.name && (
           <div className="flex min-w-0 items-center gap-2 text-sm text-muted-foreground">
             <ProjectSwitcher name={project.name} />

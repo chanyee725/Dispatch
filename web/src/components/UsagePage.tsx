@@ -84,7 +84,6 @@ export function UsagePage() {
   const sum = (ds: UsageDay[]) => ds.reduce((a, d) => a + d.cost, 0);
   const weekCost = sum(week), prevCost = sum(days.slice(0, -WEEK)), all = sum(days);
   const cache = Object.values(agg.byModel).reduce((a, u) => ({ r: a.r + u.cacheRead, t: a.t + u.cacheRead + u.cacheWrite + u.input }), { r: 0, t: 0 });
-  const max = Math.max(...week.map(d => d.cost), 0.0001);
   const roleTotal = Object.values(agg.byRole).reduce((a, b) => a + b, 0) || 1;
   const label = (id: string) => models.find(m => m.id === id)?.label ?? id;
   const isCodex = (id: string) => models.find(m => m.id === id)?.provider === "openai";
@@ -101,24 +100,7 @@ export function UsagePage() {
       </div>
 
       <div className="grid grid-cols-3 gap-3 max-xl:grid-cols-2 max-lg:grid-cols-1">
-        <Panel title="일별 비용" note={`최근 7일 ${fmtUsd(weekCost)}`}>
-          <div className="flex h-44 items-end gap-2">
-            {week.map((d, i) => (
-              <Tooltip key={d.day}>
-                <TooltipTrigger asChild>
-                  <div className="group flex h-full flex-1 flex-col items-center justify-end gap-1.5" tabIndex={0} aria-label={`${d.day} ${fmtUsd(d.cost)}`}>
-                    <div className="w-full max-w-10 rounded-t-md transition-[height,filter] group-hover:brightness-125 group-focus-visible:brightness-125"
-                      style={{ height: `${Math.max((d.cost / max) * 100, 1.5)}%`, background: i === week.length - 1 ? "var(--role-impl)" : "color-mix(in oklch, var(--role-impl) 45%, transparent)" }} />
-                  </div>
-                </TooltipTrigger>
-                <TooltipContent>{d.day} {fmtUsd(d.cost)}</TooltipContent>
-              </Tooltip>
-            ))}
-          </div>
-          <div className="mt-2 flex gap-2 border-t pt-2 text-xs text-muted-foreground">
-            {week.map((d, i) => <span key={d.day} className="num flex-1 text-center">{i === week.length - 1 ? "오늘" : d.day.slice(5).replace("-", "/")}</span>)}
-          </div>
-        </Panel>
+        <DailyByProject projects={projects} fallback={week} />
 
         <Panel title="모델별 사용량" note="최근 7일">
           {modelRows.length ? (
@@ -227,6 +209,68 @@ function ProjectsPanel({ projects }: { projects: ProjectUsage[] }) {
         </table>
       ) : (
         <p className="py-6 text-center text-sm text-muted-foreground">불러오는 중이에요…</p>
+      )}
+    </Panel>
+  );
+}
+
+// One colour per project, in the order the projects are listed (stable while they run).
+const PROJECT_COLORS = ["var(--role-impl)", "var(--role-review)", "var(--role-lead)", "var(--role-test)", "var(--role-design)", "var(--role-docs)"];
+
+/** Daily cost for the last 7 days, one stacked segment per project, so the bar height is the total. */
+function DailyByProject({ projects, fallback }: { projects: ProjectUsage[]; fallback: UsageDay[] }) {
+  const list = projects.length ? [...projects].sort((a, b) => a.port - b.port) : [];
+  const color = (i: number) => PROJECT_COLORS[i % PROJECT_COLORS.length];
+  const days = (list.length ? list[0].days : fallback).slice(-WEEK).map(d => d.day);
+  const cols = days.map(day => {
+    const parts = list.length
+      ? list.map((p, i) => ({ name: p.name, color: color(i), cost: p.days.find(d => d.day === day)?.cost ?? 0 }))
+      : [{ name: "이 프로젝트", color: color(0), cost: fallback.find(d => d.day === day)?.cost ?? 0 }];
+    return { day, parts, total: parts.reduce((a, p) => a + p.cost, 0) };
+  });
+  const max = Math.max(...cols.map(c => c.total), 0.0001);
+  const weekTotal = cols.reduce((a, c) => a + c.total, 0);
+  return (
+    <Panel title="일별 비용" note={`최근 7일 ${fmtUsd(weekTotal)} · 모든 프로젝트`}>
+      <div className="flex h-44 items-end gap-2">
+        {cols.map(c => (
+          <Tooltip key={c.day}>
+            <TooltipTrigger asChild>
+              <div className="group flex h-full flex-1 flex-col items-center justify-end" tabIndex={0} aria-label={`${c.day} 합계 ${fmtUsd(c.total)}`}>
+                <div className="flex w-full max-w-10 flex-col-reverse overflow-hidden rounded-t-md transition-[filter] group-hover:brightness-125 group-focus-visible:brightness-125"
+                  style={{ height: `${Math.max((c.total / max) * 100, 1.5)}%` }}>
+                  {c.parts.map(p => (
+                    <div key={p.name} style={{ height: c.total ? `${(p.cost / c.total) * 100}%` : "100%", background: c.total ? p.color : "var(--border)" }} />
+                  ))}
+                </div>
+              </div>
+            </TooltipTrigger>
+            <TooltipContent>
+              <div className="num flex flex-col gap-0.5">
+                <span className="font-medium">{c.day} 합계 {fmtUsd(c.total)}</span>
+                {c.parts.filter(p => p.cost > 0).map(p => (
+                  <span key={p.name} className="flex items-center gap-1.5">
+                    <span className="size-2 rounded-sm" style={{ background: p.color }} />
+                    {p.name} {fmtUsd(p.cost)}
+                  </span>
+                ))}
+              </div>
+            </TooltipContent>
+          </Tooltip>
+        ))}
+      </div>
+      <div className="mt-2 flex gap-2 border-t pt-2 text-xs text-muted-foreground">
+        {cols.map((c, i) => <span key={c.day} className="num flex-1 text-center">{i === cols.length - 1 ? "오늘" : c.day.slice(5).replace("-", "/")}</span>)}
+      </div>
+      {list.length > 1 && (
+        <ul className="mt-3 flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground">
+          {list.map((p, i) => (
+            <li key={p.port} className="flex items-center gap-1.5">
+              <span className="size-2.5 rounded-sm" style={{ background: color(i) }} />
+              {p.name}
+            </li>
+          ))}
+        </ul>
       )}
     </Panel>
   );
