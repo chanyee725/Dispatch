@@ -7,7 +7,9 @@ description: Update Dispatch on this machine to the latest commit — pull the D
 
 `<skill-dir>` is the directory containing this file; its script resolves symlinks back to the Dispatch clone.
 
-1. Run `<skill-dir>/scripts/update.sh`.
+Do every step yourself; the user only asks.
+
+1. Find the clone (`clone="$(cd "$(dirname "$(readlink -f <skill-dir>/scripts/update.sh)")/.." && pwd)"`), run `git -C "$clone" pull --ff-only` so the script itself is current, then run `"$clone/scripts/update.sh"`.
    - It refuses to pull when the clone has uncommitted changes. Show the user the listed files and ask whether to commit or stash them; never discard them yourself.
    - `--no-restart` skips restarting servers (use it if the user is in the middle of a team run and wants to restart later). `--build` rebuilds the web UI from `web/` when `public/` is not committed on that branch.
 2. Report the old → new commit, the commit list it printed, and which servers were restarted (project and port). Restarted servers resume any turn that was cut off.

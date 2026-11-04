@@ -1,6 +1,6 @@
 ---
 name: dispatch
-description: Dispatch — local web UI that runs several role-based Claude Code and Codex sessions in parallel in one project. Use when the user wants to set up or open Dispatch, log Claude/Codex in for it, fan a task out to multiple agent sessions (관리자, 구현자, 리뷰어, 테스터, 디자이너, 문서화), check what those sessions are doing, or see session cost, context and usage limits.
+description: Dispatch — local web UI that runs several role-based Claude Code, Codex and Gemini sessions in parallel in one project. Use when the user wants to set up, open or update Dispatch ("디스패치 업데이트"), log Claude/Codex/Gemini in for it, fan a task out to multiple agent sessions (관리자, 구현자, 리뷰어, 테스터, 디자이너, 문서화), check what those sessions are doing, or see session cost, context and usage limits.
 ---
 
 # Dispatch
@@ -22,6 +22,15 @@ Dispatch serves http://127.0.0.1:4317 and spawns `claude` / `codex` CLI sessions
    Done when every requested session appears in `GET /api/state` with status `running`, `waiting` or `idle`.
 
 Stop the server with `<skill-dir>/scripts/stop.sh "<project-root>"`; restart it (to load new server code) with `<skill-dir>/scripts/restart.sh "<project-root>"`. A restart cuts running turns, but those sessions are resumed with a note, and transcripts survive.
+
+## Update (prompt only)
+
+When the user asks to update Dispatch ("디스패치 업데이트", "최신으로", or it behaves differently than on another machine), do all of it without asking them to run anything:
+
+1. Find the clone: `clone="$(cd "$(dirname "$(readlink -f <skill-dir>/SKILL.md)")/../.." && pwd)"`.
+2. If `git -C "$clone" status --porcelain --untracked-files=no` lists files, stop and ask whether to commit or stash them (never discard).
+3. Run `git -C "$clone" pull --ff-only`, then `"$clone/scripts/update.sh"` (it pulls again, relinks every skill for Claude Code and Codex, and restarts every running Dispatch server on its own port). Older clones without `scripts/update.sh` get it from that pull.
+4. Report old → new commit and the restarted servers. If one did not come back, read `<project>/.dispatch/server.log`.
 
 ## Roles
 
