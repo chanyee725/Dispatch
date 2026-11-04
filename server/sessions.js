@@ -13,6 +13,10 @@ const MCP_SCRIPT = path.join(path.dirname(fileURLToPath(import.meta.url)), "mcp.
 const MAX_TRANSCRIPT = 400;
 const MAX_CHILDREN = 8;
 const STALL_MS = 10 * 60 * 1000;
+// After this many turns a session continues in a fresh CLI session (a handoff note carries the
+// essentials), so a long-lived lead does not keep re-reading an ever-growing context.
+// DISPATCH_ROTATE_TURNS=0 turns it off.
+const ROTATE_TURNS = Number(process.env.DISPATCH_ROTATE_TURNS ?? 10);
 const RESUME_TEXT = "[Dispatch] 서버가 재시작되어 직전 턴이 중간에 끊겼다. 작업 폴더와 브랜치 상태를 확인하고 하던 일을 이어서 끝내라.";
 // Browser tools in team sessions run headless, each in its own throwaway profile, so checks never pop
 // windows on the user's screen or steer another session's tab. A session can still opt out via its own env.
@@ -228,6 +232,7 @@ export class Hub extends EventEmitter {
     if (!s) throw new Error("세션이 없어요");
     this.push(s, { kind: "user", text });
     const r = this.rt(id);
+    if (this.shouldRotate(s)) return this.rotate(s, text);
     if (s.provider === "claude" && r.proc) {
       r.proc.stdin.write(JSON.stringify({ type: "user", message: { role: "user", content: text } }) + "\n");
       this.touch(s, { status: "running" });
@@ -238,6 +243,32 @@ export class Hub extends EventEmitter {
     } else {
       this.start(s, text);
     }
+  }
+
+  /** Idle (between turns) and past the turn budget since its CLI session started. */
+  shouldRotate(s) {
+    return ROTATE_TURNS > 0 && !!s.providerSessionId && (s.turnsSinceRotate ?? s.turns ?? 0) >= ROTATE_TURNS
+      && (s.status === "idle" || s.status === "error");
+  }
+
+  /** Ends the current CLI session and starts a fresh one with a handoff note plus `text`. */
+  rotate(s, text) {
+    const r = this.rt(s.id);
+    const old = r.proc;
+    r.proc = null; // the exit handler ignores a process that is no longer current
+    r.perms.clear();
+    old?.kill("SIGTERM");
+    const kids = this.sessions.filter(c => c.parent === s.id && !["done"].includes(c.status));
+    const team = kids.length
+      ? `\n\n[팀원]\n${kids.map(c => `- ${c.name} (id ${c.id}, ${c.status}${c.branch ? `, 브랜치 ${c.branch}` : ""}): ${clip(c.last || "", 160)}`).join("\n")}`
+      : "";
+    const last = clip(r.lastText || s.last || "", 2500);
+    const note = `[Dispatch] 컨텍스트를 줄이려고 ${s.turnsSinceRotate ?? s.turns}턴 만에 새 CLI 세션으로 이어 간다. 이전 대화는 이 세션에 없다. 필요한 상태는 작업 폴더·브랜치·git log·docs로 다시 확인하라.\n\n[직전 내 응답]\n${last || "(없음)"}${team}\n\n[이어서 할 일]\n${text}`;
+    this.push(s, { kind: "info", text: `새 세션으로 이어 감 (${s.turnsSinceRotate ?? s.turns}턴, 대화 요약을 넘김)` });
+    s.rotations = (s.rotations ?? 0) + 1;
+    s.providerSessionId = null;
+    s.turnsSinceRotate = 0;
+    this.start(s, note);
   }
 
   interrupt(id) {
@@ -502,7 +533,7 @@ export class Hub extends EventEmitter {
         const win = Object.values(m.modelUsage || {})[0]?.contextWindow;
         if (win) s.ctxWindow = win;
         if (m.is_error) this.push(s, { kind: "error", text: clip(m.result || m.subtype, 400) });
-        this.touch(s, { status: "idle", turns: s.turns + 1 });
+        this.touch(s, { status: "idle", turns: s.turns + 1, turnsSinceRotate: (s.turnsSinceRotate ?? s.turns ?? 0) + 1 });
         this.reportToParent(s);
         break;
       }
@@ -556,7 +587,7 @@ export class Hub extends EventEmitter {
         for (const k in delta) s.usage[k] += delta[k];
         s.ctx = (u.input_tokens || 0) + (u.output_tokens || 0);
         this.store.addDaily(s.model, s.role, delta);
-        this.touch(s, { status: "idle", turns: s.turns + 1 });
+        this.touch(s, { status: "idle", turns: s.turns + 1, turnsSinceRotate: (s.turnsSinceRotate ?? s.turns ?? 0) + 1 });
         this.reportToParent(s);
         break;
       }
@@ -635,7 +666,7 @@ export class Hub extends EventEmitter {
           this.push(s, { kind: "error", text: clip(res.error || "Turn failed", 400) });
           this.touch(s, { status: "error", error: clip(res.error || "Turn failed", 300) });
         } else {
-          this.touch(s, { status: "idle", turns: s.turns + 1 });
+          this.touch(s, { status: "idle", turns: s.turns + 1, turnsSinceRotate: (s.turnsSinceRotate ?? s.turns ?? 0) + 1 });
           this.reportToParent(s);
         }
         break;
