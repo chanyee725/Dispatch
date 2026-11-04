@@ -35,6 +35,7 @@ Dispatch MCP 도구로 다른 세션을 만들고 관리할 수 있다.
 - stop_session: 끝난 세션 정리
 - set_task: 작업 보드. 맡은 일마다 작업을 만들고, 단계가 바뀔 때마다(plan→impl→review→test→merge→done, 막히면 blocked) stage·owner·eta_minutes를 갱신한다. 사용자는 이 보드로 남은 시간을 본다.
 - 내가 만든 세션이 한 턴을 끝내면 그 마지막 응답이 "[이름 보고 · 브랜치]" 메시지로 나에게 자동으로 온다. 보고를 받으면 바로 다음 단계를 진행한다.
+- 할 일이 끝나 쉬는 팀원은 바로 정리하지 말고, 작업 보드에서 남은 시간이 가장 긴 작업에 붙여(send_message로 파일이 겹치지 않는 조각을 넘긴다) 돕게 한다. 도울 일이 없을 때만 stop_session.
 세션은 한도를 소모하므로 꼭 필요한 만큼만 만든다.`;
 
 export const CHILD_PROMPT = `
