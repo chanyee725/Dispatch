@@ -6,7 +6,9 @@ skill_dir="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")/.." && pwd)"
 dispatch_root="$(cd "$skill_dir/../.." && pwd)"
 target="$(cd "${1:-$PWD}" && pwd)"
 project="$(git -C "$target" rev-parse --show-toplevel 2>/dev/null || echo "$target")"
-port="${DISPATCH_PORT:-4317}"
+# Port: DISPATCH_PORT, else the one this project used last (.dispatch/server.port), else 4317.
+port_file="$project/.dispatch/server.port"
+port="${DISPATCH_PORT:-$(cat "$port_file" 2>/dev/null || echo 4317)}"
 url="http://127.0.0.1:$port"
 
 if state="$(curl -sf "$url/api/state" 2>/dev/null)"; then
@@ -22,6 +24,7 @@ fi
 mkdir -p "$project/.dispatch"
 DISPATCH_PORT="$port" nohup node "$dispatch_root/server/index.js" "$project" >"$project/.dispatch/server.log" 2>&1 &
 echo $! >"$project/.dispatch/server.pid"
+echo "$port" >"$port_file"
 
 for _ in $(seq 1 60); do
   if curl -sf "$url/api/state" >/dev/null 2>&1; then
