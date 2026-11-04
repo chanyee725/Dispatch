@@ -17,7 +17,7 @@ const stepIndex = (s: TaskStage) => STEPS.findIndex(x => x.id === s);
 const mins = (ms: number) => Math.max(0, Math.round(ms / 60_000));
 const fmtMin = (m: number) => (m >= 60 ? `${Math.floor(m / 60)}시간 ${m % 60}분` : `${m}분`);
 
-function useNow(ms = 30_000) {
+function useNow(ms = 10_000) {
   const [now, setNow] = useState(() => Date.now());
   useEffect(() => { const t = setInterval(() => setNow(Date.now()), ms); return () => clearInterval(t); }, [ms]);
   return now;
@@ -60,11 +60,11 @@ function Row({ t, lead, now }: { t: BoardTask; lead?: string; now: number }) {
       </div>
       <div className="flex flex-col items-end gap-1">
         <Stepper stage={t.stage} />
-        <span className="text-[11px] text-muted-foreground">{label} · {fmtMin(mins(now - t.stageAt))}째</span>
+        <span className="text-[11px] text-muted-foreground">{label}</span>
       </div>
-      <div className="flex w-20 items-center justify-end gap-1">
+      <div className="flex w-24 items-center justify-end gap-1">
         <span className={cn("num text-right text-sm", over ? "text-warn" : done ? "text-muted-foreground" : "font-semibold")}>
-          {done ? "—" : left == null ? "?" : over ? "지연" : `~${fmtMin(left)}`}
+          {done ? "완료" : left == null ? "?" : over ? "지연" : `${fmtMin(left)} 남음`}
         </span>
         <button
           aria-label="보드에서 지우기"
@@ -104,7 +104,7 @@ export function TaskBoardButton() {
         작업
         <span className="num text-xs text-muted-foreground">
           {active.length}
-          {first != null ? ` · ~${fmtMin(first)}` : ""}
+          {first != null ? ` · ${fmtMin(first)} 남음` : ""}
         </span>
       </Button>
       <Dialog open={open} onOpenChange={setOpen}>
@@ -113,8 +113,8 @@ export function TaskBoardButton() {
             <DialogTitle>작업</DialogTitle>
             <DialogDescription className="num">
               진행 중 {active.length}
-              {first != null ? ` · 가장 빠른 완료 ~${fmtMin(first)}` : ""}
-              {last != null && last !== first ? ` · 전부 ~${fmtMin(last)}` : ""}
+              {first != null ? ` · 가장 빠른 완료까지 ${fmtMin(first)}` : ""}
+              {last != null && last !== first ? ` · 전부 끝나기까지 ${fmtMin(last)}` : ""}
             </DialogDescription>
           </DialogHeader>
           {tasks.length ? (
