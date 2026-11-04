@@ -58,6 +58,7 @@ async function snapshot() {
     roles: ROLES, perms: PERMS, models, providers,
     limits: hub.currentLimits(), settings: store.data.settings,
     sessions: hub.sessions.map(s => hub.publicSession(s)),
+    prefs: await readPrefs(),
   };
 }
 
@@ -114,6 +115,39 @@ async function projects() {
   return [...found.values()].map(e => ({ ...e, current: e.port === PORT })).sort((a, b) => a.port - b.port);
 }
 
+/* ---------------- Preferences shared by every project ---------------- */
+// One file for all Dispatch servers on this machine, so switching projects (another port, another
+// browser origin) keeps the same theme. Only UI preferences live here.
+const PREFS = path.join(os.homedir(), ".dispatch", "prefs.json");
+const THEMES = ["system", "light", "dark"];
+async function readPrefs() {
+  const p = JSON.parse(await readFile(PREFS, "utf8").catch(() => "{}"));
+  return { theme: THEMES.includes(p.theme) ? p.theme : "system" };
+}
+async function writePrefs(patch) {
+  const next = { ...(await readPrefs()) };
+  if (THEMES.includes(patch.theme)) next.theme = patch.theme;
+  await mkdir(path.dirname(PREFS), { recursive: true });
+  await writeFile(PREFS, JSON.stringify(next));
+  broadcast("prefs", next);
+  return next;
+}
+
+/* ---------------- Usage across projects ---------------- */
+// This server's 14 days plus every other running project's, fetched server-side (no CORS).
+async function usageAll() {
+  const list = await projects();
+  return {
+    projects: await Promise.all(list.map(async p => {
+      if (p.current) return { ...p, ...usage() };
+      try {
+        const res = await fetch(`http://${HOST}:${p.port}/api/usage`, { signal: AbortSignal.timeout(1500) });
+        return { ...p, ...(await res.json()) };
+      } catch { return { ...p, days: [], error: true }; }
+    })),
+  };
+}
+
 /* ---------------- HTTP ---------------- */
 const TYPES = { ".html": "text/html; charset=utf-8", ".js": "text/javascript", ".css": "text/css", ".svg": "image/svg+xml",
   ".woff2": "font/woff2", ".woff": "font/woff", ".png": "image/png", ".ico": "image/x-icon", ".json": "application/json" };
@@ -150,6 +184,9 @@ async function body(req) {
 const routes = [
   ["GET", /^\/api\/state$/, async () => snapshot()],
   ["GET", /^\/api\/usage$/, async () => usage()],
+  ["GET", /^\/api\/usage\/all$/, async () => usageAll()],
+  ["GET", /^\/api\/prefs$/, async () => readPrefs()],
+  ["POST", /^\/api\/prefs$/, async (_, b) => writePrefs(b || {})],
   ["GET", /^\/api\/projects$/, async () => ({ projects: await projects() })],
   ["POST", /^\/api\/settings$/, async (_, b) => {
     if (b.guard) store.data.settings.guard = { ...store.data.settings.guard, ...b.guard };

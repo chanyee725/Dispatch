@@ -60,9 +60,11 @@ export function UsagePage() {
   const roles = useApp(s => s.roles);
   const sessions = useApp(s => s.sessions);
   const [days, setDays] = useState<UsageDay[]>([]);
+  const [projects, setProjects] = useState<ProjectUsage[]>([]);
 
   useEffect(() => {
     api<{ days: UsageDay[] }>("GET", "/api/usage").then(r => setDays(r.days), (e: Error) => toast.error(e.message));
+    api<{ projects: ProjectUsage[] }>("GET", "/api/usage/all").then(r => setProjects(r.projects), () => {});
   }, [sessions]);
 
   const week = days.slice(-WEEK);
@@ -162,6 +164,70 @@ export function UsagePage() {
           </ul>
         </Panel>
       </div>
+
+      <ProjectsPanel projects={projects} />
     </div>
+  );
+}
+
+type ProjectUsage = { port: number; name: string; path: string; current: boolean; days: UsageDay[]; error?: boolean };
+
+function ProjectsPanel({ projects }: { projects: ProjectUsage[] }) {
+  const rows = projects
+    .map(p => {
+      const week = p.days.slice(-WEEK);
+      const tok = (ds: UsageDay[]) =>
+        ds.reduce((a, d) => a + Object.values(d.models).reduce((b, u) => b + u.input + u.output + u.cacheRead + u.cacheWrite, 0), 0);
+      return {
+        ...p,
+        today: p.days.at(-1)?.cost ?? 0,
+        week: week.reduce((a, d) => a + d.cost, 0),
+        all: p.days.reduce((a, d) => a + d.cost, 0),
+        tokens: tok(week),
+      };
+    })
+    .sort((a, b) => b.week - a.week);
+  const total = rows.reduce((a, r) => ({ today: a.today + r.today, week: a.week + r.week, all: a.all + r.all, tokens: a.tokens + r.tokens }), { today: 0, week: 0, all: 0, tokens: 0 });
+  return (
+    <Panel title="프로젝트별 사용량" note="이 PC에서 실행 중인 Dispatch 전체">
+      {rows.length ? (
+        <table className="w-full table-fixed text-sm">
+          <thead className="text-xs text-muted-foreground">
+            <tr className="border-b">
+              <th className="w-[38%] pb-2 text-left font-normal">프로젝트</th>
+              <th className="pb-2 text-right font-normal">오늘</th>
+              <th className="pb-2 text-right font-normal">최근 7일</th>
+              <th className="pb-2 text-right font-normal">7일 토큰</th>
+              <th className="pb-2 text-right font-normal">최근 14일</th>
+            </tr>
+          </thead>
+          <tbody className="num">
+            {rows.map(r => (
+              <tr key={r.port} className="border-b last:border-0">
+                <td className="py-2.5 pr-2">
+                  <div className="truncate font-medium">{r.name}{r.current ? <span className="ml-1.5 text-xs font-normal text-muted-foreground">(지금)</span> : null}</div>
+                  <div className="truncate text-xs text-muted-foreground">{r.path} · :{r.port}{r.error ? " · 불러오지 못함" : ""}</div>
+                </td>
+                <td className="py-2.5 text-right">{fmtUsd(r.today)}</td>
+                <td className="py-2.5 text-right">{fmtUsd(r.week)}</td>
+                <td className="py-2.5 text-right">{fmtK(r.tokens)}</td>
+                <td className="py-2.5 text-right">{fmtUsd(r.all)}</td>
+              </tr>
+            ))}
+          </tbody>
+          <tfoot className="num font-semibold">
+            <tr>
+              <td className="pt-2.5">합계</td>
+              <td className="pt-2.5 text-right">{fmtUsd(total.today)}</td>
+              <td className="pt-2.5 text-right">{fmtUsd(total.week)}</td>
+              <td className="pt-2.5 text-right">{fmtK(total.tokens)}</td>
+              <td className="pt-2.5 text-right">{fmtUsd(total.all)}</td>
+            </tr>
+          </tfoot>
+        </table>
+      ) : (
+        <p className="py-6 text-center text-sm text-muted-foreground">불러오는 중이에요…</p>
+      )}
+    </Panel>
   );
 }

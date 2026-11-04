@@ -1,30 +1,24 @@
-import { useEffect, useState } from "react";
+import { useEffect } from "react";
+import { setTheme, useApp, type ThemeChoice } from "@/store";
 
-export type ThemeChoice = "system" | "light" | "dark";
-const KEY = "dispatch-theme";
+export type { ThemeChoice };
 
-const read = (): ThemeChoice => {
-  try {
-    const v = localStorage.getItem(KEY);
-    return v === "light" || v === "dark" ? v : "system";
-  } catch {
-    return "system";
-  }
-};
-
-/** Theme choice kept per browser; "system" follows the OS and reacts when it changes. */
+/**
+ * Theme from the store (server prefs, shared by every project). Applies <html class="dark">,
+ * mirrors the choice into localStorage for the no-flash script, and follows the OS on "system".
+ */
 export function useTheme(): [ThemeChoice, (t: ThemeChoice) => void] {
-  const [theme, setTheme] = useState<ThemeChoice>(read);
+  const theme = useApp(s => s.prefs?.theme ?? "system");
   useEffect(() => {
     const mq = window.matchMedia("(prefers-color-scheme: dark)");
     const apply = () =>
       document.documentElement.classList.toggle("dark", theme === "dark" || (theme === "system" && mq.matches));
     apply();
     try {
-      if (theme === "system") localStorage.removeItem(KEY);
-      else localStorage.setItem(KEY, theme);
+      if (theme === "system") localStorage.removeItem("dispatch-theme");
+      else localStorage.setItem("dispatch-theme", theme);
     } catch {
-      /* private mode: the choice lasts for this page only */
+      /* private mode */
     }
     if (theme !== "system") return;
     mq.addEventListener("change", apply);

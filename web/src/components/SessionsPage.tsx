@@ -6,6 +6,7 @@ import { Meter, ModelTag, Stat, StatusBadge, ThinkingLine } from "@/components/b
 import { turn } from "@/lib/turn";
 import { fmtK, fmtUsd, isOpen, pct, roleColor, totalTok } from "@/lib/format";
 import { cn } from "@/lib/utils";
+import { ModelBreakdown } from "@/components/ModelBreakdown";
 import { useApp } from "@/store";
 import type { Session, Status } from "@/types";
 
@@ -76,6 +77,7 @@ export function SessionsPage({ onOpen, onCreate }: { onOpen: (id: string) => voi
   const sessions = useApp(s => s.sessions);
   const roles = useApp(s => s.roles);
   const [filter, setFilter] = useState<"all" | Status>("all");
+  const [breakdown, setBreakdown] = useState(false);
 
   const byId = useMemo(() => new Map(sessions.map(s => [s.id, s])), [sessions]);
   const counts = useMemo(() => {
@@ -100,9 +102,10 @@ export function SessionsPage({ onOpen, onCreate }: { onOpen: (id: string) => voi
         <Stat strong label="열린 세션" value={open.length} hint={`전체 ${sessions.length}개`} />
         <Stat label="실행 중" value={counts.running ?? 0} hint="응답을 만드는 중" />
         <Stat label="승인 대기" value={counts.waiting ?? 0} hint={counts.waiting ? "확인이 필요해요" : "대기 중인 요청 없음"} />
-        <Stat label="비용 (API 환산)" value={fmtUsd(sumCost(sessions) ?? 0)} hint="구독 사용 시 청구액 아님" />
-        <Stat label="토큰" value={fmtK(total)} hint="입력 + 캐시 + 출력" />
+        <Stat label="비용 (API 환산)" value={fmtUsd(sumCost(sessions) ?? 0)} hint="눌러서 모델별 보기" onClick={() => setBreakdown(true)} />
+        <Stat label="토큰" value={fmtK(total)} hint="입력 + 캐시 + 출력 · 모델별 보기" onClick={() => setBreakdown(true)} />
       </section>
+      <ModelBreakdown sessions={sessions} open={breakdown} onOpenChange={setBreakdown} />
 
       {sessions.length === 0 ? (
         <div className="flex flex-col items-center gap-3 rounded-xl border border-dashed px-6 py-16 text-center">

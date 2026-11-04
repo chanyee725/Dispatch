@@ -93,12 +93,20 @@ export function Meter({ value, className, color }: { value: number | null; class
   );
 }
 
-export function Stat({ label, value, hint, strong }: { label: string; value: string | number; hint?: string; strong?: boolean }) {
+export function Stat({ label, value, hint, strong, onClick }: { label: string; value: string | number; hint?: string; strong?: boolean; onClick?: () => void }) {
+  const Box = onClick ? "button" : "div";
   return (
-    <div className={cn("rounded-xl border px-4 py-3.5", strong ? "border-transparent bg-primary text-primary-foreground" : "bg-card")}>
+    <Box
+      onClick={onClick}
+      className={cn(
+        "rounded-xl border px-4 py-3.5 text-left",
+        strong ? "border-transparent bg-primary text-primary-foreground" : "bg-card",
+        onClick && "cursor-pointer transition-colors hover:border-foreground/20 focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none",
+      )}
+    >
       <div className={cn("text-[13px]", strong ? "text-primary-foreground/70" : "text-muted-foreground")}>{label}</div>
       <div className="num mt-1 text-2xl font-semibold tracking-tight">{value}</div>
       {hint && <div className={cn("mt-0.5 truncate text-xs", strong ? "text-primary-foreground/60" : "text-muted-foreground")}>{hint}</div>}
-    </div>
+    </Box>
   );
 }

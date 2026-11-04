@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { GitBranch, Power, RefreshCw, SendHorizontal, ShieldAlert, Square, Trash2 } from "lucide-react";
+import { ChevronRight, GitBranch, Power, RefreshCw, SendHorizontal, ShieldAlert, Square, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet";
@@ -13,6 +13,18 @@ import { api, loadTranscript, useApp } from "@/store";
 import type { Diff, Entry, Pending, Session } from "@/types";
 
 const run = (p: Promise<unknown>, ok?: string) => p.then(() => ok && toast.success(ok)).catch((e: Error) => toast.error(e.message));
+
+/** One-line title for a tool call (its description, command, path or pattern) plus the full input. */
+function toolSummary(text: string): { title: string; detail: string } {
+  try {
+    const o = JSON.parse(text) as Record<string, unknown>;
+    const pick = ["description", "command", "file_path", "path", "pattern", "url", "query", "prompt"].map(k => o[k]).find(v => typeof v === "string") as string | undefined;
+    const detail = Object.entries(o).map(([k, v]) => `${k}: ${typeof v === "string" ? v : JSON.stringify(v)}`).join("\n");
+    return { title: (pick ?? detail).split("\n")[0], detail };
+  } catch {
+    return { title: text.split("\n")[0], detail: text.includes("\n") || text.length > 120 ? text : "" };
+  }
+}
 
 function EntryView({ m, agent }: { m: Entry; agent: string }) {
   switch (m.kind) {
@@ -30,15 +42,24 @@ function EntryView({ m, agent }: { m: Entry; agent: string }) {
           <div className="whitespace-pre-wrap">{m.text}</div>
         </div>
       );
-    case "tool":
+    case "tool": {
+      const { title, detail } = toolSummary(m.text);
       return (
-        <div className="rounded-lg border bg-muted/50 px-3 py-2 font-mono text-xs text-muted-foreground">
-          <span className="font-semibold" style={{ color: "var(--role-impl)" }}>{m.name}</span> <span className="break-all">{m.text}</span>
-        </div>
+        <details className="group rounded-lg border bg-muted/40 text-xs text-muted-foreground [&[open]]:bg-muted/60">
+          <summary className="flex cursor-pointer list-none items-center gap-2 px-3 py-1.5 [&::-webkit-details-marker]:hidden">
+            <span className="shrink-0 font-semibold" style={{ color: "var(--role-impl)" }}>{m.name}</span>
+            <span className="min-w-0 truncate">{title}</span>
+            <ChevronRight className="ml-auto size-3.5 shrink-0 transition-transform group-open:rotate-90" />
+          </summary>
+          {detail && (
+            <pre className="max-h-48 overflow-auto border-t px-3 py-2 font-mono text-[11px] leading-5 whitespace-pre-wrap [overflow-wrap:anywhere]">{detail}</pre>
+          )}
+        </details>
       );
+    }
     case "tool_result":
       return m.text ? (
-        <pre className={cn("-mt-2 max-h-40 overflow-auto border-l-2 py-1 pl-3 font-mono text-xs whitespace-pre-wrap text-muted-foreground", m.error ? "border-bad" : "border-border")}>{m.text}</pre>
+        <pre className={cn("-mt-2 max-h-28 overflow-y-auto border-l-2 py-0.5 pl-3 font-mono text-[11px] leading-5 whitespace-pre-wrap text-muted-foreground [overflow-wrap:anywhere]", m.error ? "border-bad" : "border-border")}>{m.text}</pre>
       ) : null;
     case "perm":
       return (

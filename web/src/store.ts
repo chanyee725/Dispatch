@@ -1,20 +1,33 @@
 import { useSyncExternalStore } from "react";
 import type { Entry, Limits, ProviderStatus, Provider, Session, Settings, Snapshot } from "./types";
 
+export type ThemeChoice = "system" | "light" | "dark";
+
 export interface AppState extends Snapshot {
+  /** UI preferences shared by every project's server (~/.dispatch/prefs.json). */
+  prefs: { theme: ThemeChoice };
   ready: boolean;
   online: boolean;
   transcripts: Record<string, Entry[]>;
 }
 
 let state: AppState = {
-  ready: false, online: false, transcripts: {},
+  ready: false, online: false, transcripts: {}, prefs: { theme: readLocalTheme() },
   project: { name: "", path: "", branch: null }, roles: [], perms: [], models: [],
   providers: {} as Record<Provider, ProviderStatus>,
   limits: { five: null, seven: null, fiveReset: null, sevenReset: null, updatedAt: null },
   settings: { guard: { enabled: true, five: 0.9, seven: 0.85 } },
   sessions: [],
 };
+
+function readLocalTheme(): ThemeChoice {
+  try {
+    const v = localStorage.getItem("dispatch-theme");
+    return v === "light" || v === "dark" ? v : "system";
+  } catch {
+    return "system";
+  }
+}
 
 const listeners = new Set<() => void>();
 function set(patch: Partial<AppState>) {
@@ -54,6 +67,7 @@ export function connect() {
     const sessions = i >= 0 ? state.sessions.map(x => (x.id === s.id ? s : x)) : [s, ...state.sessions];
     set({ sessions });
   });
+  on<AppState["prefs"]>("prefs", prefs => set({ prefs }));
   on<{ id: string }>("removed", ({ id }) => set({ sessions: state.sessions.filter(s => s.id !== id) }));
   on<{ id: string; entry: Entry }>("message", ({ id, entry }) => {
     const cur = state.transcripts[id];
@@ -64,4 +78,10 @@ export function connect() {
   on<Record<Provider, ProviderStatus>>("providers", providers => set({ providers }));
   es.onerror = () => set({ online: false });
   es.onopen = () => set({ online: true });
+}
+
+/** Saves the theme for every project (server file) and this browser (no-flash cache). */
+export function setTheme(theme: ThemeChoice) {
+  set({ prefs: { ...state.prefs, theme } });
+  api("POST", "/api/prefs", { theme }).catch(() => {});
 }
