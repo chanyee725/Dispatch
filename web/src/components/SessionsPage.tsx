@@ -102,8 +102,8 @@ export function SessionsPage({ onOpen, onCreate }: { onOpen: (id: string) => voi
         <Stat strong label="열린 세션" value={open.length} hint={`전체 ${sessions.length}개`} />
         <Stat label="실행 중" value={counts.running ?? 0} hint="응답을 만드는 중" />
         <Stat label="승인 대기" value={counts.waiting ?? 0} hint={counts.waiting ? "확인이 필요해요" : "대기 중인 요청 없음"} />
-        <Stat label="비용 (API 환산)" value={fmtUsd(sumCost(sessions) ?? 0)} hint="눌러서 모델별 보기" onClick={() => setBreakdown(true)} />
-        <Stat label="토큰" value={fmtK(total)} hint="입력 + 캐시 + 출력 · 모델별 보기" onClick={() => setBreakdown(true)} />
+        <Stat label="비용 (API 환산)" value={fmtUsd(sumCost(sessions) ?? 0)} hint="모델별로 보기" onClick={() => setBreakdown(true)} />
+        <Stat label="토큰" value={fmtK(total)} hint="입력 + 캐시 + 출력" onClick={() => setBreakdown(true)} />
       </section>
       <ModelBreakdown sessions={sessions} open={breakdown} onOpenChange={setBreakdown} />
 

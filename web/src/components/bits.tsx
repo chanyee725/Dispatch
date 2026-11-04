@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { ChevronRight } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { LEVEL_COLOR, STATUS, level } from "@/lib/format";
 import type { Status } from "@/types";
@@ -99,12 +100,17 @@ export function Stat({ label, value, hint, strong, onClick }: { label: string; v
     <Box
       onClick={onClick}
       className={cn(
-        "rounded-xl border px-4 py-3.5 text-left",
+        "group/stat rounded-xl border px-4 py-3.5 text-left",
         strong ? "border-transparent bg-primary text-primary-foreground" : "bg-card",
         onClick && "cursor-pointer transition-colors hover:border-foreground/20 focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none",
       )}
     >
-      <div className={cn("text-[13px]", strong ? "text-primary-foreground/70" : "text-muted-foreground")}>{label}</div>
+      <div className={cn("flex items-center gap-1.5 text-[13px]", strong ? "text-primary-foreground/70" : "text-muted-foreground")}>
+        {label}
+        {onClick && (
+          <ChevronRight aria-hidden className="ml-auto size-4 shrink-0 rounded-full transition-transform group-hover/stat:translate-x-0.5" />
+        )}
+      </div>
       <div className="num mt-1 text-2xl font-semibold tracking-tight">{value}</div>
       {hint && <div className={cn("mt-0.5 truncate text-xs", strong ? "text-primary-foreground/60" : "text-muted-foreground")}>{hint}</div>}
     </Box>
