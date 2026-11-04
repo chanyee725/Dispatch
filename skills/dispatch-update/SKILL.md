@@ -12,5 +12,6 @@ Do every step yourself; the user only asks.
 1. Find the clone (`clone="$(cd "$(dirname "$(readlink -f <skill-dir>/scripts/update.sh)")/.." && pwd)"`), run `git -C "$clone" pull --ff-only` so the script itself is current, then run `"$clone/scripts/update.sh"`.
    - It refuses to pull when the clone has uncommitted changes. Show the user the listed files and ask whether to commit or stash them; never discard them yourself.
    - `--no-restart` skips restarting servers (use it if the user is in the middle of a team run and wants to restart later). `--build` rebuilds the web UI from `web/` when `public/` is not committed on that branch.
+   - **Windows** (PowerShell): `git -C "$clone" pull --ff-only`, then `powershell -ExecutionPolicy Bypass -File "$clone\scripts\update.ps1"` (`-NoRestart`, `-Build`). The clone is the parent of this skill's folder (`(Get-Item <skill-dir>).Target` when the skill is a junction).
 2. Report the old → new commit, the commit list it printed, and which servers were restarted (project and port). Restarted servers resume any turn that was cut off.
 3. If a server did not come back, read `<project>/.dispatch/server.log` and report the error.

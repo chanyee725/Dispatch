@@ -41,7 +41,7 @@ git clone https://github.com/chanyee725/Dispatch ~/tools/Dispatch
 | `--login claude,codex` | Log in without asking (`claude`, `codex`, `both`, `none`). |
 | `--no-global` | Skip the links in your home directory. |
 
-Re-run it any time; links are refreshed and logged-in CLIs are skipped. To bring a machine up to the latest commit later, run `~/tools/Dispatch/scripts/update.sh` (or ask Claude Code / Codex "디스패치 업데이트"): it pulls, relinks every skill and restarts all running Dispatch servers on their ports. The skill links point at this clone, so `git pull` here updates every project.
+Re-run it any time; links are refreshed and logged-in CLIs are skipped. To bring a machine up to the latest commit later, run `~/tools/Dispatch/scripts/update.sh` (or ask Claude Code / Codex "디스패치 업데이트"): it pulls, relinks every skill and restarts all running Dispatch servers on their ports. On Windows use `powershell -ExecutionPolicy Bypass -File scripts\update.ps1` (skills are linked as junctions, no admin rights needed). The skill links point at this clone, so `git pull` here updates every project.
 
 ## Use in a project
 
