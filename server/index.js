@@ -165,9 +165,16 @@ async function serveStatic(pathname, res) {
       "cache-control": immutable ? "public, max-age=31536000, immutable" : "no-store" });
     res.end(data);
   } catch {
-    const data = await readFile(path.join(PUBLIC, "index.html"));
-    res.writeHead(200, { "content-type": TYPES[".html"], "cache-control": "no-store" });
-    res.end(data);
+    // Unknown path → the app shell. While `npm run build` rewrites public/ even that can be
+    // missing for a moment: answer 503 instead of letting the error take the server down.
+    try {
+      const data = await readFile(path.join(PUBLIC, "index.html"));
+      res.writeHead(200, { "content-type": TYPES[".html"], "cache-control": "no-store" });
+      res.end(data);
+    } catch {
+      res.writeHead(503, { "content-type": "text/plain; charset=utf-8", "retry-after": "2" });
+      res.end("Dispatch UI is rebuilding — reload in a moment.");
+    }
   }
 }
 
