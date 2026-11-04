@@ -28,9 +28,10 @@ Stop the server with `<skill-dir>/scripts/stop.sh "<project-root>"`; restart it 
 When the user asks to update Dispatch ("디스패치 업데이트", "최신으로", or it behaves differently than on another machine), do all of it without asking them to run anything:
 
 1. Find the clone: `clone="$(cd "$(dirname "$(readlink -f <skill-dir>/SKILL.md)")/../.." && pwd)"`.
-2. If `git -C "$clone" status --porcelain --untracked-files=no` lists files, stop and ask whether to commit or stash them (never discard).
-3. Run `git -C "$clone" pull --ff-only`, then `"$clone/scripts/update.sh"` (it pulls again, relinks every skill for Claude Code and Codex, and restarts every running Dispatch server on its own port). Older clones without `scripts/update.sh` get it from that pull.
-4. Report old → new commit and the restarted servers. If one did not come back, read `<project>/.dispatch/server.log`.
+2. If `$clone` is not a git clone (installed as a Claude Code plugin under `~/.claude/plugins/`), tell the user to run `/plugin marketplace update dispatch` and `/plugin update dispatch@dispatch`, then restart running servers with `<skill-dir>/scripts/restart.sh <project>` for each project in `~/.dispatch/servers/*.json`; skip steps 3–4.
+3. If `git -C "$clone" status --porcelain --untracked-files=no` lists files, stop and ask whether to commit or stash them (never discard).
+4. Run `git -C "$clone" pull --ff-only`, then `"$clone/scripts/update.sh"` (it pulls again, relinks every skill for Claude Code and Codex, and restarts every running Dispatch server on its own port). Older clones without `scripts/update.sh` get it from that pull.
+5. Report old → new commit and the restarted servers. If one did not come back, read `<project>/.dispatch/server.log`.
 
 On **Windows** (PowerShell, no bash): find the clone with `(Get-Item <skill-dir>).Target` (skills are junctions) or `Split-Path (Split-Path <skill-dir>)`, run `git -C "$clone" pull --ff-only`, then `powershell -ExecutionPolicy Bypass -File "$clone\scripts\update.ps1"`. It does the same three things: pull, relink every skill as a junction (no admin needed), restart running servers on their ports.
 

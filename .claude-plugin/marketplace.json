@@ -1,0 +1,17 @@
+{
+  "$schema": "https://www.schemastore.org/claude-code-marketplace.json",
+  "name": "dispatch",
+  "description": "Dispatch: run role-based Claude Code, Codex and Gemini sessions as a team from one local web UI.",
+  "owner": {
+    "name": "chanyee725",
+    "url": "https://github.com/chanyee725"
+  },
+  "plugins": [
+    {
+      "name": "dispatch",
+      "description": "Local web UI that runs a team of agent sessions in parallel, each in its own git worktree, with a lead that plans, assigns, reviews and merges.",
+      "source": "./",
+      "category": "productivity"
+    }
+  ]
+}

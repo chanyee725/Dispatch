@@ -26,6 +26,15 @@ Local web UI for running several role-based Claude Code, Codex and Gemini sessio
 
 Requires Node.js 20+, git, and at least one of the `claude`, `codex` or `agy` (Antigravity, for Gemini) CLIs.
 
+## Install as a Claude Code plugin
+
+```
+/plugin marketplace add chanyee725/Dispatch
+/plugin install dispatch@dispatch
+```
+
+On Claude Code 2.1.275 or later this is one step: `/plugin install dispatch --marketplace chanyee725/Dispatch`. The plugin brings the `dispatch`, `dispatch-team` and `dispatch-update` skills and the server; update it with `/plugin marketplace update dispatch` then `/plugin update dispatch@dispatch` (restart running Dispatch servers afterwards, or ask "디스패치 업데이트"). Codex users and anyone who wants a git clone: use the setup below.
+
 ## Set up (once per machine)
 
 ```bash
