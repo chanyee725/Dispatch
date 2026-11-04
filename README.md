@@ -22,7 +22,7 @@ Local web UI for running several role-based Claude Code, Codex and Gemini sessio
 - **Top bar:** usage limits per provider — Claude 5-hour and weekly, GPT (Codex) windows, and Gemini's state (Gemini reports no percentage, so it shows OK until a quota error, then the reset time). Hover for reset times.
 - **프로젝트 선택:** switch between the Dispatch servers running on this machine (one per project).
 - **새 세션** starts sessions; the broom icon next to it stops and removes every session of this project after a confirmation (branches and worktrees stay).
-- **사용량 → 한도 가까우면 막기** blocks new Claude sessions above the thresholds you set.
+- **사용량 → 한도 가까우면 막기** blocks new Claude sessions above the thresholds you set. When a threshold is reached, every lead's unfinished board tasks (and its last note and team) are saved as a **ticket**; after the reset the ticket is handed back to the lead automatically, or resume it yourself from the 작업 dialog.
 
 Requires Node.js 20+, git, and at least one of the `claude`, `codex` or `agy` (Antigravity, for Gemini) CLIs.
 

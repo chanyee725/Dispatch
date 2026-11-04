@@ -1,9 +1,9 @@
 import { useEffect, useMemo, useState } from "react";
-import { CircleCheck, ListChecks, TriangleAlert, X } from "lucide-react";
+import { CircleCheck, ListChecks, Ticket as TicketIcon, TriangleAlert, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { cn } from "@/lib/utils";
-import { api, useApp, type BoardTask, type TaskStage } from "@/store";
+import { api, useApp, type BoardTask, type TaskStage, type Ticket } from "@/store";
 
 const STEPS: { id: TaskStage; label: string }[] = [
   { id: "plan", label: "계획" },
@@ -102,9 +102,46 @@ function useBoard() {
   };
 }
 
+const until = (t: number | null, now: number) => (t ? fmtMin(mins(t - now)) : "?");
+const TICKET_STATE: Record<Ticket["status"], string> = { open: "대기", resumed: "재개됨", closed: "닫음", orphaned: "관리자 없음" };
+
+/** Tickets saved at the usage limit: what was left per lead, resumed after the reset. */
+function Tickets({ tickets, now }: { tickets: Ticket[]; now: number }) {
+  if (!tickets.length) return null;
+  return (
+    <section className="flex flex-col gap-2">
+      <h3 className="flex items-center gap-1.5 text-sm font-semibold"><TicketIcon className="size-4" />티켓</h3>
+      <ul className="divide-y rounded-lg border">
+        {tickets.map(t => (
+          <li key={t.id} className={cn("flex flex-col gap-1 px-3 py-2", t.status !== "open" && "text-muted-foreground")}>
+            <div className="flex items-center gap-2 text-sm">
+              <span className="font-medium">{t.leadName ?? "관리자"}</span>
+              <span className="text-xs text-muted-foreground">{t.reason} · 작업 {t.items.length}개 · {TICKET_STATE[t.status]}</span>
+              {t.status === "open" && (
+                <span className="num ml-auto text-xs text-muted-foreground">초기화까지 {until(t.resetAt, now)}</span>
+              )}
+            </div>
+            {t.items.length > 0 && (
+              <p className="truncate text-xs text-muted-foreground">{t.items.map(i => i.title).join(" · ")}</p>
+            )}
+            {t.status === "open" && (
+              <div className="flex gap-2">
+                <Button size="sm" variant="outline" onClick={() => api("POST", `/api/tickets/${t.id}/resume`).catch(() => {})}>지금 재개</Button>
+                <Button size="sm" variant="ghost" onClick={() => api("POST", `/api/tickets/${t.id}/close`).catch(() => {})}>닫기</Button>
+              </div>
+            )}
+          </li>
+        ))}
+      </ul>
+    </section>
+  );
+}
+
 /** "작업 n · ~m분" button at the right of the filter row; opens the board in a dialog. */
 export function TaskBoardButton({ onOpen }: { onOpen?: (id: string) => void }) {
   const { tasks, active, now, first, last } = useBoard();
+  const tickets = useApp(s => s.tickets ?? []);
+  const openTickets = tickets.filter(t => t.status === "open").length;
   const sessions = useApp(s => s.sessions);
   const names = useMemo(() => new Map(sessions.map(s => [s.id, s.name])), [sessions]);
   const byName = useMemo(() => new Map(sessions.map(s => [s.name.replace(/\s+/g, ""), s.id])), [sessions]);
@@ -123,6 +160,9 @@ export function TaskBoardButton({ onOpen }: { onOpen?: (id: string) => void }) {
           {active.length}
           {first != null ? ` · ${fmtMin(first)} 남음` : ""}
         </span>
+        {openTickets > 0 && (
+          <span className="num rounded-full bg-warn/15 px-1.5 text-xs text-warn" title="한도로 멈춘 티켓">티켓 {openTickets}</span>
+        )}
       </Button>
       <Dialog open={open} onOpenChange={setOpen}>
         <DialogContent className="gap-3 sm:max-w-3xl">
@@ -134,6 +174,7 @@ export function TaskBoardButton({ onOpen }: { onOpen?: (id: string) => void }) {
               {last != null && last !== first ? ` · 전부 끝나기까지 ${fmtMin(last)}` : ""}
             </DialogDescription>
           </DialogHeader>
+          <Tickets tickets={tickets} now={now} />
           {tasks.length ? (
             <ul className="max-h-[60vh] divide-y overflow-y-auto rounded-lg border">
               {[...active, ...tasks.filter(t => t.stage === "done")].map(t => (

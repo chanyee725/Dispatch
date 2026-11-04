@@ -4,6 +4,12 @@ import type { Entry, Limits, ProviderStatus, Provider, Session, Settings, Snapsh
 export type ThemeChoice = "system" | "light" | "dark";
 
 export type TaskStage = "plan" | "impl" | "review" | "test" | "merge" | "done" | "blocked";
+export interface Ticket {
+  id: string; lead: string | null; leadName: string | null; status: "open" | "resumed" | "closed" | "orphaned";
+  reason: string; resetAt: number | null; createdAt: number; updatedAt: number;
+  items: { title: string; stage: TaskStage; owner: string | null; note: string }[];
+  leadLast: string; team: { name: string; status: string; branch: string | null; last: string }[];
+}
 export interface BoardTask {
   id: string; lead: string | null; title: string; stage: TaskStage; owner: string | null;
   createdAt: number; stageAt: number; updatedAt: number; etaAt: number | null; note: string;
@@ -14,13 +20,15 @@ export interface AppState extends Snapshot {
   prefs: { theme: ThemeChoice };
   /** Leads' task board (set_task). */
   tasks: BoardTask[];
+  /** Work saved when the usage limit was reached; resumed after the reset. */
+  tickets: Ticket[];
   ready: boolean;
   online: boolean;
   transcripts: Record<string, Entry[]>;
 }
 
 let state: AppState = {
-  ready: false, online: false, transcripts: {}, prefs: { theme: readLocalTheme() }, tasks: [],
+  ready: false, online: false, transcripts: {}, prefs: { theme: readLocalTheme() }, tasks: [], tickets: [],
   project: { name: "", path: "", branch: null }, roles: [], perms: [], models: [],
   providers: {} as Record<Provider, ProviderStatus>,
   limits: { five: null, seven: null, fiveReset: null, sevenReset: null, updatedAt: null },
@@ -77,6 +85,7 @@ export function connect() {
   });
   on<AppState["prefs"]>("prefs", prefs => set({ prefs }));
   on<BoardTask[]>("tasks", tasks => set({ tasks }));
+  on<Ticket[]>("tickets", tickets => set({ tickets }));
   on<{ id: string }>("removed", ({ id }) => set({ sessions: state.sessions.filter(s => s.id !== id) }));
   on<{ id: string; entry: Entry }>("message", ({ id, entry }) => {
     const cur = state.transcripts[id];
