@@ -102,6 +102,7 @@ export class Hub extends EventEmitter {
   push(s, entry) {
     const r = this.rt(s.id);
     entry.at = Date.now();
+    if (entry.kind === "tool") r.lastTool = entry.name + (entry.text ? ` ${clip(entry.text, 80)}` : "");
     r.transcript.push(entry);
     if (r.transcript.length > MAX_TRANSCRIPT) r.transcript.splice(0, r.transcript.length - MAX_TRANSCRIPT);
     try {
@@ -321,11 +322,26 @@ export class Hub extends EventEmitter {
   interrupt(id) {
     const s = this.get(id), r = this.live.get(id);
     if (!s || !r?.proc) return;
+    this.handoffOnInterrupt(s);
     if (s.provider === "claude") {
       r.proc.stdin.write(JSON.stringify({ type: "control_request", request_id: randomUUID(), request: { subtype: "interrupt" } }) + "\n");
     } else {
       r.proc.kill("SIGINT");
     }
+  }
+
+  /**
+   * On interrupt, hand the lead a short note of what this teammate was doing, so the lead reads a
+   * one-line summary instead of the whole transcript. Held as a pending report (delivered now, or
+   * after the pause); skipped for a lead's own session.
+   */
+  handoffOnInterrupt(s) {
+    const r = this.live.get(s.id);
+    if (!r || s.canSpawn || !s.parent) return;
+    const doing = clip(r.lastText || "", 600) || (r.lastTool ? `도구 실행 중: ${r.lastTool}` : "작업 진행 중");
+    r.pendingReport = `[${s.name} 중단${s.branch ? ` · ${s.branch}` : ""}] 턴 중간에 멈췄다. 하던 일:\n${doing}\n(재개하려면 이 세션에 지시를 보내면 된다. 전체 대화를 다시 읽지 말고 이 요약과 git diff/log로 상태를 파악하라.)`;
+    r.lastText = null;
+    this.deliverReport(s);
   }
 
   kill(id) {

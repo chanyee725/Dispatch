@@ -89,11 +89,13 @@ const LEAD_TOOLS = [
   },
   {
     name: "get_session",
-    description: "세션 상태와 최근 대화 일부를 돌려준다.",
-    inputSchema: { type: "object", required: ["session_id"], properties: { session_id: { type: "string" }, last: { type: "integer", description: "최근 메시지 개수 (기본 10)" } } },
-    run: async ({ session_id, last = 10 }) => {
+    description: "세션 상태와 최근 대화 일부를 돌려준다. 각 메시지는 요약(앞부분)만 온다 — 전체를 반복해서 읽으면 토큰 낭비이니 꼭 필요한 세션만 본다.",
+    inputSchema: { type: "object", required: ["session_id"], properties: { session_id: { type: "string" }, last: { type: "integer", description: "최근 메시지 개수 (기본 6, 최대 20)" } } },
+    run: async ({ session_id, last = 6 }) => {
       const res = await api("GET", `/api/sessions/${session_id}/messages`);
-      return { session: brief(res.session), recent: res.messages.slice(-last).map(m => ({ kind: m.kind, name: m.name, text: m.text })) };
+      const n = Math.min(Math.max(1, last), 20);
+      const clip = t => { t = String(t ?? ""); return t.length > 400 ? t.slice(0, 400) + "…" : t; };
+      return { session: brief(res.session), recent: res.messages.slice(-n).map(m => ({ kind: m.kind, name: m.name, text: clip(m.text) })) };
     },
   },
   {
