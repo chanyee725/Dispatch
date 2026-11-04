@@ -28,7 +28,7 @@ export function Sidebar({ page, onPage, onConnect }: { page: Page; onPage: (p: P
   const providers = useApp(s => s.providers);
   const online = useApp(s => s.online);
   const open = sessions.filter(isOpen).length;
-  const list = Object.values(providers);
+  const list = (["claude", "openai", "gemini"] as const).map(id => (providers as Record<string, (typeof providers)[keyof typeof providers]>)[id]).filter(Boolean);
   const allConnected = list.length > 0 && list.every(p => p.connected);
 
   return (
