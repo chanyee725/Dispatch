@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # One-shot setup for Dispatch on this machine.
 #
-#   scripts/setup.sh                          check tools, link the skill for Claude Code + Codex, ask which CLIs to log in
+#   scripts/setup.sh                          check tools, link the skills for Claude Code + Codex, ask which CLIs to log in
 #   scripts/setup.sh --project ~/work/app     also link the skill into that project (.claude/skills + .agents/skills)
 #   scripts/setup.sh --login claude,codex     log in to these CLIs without asking (claude | codex | both | none)
 #   scripts/setup.sh --no-global              skip linking into ~/.claude/skills and ~/.codex/skills
@@ -46,11 +46,17 @@ else
   ok "built web/ into public/"
 fi
 
-step "3. Skill"
+step "3. Skills"
+# Every skill in skills/ (dispatch, dispatch-team, dispatch-update, …), so a new skill reaches
+# this machine on the next setup or update.
 link() {
   mkdir -p "$1"
-  ln -sfn "$skill" "$1/dispatch"
-  ok "$1/dispatch → $skill"
+  for s in "$repo"/skills/*/; do
+    s="${s%/}"
+    [ -f "$s/SKILL.md" ] || continue
+    ln -sfn "$s" "$1/$(basename "$s")"
+    ok "$1/$(basename "$s") → $s"
+  done
 }
 if $global; then
   link "$HOME/.claude/skills"
