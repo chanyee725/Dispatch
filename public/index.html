@@ -5,8 +5,15 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="color-scheme" content="light dark" />
     <title>Dispatch</title>
-    <script type="module" crossorigin src="/assets/index-BRGIOfn9.js"></script>
-    <link rel="stylesheet" crossorigin href="/assets/index-BnZgDhe5.css">
+    <script>
+      try {
+        var t = localStorage.getItem("dispatch-theme");
+        var d = t === "dark" || (t !== "light" && matchMedia("(prefers-color-scheme: dark)").matches);
+        document.documentElement.classList.toggle("dark", d);
+      } catch (e) {}
+    </script>
+    <script type="module" crossorigin src="/assets/index-mNIEpy2g.js"></script>
+    <link rel="stylesheet" crossorigin href="/assets/index-0ZQqquzS.css">
   </head>
   <body>
     <div id="root"></div>
