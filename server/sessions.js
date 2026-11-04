@@ -270,9 +270,13 @@ export class Hub extends EventEmitter {
 
   /* ---------------- control ---------------- */
 
-  send(id, text) {
+  /** True while a guard window is over its threshold: no new turns until the reset. */
+  get paused() { return !!this.limitHit(); }
+
+  send(id, text, { force = false } = {}) {
     const s = this.get(id);
     if (!s) throw new Error("세션이 없어요");
+    if (!force && this.paused) throw new Error("사용량 한도로 일시정지 중이에요. 남은 작업은 티켓으로 저장됐고, 초기화되면 이어서 진행해요.");
     this.push(s, { kind: "user", text });
     const r = this.rt(id);
     if (this.shouldRotate(s)) return this.rotate(s, text);
@@ -399,7 +403,7 @@ export class Hub extends EventEmitter {
   // Resume every session a restart cut off mid-turn, once its provider is connected.
   resumeInterrupted() {
     for (const s of this.sessions) {
-      if (!s.interrupted || !this.isConnected(s.provider)) continue;
+      if (!s.interrupted || !this.isConnected(s.provider) || this.paused) continue; // paused: the ticket resumes it
       s.interrupted = false;
       try { this.send(s.id, RESUME_TEXT); } catch { /* resumes on the next message instead */ }
     }
@@ -454,7 +458,20 @@ export class Hub extends EventEmitter {
       }
       this.store.save();
       this.emit("tickets", this.tickets);
+      // Pause: interrupt every running turn so nothing keeps spending past the threshold.
+      for (const s of this.sessions) {
+        if (s.status === "running" || s.status === "starting" || s.status === "waiting") {
+          this.push(s, { kind: "info", text: `사용량 한도(${hit.reason})로 일시정지 — 티켓으로 저장됨` });
+          this.interrupt(s.id);
+        }
+      }
     }
+    // While paused, a session that still runs (e.g. started before the hit was seen) is stopped too.
+    if (hit) for (const s of this.sessions) if (s.status === "running" && !this.rt(s.id).pauseNoted) {
+      this.rt(s.id).pauseNoted = true;
+      this.interrupt(s.id);
+    }
+    if (!hit) for (const s of this.sessions) if (this.live.get(s.id)?.pauseNoted) this.rt(s.id).pauseNoted = false;
     // Reset passed and no limit is hit any more: resume.
     if (!hit) for (const t of Object.values(all)) {
       if (t.status === "open" && t.resetAt && t.resetAt <= now) this.resumeTicket(t.id);
@@ -472,7 +489,7 @@ export class Hub extends EventEmitter {
     const team = t.team.length ? `\n\n[당시 팀원]\n${t.team.map(c => `- ${c.name} (${c.status}${c.branch ? `, ${c.branch}` : ""}): ${c.last}`).join("\n")}` : "";
     const text = `[Dispatch 티켓 재개] ${t.reason}에서 멈췄던 작업이다. 한도가 초기화됐으니 이어서 진행하라. 브랜치·git log로 상태를 다시 확인하고, 팀원이 정리됐으면 필요한 만큼 다시 만들어라.\n\n[남은 작업]\n${list}${team}\n\n[멈출 때 내 마지막 메모]\n${t.leadLast || "(없음)"}`;
     if (lead && lead.status !== "done") {
-      try { this.send(lead.id, text); } catch { return false; }
+      try { this.send(lead.id, text, { force: true }); } catch { return false; }
     }
     t.status = lead && lead.status !== "done" ? "resumed" : "orphaned";
     t.updatedAt = Date.now();
@@ -524,6 +541,7 @@ export class Hub extends EventEmitter {
   deliverReport(s) {
     const r = this.live.get(s.id), parent = s.parent && this.get(s.parent);
     if (!r?.pendingReport || !parent || parent.status === "done") return;
+    if (this.paused) return; // kept; delivered after the reset
     try { this.send(parent.id, r.pendingReport); r.pendingReport = null; } catch { /* retried by checkTeams */ }
   }
 
