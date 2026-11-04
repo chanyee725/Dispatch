@@ -19,11 +19,55 @@ function toolSummary(text: string): { title: string; detail: string } {
   try {
     const o = JSON.parse(text) as Record<string, unknown>;
     const pick = ["description", "command", "file_path", "path", "pattern", "url", "query", "prompt"].map(k => o[k]).find(v => typeof v === "string") as string | undefined;
+    const title = (pick ?? "").split("\n")[0];
+    // Edits read as a diff: removed lines "-", added lines "+".
+    const minus = (v: unknown) => String(v).split("\n").map(l => `-${l}`).join("\n");
+    const plus = (v: unknown) => String(v).split("\n").map(l => `+${l}`).join("\n");
+    if (typeof o.old_string === "string" || typeof o.new_string === "string")
+      return { title, detail: [`@@ ${o.file_path ?? ""}`, o.old_string ? minus(o.old_string) : "", o.new_string ? plus(o.new_string) : ""].filter(Boolean).join("\n") };
+    if (Array.isArray(o.edits))
+      return { title, detail: [`@@ ${o.file_path ?? ""}`, ...(o.edits as { old_string?: string; new_string?: string }[]).flatMap(e => [e.old_string ? minus(e.old_string) : "", e.new_string ? plus(e.new_string) : ""]).filter(Boolean)].join("\n") };
+    if (typeof o.content === "string" && typeof o.file_path === "string")
+      return { title, detail: `@@ ${o.file_path} (새 파일)\n${plus(o.content)}` };
     const detail = Object.entries(o).map(([k, v]) => `${k}: ${typeof v === "string" ? v : JSON.stringify(v)}`).join("\n");
-    return { title: (pick ?? detail).split("\n")[0], detail };
+    return { title: title || detail.split("\n")[0], detail };
   } catch {
     return { title: text.split("\n")[0], detail: text.includes("\n") || text.length > 120 ? text : "" };
   }
+}
+
+const DIFF_HINT = /^(diff --git |@@ |\+\+\+ |--- a\/)/m;
+const STAT_LINE = /^(.*\|\s+\d+\s)(\+*)(-*)\s*$/;
+const SUMMARY = /(\d+ files? changed)|(\d+ insertions?\(\+\))|(\d+ deletions?\(-\))/g;
+
+/** Shell/tool text with diff colouring: + lines green, - lines red, @@ hunks tinted; git --stat bars too. */
+function ShellText({ text, diff }: { text: string; diff?: boolean }) {
+  const isDiff = diff || DIFF_HINT.test(text);
+  return (
+    <>
+      {text.split("\n").map((l, i) => {
+        if (isDiff) {
+          if (l.startsWith("+++") || l.startsWith("---") || l.startsWith("diff --git") || l.startsWith("index "))
+            return <div key={i} className="font-semibold text-foreground/70">{l || " "}</div>;
+          if (l.startsWith("@@")) return <div key={i} className="text-[var(--role-impl)]">{l}</div>;
+          if (l.startsWith("+")) return <div key={i} className="-mx-1 bg-ok/10 px-1 text-ok">{l}</div>;
+          if (l.startsWith("-")) return <div key={i} className="-mx-1 bg-bad/10 px-1 text-bad">{l}</div>;
+        }
+        const st = STAT_LINE.exec(l);
+        if (st) return <div key={i}>{st[1]}<span className="text-ok">{st[2]}</span><span className="text-bad">{st[3]}</span></div>;
+        if (/files? changed/.test(l))
+          return (
+            <div key={i}>
+              {l.split(SUMMARY).filter(x => x !== undefined && x !== "").map((part, j) =>
+                /insertion/.test(part) ? <span key={j} className="text-ok">{part}</span>
+                  : /deletion/.test(part) ? <span key={j} className="text-bad">{part}</span>
+                  : <span key={j}>{part}</span>)}
+            </div>
+          );
+        return <div key={i}>{l || " "}</div>;
+      })}
+    </>
+  );
 }
 
 function EntryView({ m, agent }: { m: Entry; agent: string }) {
@@ -52,14 +96,14 @@ function EntryView({ m, agent }: { m: Entry; agent: string }) {
             <ChevronRight className="ml-auto size-3.5 shrink-0 transition-transform group-open:rotate-90" />
           </summary>
           {detail && (
-            <pre className="max-h-48 overflow-auto border-t px-3 py-2 font-mono text-[11px] leading-5 whitespace-pre-wrap [overflow-wrap:anywhere]">{detail}</pre>
+            <pre className="max-h-64 overflow-auto border-t px-3 py-2 font-mono text-[11px] leading-5 whitespace-pre-wrap [overflow-wrap:anywhere]"><ShellText text={detail} /></pre>
           )}
         </details>
       );
     }
     case "tool_result":
       return m.text ? (
-        <pre className={cn("-mt-2 max-h-28 overflow-y-auto border-l-2 py-0.5 pl-3 font-mono text-[11px] leading-5 whitespace-pre-wrap text-muted-foreground [overflow-wrap:anywhere]", m.error ? "border-bad" : "border-border")}>{m.text}</pre>
+        <pre className={cn("-mt-2 max-h-40 overflow-y-auto border-l-2 py-0.5 pl-3 font-mono text-[11px] leading-5 whitespace-pre-wrap text-muted-foreground [overflow-wrap:anywhere]", m.error ? "border-bad" : "border-border")}><ShellText text={m.text} /></pre>
       ) : null;
     case "perm":
       return (
