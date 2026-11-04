@@ -49,24 +49,50 @@ export async function prepareWorkdir(root, slug, useWorktree) {
   return { cwd: dir, branch, worktree: true };
 }
 
-export async function diff(cwd) {
+const NOISE = ["node_modules", ".next", ".next-prod", "dist", ".playwright-mcp"];
+const keep = f => !NOISE.some(n => f === n || f.startsWith(`${n}/`));
+const out = p => p.then(r => r.stdout, () => "");
+
+/**
+ * What a session changed. In a worktree: everything on its branch since it left the project's
+ * branch (commits + uncommitted edits), so committed work stays visible. Once the branch is merged
+ * back, its own commits' patches. In the project folder: uncommitted changes against HEAD.
+ */
+export async function diff(cwd, root = cwd) {
   if (!(await hasHead(cwd))) {
-    const { stdout } = await git(cwd, "status", "--porcelain").catch(() => ({ stdout: "" }));
-    const files = stdout.split("\n").filter(Boolean);
-    return { files: files.length, add: 0, del: 0, untracked: files.map(l => l.slice(3)), patch: "" };
+    const files = (await out(git(cwd, "status", "--porcelain"))).split("\n").filter(Boolean).map(l => l.slice(3)).filter(keep);
+    return { files: files.length, add: 0, del: 0, untracked: files, patch: "", commits: [], base: null, merged: false };
   }
+  let base = "HEAD", baseName = null, commits = [], merged = false;
+  if (path.resolve(cwd) !== path.resolve(root)) {
+    baseName = await currentBranch(root);
+    const mb = (await out(git(cwd, "merge-base", "HEAD", baseName || "HEAD"))).trim();
+    const head = (await out(git(cwd, "rev-parse", "HEAD"))).trim();
+    // Where this branch was created (first reflog entry), to list only its own commits.
+    const branch = (await out(git(cwd, "branch", "--show-current"))).trim();
+    const born = branch ? (await out(git(cwd, "reflog", "show", "--format=%H", branch))).trim().split("\n").filter(Boolean).at(-1) : "";
+    const from = born || mb;
+    if (from) {
+      commits = (await out(git(cwd, "log", "--no-merges", "--format=%h%x09%s", `${from}..HEAD`, "-n", "50")))
+        .split("\n").filter(Boolean).map(l => { const [hash, ...rest] = l.split("\t"); return { hash, subject: rest.join("\t") }; });
+    }
+    if (mb && mb !== head) base = mb;
+    else if (mb === head && commits.length) { merged = true; base = null; }
+  }
+  const own = commits.map(c => c.hash).reverse(); // merged branch: show each own commit, oldest first
   const [num, patch, others] = await Promise.all([
-    git(cwd, "diff", "HEAD", "--numstat"),
-    git(cwd, "diff", "HEAD"),
-    git(cwd, "ls-files", "--others", "--exclude-standard"),
-  ].map(p => p.catch(() => ({ stdout: "" }))));
-  let add = 0, del = 0, files = 0;
-  for (const line of num.stdout.split("\n").filter(Boolean)) {
-    const [a, d] = line.split("\t");
-    add += +a || 0; del += +d || 0; files++;
+    base ? out(git(cwd, "diff", base, "--numstat")) : out(git(cwd, "show", "--numstat", "--format=", ...own)),
+    base ? out(git(cwd, "diff", base)) : out(git(cwd, "show", "-p", "--format=commit %h %s", ...own)),
+    out(git(cwd, "ls-files", "--others", "--exclude-standard")),
+  ]);
+  let add = 0, del = 0;
+  const changed = new Set();
+  for (const line of num.split("\n").filter(Boolean)) {
+    const [a, d, f] = line.split("\t");
+    add += +a || 0; del += +d || 0; if (f) changed.add(f);
   }
-  const untracked = others.stdout.split("\n").filter(Boolean);
+  const untracked = others.split("\n").filter(Boolean).filter(keep);
   const LIMIT = 200_000;
-  const p = patch.stdout.length > LIMIT ? patch.stdout.slice(0, LIMIT) + "\n… (잘림)" : patch.stdout;
-  return { files: files + untracked.length, add, del, untracked, patch: p };
+  const p = patch.length > LIMIT ? patch.slice(0, LIMIT) + "\n… (잘림)" : patch;
+  return { files: changed.size + untracked.length, add, del, untracked, patch: p, commits, base: baseName, merged };
 }

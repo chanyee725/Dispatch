@@ -1,16 +1,17 @@
 import { useEffect, useRef, useState } from "react";
-import { ChevronRight, GitBranch, Power, RefreshCw, SendHorizontal, ShieldAlert, Square, Trash2 } from "lucide-react";
+import { ChevronRight, GitBranch, Power, SendHorizontal, ShieldAlert, Square, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import { ModelTag, StatusBadge, ThinkingLine } from "@/components/bits";
+import { DiffView } from "@/components/DiffView";
 import { turn } from "@/lib/turn";
 import { fmtK, fmtUsd, pct, roleColor } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import { api, loadTranscript, useApp } from "@/store";
-import type { Diff, Entry, Pending, Session } from "@/types";
+import type { Entry, Pending, Session } from "@/types";
 
 const run = (p: Promise<unknown>, ok?: string) => p.then(() => ok && toast.success(ok)).catch((e: Error) => toast.error(e.message));
 
@@ -161,44 +162,6 @@ function Chat({ s }: { s: Session }) {
       {entries?.map((m, i) => <EntryView key={i} m={m} agent={agent} />)}
       {s.pending.map(p => <PermissionCard key={p.requestId} s={s} p={p} />)}
       <ThinkingLine status={s.status} turnStartedAt={turn(s).at} tokens={turn(s).tokens} />
-    </div>
-  );
-}
-
-function DiffView({ s }: { s: Session }) {
-  const [diff, setDiff] = useState<Diff | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  const load = () => api<Diff>("GET", `/api/sessions/${s.id}/diff`).then(setDiff, (e: Error) => setError(e.message));
-  useEffect(() => { load(); }, [s.id]);
-  if (error) return <p className="p-6 text-sm text-bad">{error}</p>;
-  if (!diff) return <p className="p-6 text-sm text-muted-foreground">변경사항을 불러오는 중이에요…</p>;
-  return (
-    <div className="flex h-full flex-col gap-3 overflow-y-auto px-6 py-5">
-      <div className="flex items-center gap-3 text-sm">
-        <span className="num">파일 {diff.files}개</span>
-        <span className="num text-ok">+{diff.add}</span>
-        <span className="num text-bad">−{diff.del}</span>
-        <span className="truncate text-muted-foreground">{s.worktree ? s.cwd : "프로젝트 폴더에서 실행 중"}</span>
-        <Button size="sm" variant="ghost" className="ml-auto" onClick={load}><RefreshCw />새로고침</Button>
-      </div>
-      {diff.untracked.length > 0 && (
-        <div className="rounded-lg border bg-muted/40 px-3 py-2 text-xs">
-          <span className="text-muted-foreground">새 파일</span> <span className="font-mono">{diff.untracked.join(", ")}</span>
-        </div>
-      )}
-      {diff.patch ? (
-        <pre className="overflow-auto rounded-lg border bg-muted/30 p-3 font-mono text-xs leading-5">
-          {diff.patch.split("\n").map((l, i) => (
-            <div key={i} className={cn(
-              l.startsWith("@@") && "text-[var(--role-impl)]",
-              l.startsWith("+") && !l.startsWith("+++") && "bg-ok/10 text-ok",
-              l.startsWith("-") && !l.startsWith("---") && "bg-bad/10 text-bad",
-            )}>{l || " "}</div>
-          ))}
-        </pre>
-      ) : (
-        <p className="text-sm text-muted-foreground">추적 중인 파일에는 변경이 없어요.</p>
-      )}
     </div>
   );
 }

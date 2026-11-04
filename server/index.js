@@ -205,7 +205,7 @@ const routes = [
   ["GET", /^\/api\/sessions\/([\w-]+)\/diff$/, async ([id]) => {
     const s = hub.get(id);
     if (!s) throw Object.assign(new Error("세션이 없어요"), { status: 404 });
-    return diff(s.cwd);
+    return diff(s.cwd, root);
   }],
   ["POST", /^\/api\/sessions\/([\w-]+)\/message$/, async ([id], b) => { hub.send(id, String(b.text || "")); return { ok: true }; }],
   ["POST", /^\/api\/sessions\/([\w-]+)\/interrupt$/, async ([id]) => { hub.interrupt(id); return { ok: true }; }],
