@@ -2,6 +2,31 @@ import { cn } from "@/lib/utils";
 import { LEVEL_COLOR, STATUS, level } from "@/lib/format";
 import type { Status } from "@/types";
 
+// Provider tag: Claude orange, GPT (Codex) black, Gemini blue. Keyed by string so a provider the
+// server adds later still renders (in a neutral tone) without a type change here.
+const PROVIDER_TAG: Record<string, { label: string; className: string }> = {
+  claude: { label: "Claude", className: "bg-[#d97757] text-white" },
+  openai: { label: "GPT", className: "bg-neutral-950 text-white ring-1 ring-white/15" },
+  gemini: { label: "Gemini", className: "bg-[#1a73e8] text-white" },
+};
+
+export function ModelTag({ provider, label, className }: { provider: string; label: string; className?: string }) {
+  const t = PROVIDER_TAG[provider];
+  return (
+    <span
+      title={label}
+      className={cn(
+        "inline-flex max-w-full min-w-0 shrink items-center gap-1 rounded-md px-1.5 py-0.5 text-[11px] leading-4 font-medium",
+        t?.className ?? "bg-muted text-foreground",
+        className,
+      )}
+    >
+      <span className="shrink-0 font-semibold">{t?.label ?? provider}</span>
+      <span className="truncate opacity-85">{label}</span>
+    </span>
+  );
+}
+
 export function StatusBadge({ status, className }: { status: Status; className?: string }) {
   const s = STATUS[status] ?? STATUS.idle;
   const live = status === "running" || status === "starting";

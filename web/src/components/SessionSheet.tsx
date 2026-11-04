@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
-import { StatusBadge } from "@/components/bits";
+import { ModelTag, StatusBadge } from "@/components/bits";
 import { fmtK, fmtUsd, pct, roleColor } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import { api, loadTranscript, useApp } from "@/store";
@@ -227,7 +227,7 @@ export function SessionSheet({ id, onClose }: { id: string | null; onClose: () =
                 <StatusBadge status={s.status} />
               </div>
               <SheetDescription className="flex flex-wrap items-center gap-x-4 gap-y-1">
-                <span>{s.modelLabel}{s.effort ? ` ${s.effort}` : ""}</span>
+                <ModelTag provider={s.provider} label={`${s.modelLabel}${s.effort ? ` ${s.effort}` : ""}`} />
                 {s.branch && <span className="inline-flex items-center gap-1"><GitBranch className="size-3.5" />{s.branch}</span>}
                 <span>권한 {s.perm}</span>
               </SheetDescription>

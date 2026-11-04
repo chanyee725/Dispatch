@@ -2,7 +2,7 @@ import { useMemo, useState } from "react";
 import { CornerDownRight, GitBranch, Plus, ShieldAlert, TriangleAlert } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Meter, Stat, StatusBadge } from "@/components/bits";
+import { Meter, ModelTag, Stat, StatusBadge } from "@/components/bits";
 import { ago, fmtK, fmtUsd, isOpen, pct, roleColor, totalTok } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import { useApp } from "@/store";
@@ -34,7 +34,7 @@ function SessionCard({ s, parent, onOpen }: { s: Session; parent?: Session; onOp
         <div className="min-w-0">
           <div className="truncate font-semibold">{s.name}</div>
           <div className="mt-0.5 flex min-w-0 items-center gap-3 text-xs text-muted-foreground">
-            <span className="truncate">{s.modelLabel}{s.effort ? ` ${s.effort}` : ""}</span>
+            <ModelTag provider={s.provider} label={`${s.modelLabel}${s.effort ? ` ${s.effort}` : ""}`} />
             {s.branch && (
               <span className="inline-flex min-w-0 items-center gap-1">
                 <GitBranch className="size-3 shrink-0" />
