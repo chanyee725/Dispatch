@@ -17,6 +17,9 @@ const STALL_MS = 10 * 60 * 1000;
 // essentials), so a long-lived lead does not keep re-reading an ever-growing context.
 // DISPATCH_ROTATE_TURNS=0 turns it off.
 const ROTATE_TURNS = Number(process.env.DISPATCH_ROTATE_TURNS ?? 10);
+// Leads take many short turns (a report in, a few messages out), so they rotate sooner.
+const ROTATE_TURNS_LEAD = Number(process.env.DISPATCH_ROTATE_TURNS_LEAD ?? 5);
+const rotateAfter = s => (s.canSpawn ? ROTATE_TURNS_LEAD : ROTATE_TURNS);
 const RESUME_TEXT = "[Dispatch] 서버가 재시작되어 직전 턴이 중간에 끊겼다. 작업 폴더와 브랜치 상태를 확인하고 하던 일을 이어서 끝내라.";
 // Browser tools in team sessions run headless, each in its own throwaway profile, so checks never pop
 // windows on the user's screen or steer another session's tab. A session can still opt out via its own env.
@@ -247,7 +250,7 @@ export class Hub extends EventEmitter {
 
   /** Idle (between turns) and past the turn budget since its CLI session started. */
   shouldRotate(s) {
-    return ROTATE_TURNS > 0 && !!s.providerSessionId && (s.turnsSinceRotate ?? s.turns ?? 0) >= ROTATE_TURNS
+    return rotateAfter(s) > 0 && !!s.providerSessionId && (s.turnsSinceRotate ?? s.turns ?? 0) >= rotateAfter(s)
       && (s.status === "idle" || s.status === "error");
   }
 

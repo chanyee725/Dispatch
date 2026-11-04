@@ -8,7 +8,7 @@ Local web UI for running several role-based Claude Code, Codex and Gemini sessio
 - Each session works in its own git worktree (`.dispatch/wt/<role>-<n>`, branch `dispatch/<role>-<n>`), so parallel sessions never overwrite each other.
 - 관리자 sessions get a Dispatch MCP server and can create, message and stop other sessions; teammates report back to their lead automatically.
 - Live transcript with a CLI-style thinking line (`✻ Untangling… (1m 5s · ↓ 12.3k tokens)`), collapsible tool calls, and coloured `+`/`-` lines for diffs and `git --stat`.
-- Long-lived sessions stay cheap: after 10 turns a session continues in a fresh CLI session with a handoff note (its last answer and, for a lead, its teammates), so the context does not keep growing. `DISPATCH_ROTATE_TURNS=<n>` changes the count, `0` turns it off.
+- Long-lived sessions stay cheap: after 5 turns for a lead and 10 for other roles, a session continues in a fresh CLI session with a handoff note (its last answer and, for a lead, its teammates), so the context does not keep growing. `DISPATCH_ROTATE_TURNS_LEAD` / `DISPATCH_ROTATE_TURNS` change the counts, `0` turns it off.
 - Every session answers in a short, action-first style (the `i-have-adhd` rules when that Claude Code plugin is installed; `DISPATCH_REPLY_STYLE=off` turns it off).
 - Works as a skill in both Claude Code and Codex.
 
