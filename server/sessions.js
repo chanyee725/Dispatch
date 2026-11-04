@@ -549,7 +549,7 @@ export class Hub extends EventEmitter {
   reportToParent(s) {
     const r = this.live.get(s.id);
     if (!r?.lastText) return;
-    r.pendingReport = `[${s.name} 보고${s.branch ? ` · ${s.branch}` : ""}]\n${clip(r.lastText, 4000)}`;
+    r.pendingReport = `[${s.name} 보고${s.branch ? ` · ${s.branch}` : ""}]\n${clip(r.lastText, 2500)}`;
     r.lastText = null;
     this.deliverReport(s);
   }
