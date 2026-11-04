@@ -6,6 +6,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { prepareWorkdir } from "./git.js";
 import { CHILD_PROMPT, PERMS, SPAWN_PROMPT } from "./roles.js";
+import { replyStyle } from "./style.js";
 
 const MCP_SCRIPT = path.join(path.dirname(fileURLToPath(import.meta.url)), "mcp.js");
 const MAX_TRANSCRIPT = 400;
@@ -353,11 +354,14 @@ export class Hub extends EventEmitter {
   }
 
   systemPrompt(s) {
-    return [s.prompt, s.canSpawn ? SPAWN_PROMPT : CHILD_PROMPT].filter(Boolean).join("\n\n");
+    return [s.prompt, s.canSpawn ? SPAWN_PROMPT : CHILD_PROMPT, replyStyle()].filter(Boolean).join("\n\n");
   }
 
   start(s, prompt) {
     s._killed = false;
+    // Turn clock and token baseline for the web "thinking" line.
+    s.turnStartedAt = Date.now();
+    s.turnTokensBase = s.usage.input + s.usage.output + s.usage.cacheRead + s.usage.cacheWrite;
     if (s.provider === "claude") this.startClaude(s, prompt);
     else if (s.provider === "gemini") this.startGemini(s, prompt);
     else this.startCodex(s, prompt);

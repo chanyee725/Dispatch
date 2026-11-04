@@ -4,7 +4,7 @@
 
 @custom-variant dark (&:is(.dark *));
 
-/* Neutral base, follows the OS theme. Colour is reserved for information:
+/* Neutral base; theme follows the OS unless the sidebar picks light or dark. Colour is reserved for information:
    role lanes, session status and limit levels. */
 :root {
   --radius: 0.625rem;
@@ -40,36 +40,36 @@
   --role-docs: oklch(0.55 0.04 250);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: oklch(0.17 0.006 260);
-    --foreground: oklch(0.95 0.004 260);
-    --card: oklch(0.205 0.007 260);
-    --popover: oklch(0.215 0.007 260);
-    --primary: oklch(0.95 0.004 260);
-    --primary-foreground: oklch(0.2 0.01 260);
-    --secondary: oklch(0.25 0.008 260);
-    --muted: oklch(0.25 0.008 260);
-    --muted-foreground: oklch(0.68 0.012 260);
-    --accent: oklch(0.26 0.008 260);
-    --destructive: oklch(0.65 0.2 25);
-    --border: oklch(0.28 0.008 260);
-    --input: oklch(0.31 0.008 260);
-    --ring: oklch(0.68 0.12 255);
+/* Dark tokens: <html class="dark"> is set from the theme choice (system / light / dark). */
+:root.dark {
+  --background: oklch(0.17 0.006 260);
+  --foreground: oklch(0.95 0.004 260);
+  --card: oklch(0.205 0.007 260);
+  --popover: oklch(0.215 0.007 260);
+  --primary: oklch(0.95 0.004 260);
+  --primary-foreground: oklch(0.2 0.01 260);
+  --secondary: oklch(0.25 0.008 260);
+  --muted: oklch(0.25 0.008 260);
+  --muted-foreground: oklch(0.68 0.012 260);
+  --accent: oklch(0.26 0.008 260);
+  --destructive: oklch(0.65 0.2 25);
+  --border: oklch(0.28 0.008 260);
+  --input: oklch(0.31 0.008 260);
+  --ring: oklch(0.68 0.12 255);
 
-    --ok: oklch(0.72 0.15 155);
-    --warn: oklch(0.8 0.14 75);
-    --bad: oklch(0.7 0.18 25);
-    --idle: oklch(0.72 0.08 250);
+  --ok: oklch(0.72 0.15 155);
+  --warn: oklch(0.8 0.14 75);
+  --bad: oklch(0.7 0.18 25);
+  --idle: oklch(0.72 0.08 250);
 
-    --role-lead: oklch(0.7 0.16 290);
-    --role-impl: oklch(0.7 0.14 255);
-    --role-review: oklch(0.78 0.13 70);
-    --role-test: oklch(0.74 0.13 160);
-    --role-design: oklch(0.72 0.16 0);
-    --role-docs: oklch(0.7 0.03 250);
-  }
+  --role-lead: oklch(0.7 0.16 290);
+  --role-impl: oklch(0.7 0.14 255);
+  --role-review: oklch(0.78 0.13 70);
+  --role-test: oklch(0.74 0.13 160);
+  --role-design: oklch(0.72 0.16 0);
+  --role-docs: oklch(0.7 0.03 250);
 }
+
 
 @theme inline {
   --font-sans: "Pretendard Variable", Pretendard, -apple-system, BlinkMacSystemFont, system-ui, sans-serif;

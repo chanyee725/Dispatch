@@ -1,9 +1,10 @@
 import { useMemo, useState } from "react";
-import { CornerDownRight, GitBranch, Plus, ShieldAlert, TriangleAlert } from "lucide-react";
+import { GitBranch, Plus, ShieldAlert, TriangleAlert } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Meter, ModelTag, Stat, StatusBadge } from "@/components/bits";
-import { ago, fmtK, fmtUsd, isOpen, pct, roleColor, totalTok } from "@/lib/format";
+import { Meter, ModelTag, Stat, StatusBadge, ThinkingLine } from "@/components/bits";
+import { turn } from "@/lib/turn";
+import { fmtK, fmtUsd, isOpen, pct, roleColor, totalTok } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import { useApp } from "@/store";
 import type { Session, Status } from "@/types";
@@ -22,60 +23,50 @@ const sumCost = (ss: Session[]) => (ss.some(s => s.cost != null) ? ss.reduce((a,
 function SessionCard({ s, parent, onOpen }: { s: Session; parent?: Session; onOpen: () => void }) {
   const ctx = s.ctxWindow ? s.ctx / s.ctxWindow : 0;
   const waiting = s.status === "waiting";
+  const live = s.status === "running" || s.status === "starting";
   return (
     <button
       onClick={onOpen}
+      title={parent ? `${parent.name}이(가) 만든 세션` : undefined}
       className={cn(
-        "group flex min-w-0 flex-col gap-3 rounded-xl border bg-card p-4 text-left transition-colors hover:border-foreground/20 focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none",
+        "group flex min-w-0 flex-col gap-2 rounded-lg border bg-card px-3 py-2.5 text-left transition-colors hover:border-foreground/20 focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none",
         (waiting || s.stall) && "border-warn/60 bg-warn/5",
       )}
     >
-      <div className="flex items-start justify-between gap-3">
-        <div className="min-w-0">
-          <div className="truncate font-semibold">{s.name}</div>
-          <div className="mt-0.5 flex min-w-0 items-center gap-3 text-xs text-muted-foreground">
-            <ModelTag provider={s.provider} label={`${s.modelLabel}${s.effort ? ` ${s.effort}` : ""}`} />
-            {s.branch && (
-              <span className="inline-flex min-w-0 items-center gap-1">
-                <GitBranch className="size-3 shrink-0" />
-                <span className="truncate">{s.branch}</span>
-              </span>
-            )}
-          </div>
-        </div>
-        <StatusBadge status={s.status} />
+      <div className="flex min-w-0 items-center gap-2">
+        <span className="shrink-0 text-sm font-semibold">{s.name}</span>
+        <ModelTag provider={s.provider} label={`${s.modelLabel}${s.effort ? ` ${s.effort}` : ""}`} className="min-w-0" />
+        <StatusBadge status={s.status} className="ml-auto" />
       </div>
 
-      {parent && (
-        <div className="-mt-1 flex items-center gap-1 text-xs text-muted-foreground">
-          <CornerDownRight className="size-3" />
-          {parent.name}이(가) 만든 세션
-        </div>
-      )}
-
       {s.stall && (
-        <div className="-mt-1 flex items-start gap-1.5 rounded-lg border border-warn/50 bg-warn/5 px-2.5 py-1.5 text-xs text-foreground">
+        <div className="flex items-start gap-1.5 text-xs text-foreground">
           <TriangleAlert className="mt-px size-3.5 shrink-0 text-warn" />
-          <span>{s.stall.reason}</span>
+          <span className="line-clamp-1">{s.stall.reason}</span>
         </div>
       )}
 
-      <p className={cn("line-clamp-2 min-h-10 text-[13px] leading-5", s.error ? "text-bad" : "text-muted-foreground")}>
-        {waiting && <ShieldAlert className="mr-1 inline size-3.5 -translate-y-px text-warn" />}
-        {s.error || s.last || "첫 응답을 기다리는 중이에요"}
-      </p>
+      {live ? (
+        <ThinkingLine status={s.status} turnStartedAt={turn(s).at} tokens={turn(s).tokens} />
+      ) : (
+        <p className={cn("line-clamp-1 text-[13px] leading-5", s.error ? "text-bad" : "text-muted-foreground")}>
+          {waiting && <ShieldAlert className="mr-1 inline size-3.5 -translate-y-px text-warn" />}
+          {s.error || s.last || "첫 응답을 기다리는 중이에요"}
+        </p>
+      )}
 
-      <div className="mt-auto flex flex-col gap-2">
-        <div className="num flex items-baseline gap-3 text-xs text-muted-foreground">
-          <span className="text-sm font-semibold text-foreground">{fmtUsd(s.cost)}</span>
-          <span>{fmtK(totalTok(s.usage))} 토큰</span>
-          <span>{s.turns}턴</span>
-          <span className="ml-auto">{ago(s.startedAt)}</span>
-        </div>
-        <div className="flex items-center gap-2">
-          <Meter value={ctx} className="h-1" />
-          <span className="num shrink-0 text-xs whitespace-nowrap text-muted-foreground">컨텍스트 {pct(ctx)}</span>
-        </div>
+      <div className="num flex min-w-0 items-center gap-2 text-[11px] text-muted-foreground">
+        {s.branch && (
+          <span className="inline-flex min-w-0 items-center gap-1">
+            <GitBranch className="size-3 shrink-0" />
+            <span className="truncate">{s.branch}</span>
+          </span>
+        )}
+        <span className="ml-auto shrink-0">{fmtK(totalTok(s.usage))}</span>
+        <span className="flex shrink-0 items-center gap-1" title={`컨텍스트 ${pct(ctx)}`}>
+          <Meter value={ctx} className="h-1 w-10" />
+          {pct(ctx)}
+        </span>
       </div>
     </button>
   );
@@ -148,7 +139,7 @@ export function SessionsPage({ onOpen, onCreate }: { onOpen: (id: string) => voi
                     </span>
                     {cost != null && <span className="num text-sm text-muted-foreground">{fmtUsd(cost)}</span>}
                   </header>
-                  <div className="grid grid-cols-[repeat(auto-fill,minmax(290px,1fr))] gap-3">
+                  <div className="grid grid-cols-[repeat(auto-fill,minmax(260px,1fr))] gap-2.5">
                     {ss.map(s => <SessionCard key={s.id} s={s} parent={s.parent ? byId.get(s.parent) : undefined} onOpen={() => onOpen(s.id)} />)}
                   </div>
                 </section>

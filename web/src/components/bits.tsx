@@ -1,3 +1,4 @@
+import { useEffect, useState } from "react";
 import { cn } from "@/lib/utils";
 import { LEVEL_COLOR, STATUS, level } from "@/lib/format";
 import type { Status } from "@/types";
@@ -24,6 +25,47 @@ export function ModelTag({ provider, label, className }: { provider: string; lab
       <span className="shrink-0 font-semibold">{t?.label ?? provider}</span>
       <span className="truncate opacity-85">{label}</span>
     </span>
+  );
+}
+
+// "Thinking" line like the CLIs show while a model works: a spinning glyph, a rotating verb,
+// time since the turn started and the tokens used in it. Only while running/starting.
+const SPIN = ["·", "✢", "✳", "✶", "✻", "✽", "✻", "✶", "✳", "✢"];
+const VERBS = [
+  "Unraveling", "Pondering", "Synthesizing", "Untangling", "Percolating", "Cogitating",
+  "Brewing", "Mulling", "Noodling", "Deliberating", "Tinkering", "Weaving",
+];
+
+const fmtElapsed = (ms: number) => {
+  const t = Math.max(0, Math.floor(ms / 1000));
+  const h = Math.floor(t / 3600), m = Math.floor((t % 3600) / 60), sec = t % 60;
+  return h ? `${h}h ${m}m` : m ? `${m}m ${sec}s` : `${sec}s`;
+};
+const fmtTok = (n: number) => (n >= 1e6 ? `${(n / 1e6).toFixed(1)}M` : n >= 1e3 ? `${(n / 1e3).toFixed(1)}k` : String(n));
+
+export function ThinkingLine({
+  status, turnStartedAt, tokens, className,
+}: { status: Status; turnStartedAt?: number; tokens?: number; className?: string }) {
+  const live = status === "running" || status === "starting";
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    if (!live) return;
+    const t = setInterval(() => setNow(Date.now()), 120);
+    return () => clearInterval(t);
+  }, [live]);
+  if (!live) return null;
+  const start = turnStartedAt ?? now;
+  const tick = Math.floor(now / 120);
+  // A new verb every 4 s, picked from the turn start so it does not jump on re-render.
+  const verb = VERBS[(Math.floor((now - start) / 4000) + Math.floor(start / 1000)) % VERBS.length];
+  return (
+    <div role="status" aria-live="off" className={cn("flex min-w-0 items-center gap-2 text-[13px]", className)}>
+      <span aria-hidden className="w-3 shrink-0 text-center text-[#d97757] motion-reduce:hidden">{SPIN[tick % SPIN.length]}</span>
+      <span className="shrink-0 font-medium text-[#d97757]">{verb}…</span>
+      <span className="num truncate text-muted-foreground">
+        ({fmtElapsed(now - start)}{tokens != null && tokens > 0 ? ` · ↓ ${fmtTok(tokens)} tokens` : ""})
+      </span>
+    </div>
   );
 }
 

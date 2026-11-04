@@ -5,7 +5,8 @@ import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
-import { ModelTag, StatusBadge } from "@/components/bits";
+import { ModelTag, StatusBadge, ThinkingLine } from "@/components/bits";
+import { turn } from "@/lib/turn";
 import { fmtK, fmtUsd, pct, roleColor } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import { api, loadTranscript, useApp } from "@/store";
@@ -94,6 +95,7 @@ function Chat({ s }: { s: Session }) {
       )}
       {entries?.map((m, i) => <EntryView key={i} m={m} agent={agent} />)}
       {s.pending.map(p => <PermissionCard key={p.requestId} s={s} p={p} />)}
+      <ThinkingLine status={s.status} turnStartedAt={turn(s).at} tokens={turn(s).tokens} />
     </div>
   );
 }

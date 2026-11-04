@@ -1,8 +1,9 @@
-import { BarChart3, LayoutGrid, PlugZap } from "lucide-react";
+import { BarChart3, LayoutGrid, Monitor, Moon, PlugZap, Sun } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { isOpen } from "@/lib/format";
 import { useApp } from "@/store";
+import { useTheme, type ThemeChoice } from "@/lib/theme";
 
 export type Page = "sessions" | "usage";
 
@@ -74,11 +75,44 @@ export function Sidebar({ page, onPage, onConnect }: { page: Page; onPage: (p: P
           <PlugZap />
           <span className="max-sm:hidden">{allConnected ? "연결 관리" : "연결하기"}</span>
         </Button>
-        <div className="flex items-center gap-1.5 px-2 text-xs text-muted-foreground max-md:hidden">
-          <span className="size-1.5 rounded-full" style={{ background: online ? "var(--ok)" : "var(--bad)" }} />
-          {online ? "서버 연결됨" : "서버 연결 끊김"}
-        </div>
+        {!online && (
+          <div className="flex items-center gap-1.5 px-2 text-xs text-bad max-md:hidden">
+            <span className="size-1.5 rounded-full bg-bad" />
+            서버 연결 끊김
+          </div>
+        )}
+        <ThemeSwitch />
       </div>
     </aside>
+  );
+}
+
+const THEMES: { id: ThemeChoice; label: string; icon: typeof Sun }[] = [
+  { id: "system", label: "시스템", icon: Monitor },
+  { id: "light", label: "라이트", icon: Sun },
+  { id: "dark", label: "다크", icon: Moon },
+];
+
+function ThemeSwitch() {
+  const [theme, setTheme] = useTheme();
+  return (
+    <div role="radiogroup" aria-label="테마" className="flex gap-0.5 rounded-lg bg-muted p-0.5 max-md:hidden">
+      {THEMES.map(({ id, label, icon: Icon }) => (
+        <button
+          key={id}
+          role="radio"
+          aria-checked={theme === id}
+          aria-label={label}
+          title={label}
+          onClick={() => setTheme(id)}
+          className={cn(
+            "flex h-7 flex-1 items-center justify-center rounded-md transition-colors focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none",
+            theme === id ? "bg-card text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground",
+          )}
+        >
+          <Icon className="size-3.5" />
+        </button>
+      ))}
+    </div>
   );
 }
