@@ -197,6 +197,18 @@ export class Hub extends EventEmitter {
       .map(t => ({ id: t.id, title: t.title, stage: t.stage }));
   }
 
+  /**
+   * Rides on a report the lead gets anyway (no extra turn): tasks past their eta, so the lead
+   * re-estimates and the board shows time left again instead of a bare "지연".
+   */
+  overdueNote(lead) {
+    const now = Date.now();
+    const late = this.tasks.filter(t => t.lead === lead && t.stage !== "done" && t.etaAt && t.etaAt < now);
+    if (!late.length) return "";
+    const lines = late.map(t => `- ${t.title} (id ${t.id}): ${Math.round((now - t.etaAt) / 60000)}분 지연`);
+    return `\n\n[작업 보드] 예상 시간이 지난 작업이 있다. 이 보고를 반영해 set_task(id)로 eta_minutes를 다시 잡고, 끝났거나 그만둔 일은 done으로 닫는다:\n${lines.join("\n")}`;
+  }
+
   /** A random name no listed session uses yet; once all are taken, the name gets the session number. */
   pickName(n) {
     const taken = new Set(Object.values(this.store.data.sessions || {}).map(s => s.name));
@@ -581,7 +593,7 @@ export class Hub extends EventEmitter {
     const r = this.live.get(s.id), parent = s.parent && this.get(s.parent);
     if (!r?.pendingReport || !parent || parent.status === "done") return;
     if (this.paused) return; // kept; delivered after the reset
-    try { this.send(parent.id, r.pendingReport); r.pendingReport = null; } catch { /* retried by checkTeams */ }
+    try { this.send(parent.id, r.pendingReport + this.overdueNote(parent.id)); r.pendingReport = null; } catch { /* retried by checkTeams */ }
   }
 
   stopAll() {
