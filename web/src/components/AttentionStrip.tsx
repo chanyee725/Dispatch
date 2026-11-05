@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useId, useMemo, useState } from "react";
 import { ChevronRight, CircleCheck, Clock, Gauge, GitMerge, type LucideIcon } from "lucide-react";
 import { Panel, StateMark } from "@/components/monitor";
 import { attentionItems, elapsed, type AttentionItem, type AttentionKind } from "@/lib/attention";
@@ -39,7 +39,7 @@ function howLong(item: AttentionItem, now: number) {
   if (item.kind === "limit") return item.resetAt ? `${until(item.resetAt)} 뒤 초기화` : null;
   const e = elapsed(item.since, now);
   if (e == null) return null;
-  if (item.kind === "late") return e ? `${e} 지연` : "방금 지연";
+  if (item.kind === "late") return e ? `${e} 지연` : "막 지연됐어요";
   return e ? `${e}째` : "방금";
 }
 
@@ -56,7 +56,7 @@ function Row({ item, now, onClick }: { item: AttentionItem; now: number; onClick
         className={cn(
           "group/row grid w-full grid-cols-[6.5rem_minmax(0,10rem)_minmax(0,1fr)_7rem_5.5rem] items-center gap-x-3 gap-y-0.5 px-3 py-2 text-left text-[13px]",
           "max-sm:grid-cols-[6.5rem_minmax(0,1fr)_auto] max-sm:[&>[data-reason]]:col-span-3 max-sm:[&>[data-go]]:hidden",
-          onClick && "cursor-pointer transition-colors hover:bg-accent focus-visible:bg-accent focus-visible:outline-none",
+          onClick && "cursor-pointer transition-colors hover:bg-accent focus-visible:bg-accent focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset focus-visible:outline-none",
         )}
       >
         <span className="flex min-w-0"><Mark item={item} /></span>
@@ -83,24 +83,34 @@ export function AttentionStrip({ onOpen, onUsage }: { onOpen: (id: string) => vo
   const sessions = useApp(s => s.sessions);
   const tasks = useApp(s => s.tasks ?? []);
   const limits = useApp(s => s.limits);
+  const guard = useApp(s => s.settings.guard);
   const now = useNow();
   const [all, setAll] = useState(false);
-  const items = useMemo(() => attentionItems({ sessions, tasks, limits, now, stateOf }), [sessions, tasks, limits, now]);
-
-  if (!items.length) {
-    return (
-      <div role="status" className="flex h-8 items-center gap-2 rounded-[var(--radius)] border bg-card px-3 text-xs text-muted-foreground">
-        <CircleCheck aria-hidden className="size-3.5 shrink-0" style={{ color: "var(--ok)" }} />
-        지금 볼 것 없어요
-      </div>
-    );
-  }
-
-  const bad = items.filter(i => i.level === "bad").length;
-  const shown = all ? items : items.slice(0, SHOWN);
+  const listId = useId();
   const go = (i: AttentionItem) =>
     i.kind === "limit" ? onUsage : i.sessionId && sessions.some(s => s.id === i.sessionId) ? () => onOpen(i.sessionId!) : undefined;
+  const items = useMemo(() => attentionItems({ sessions, tasks, limits, guard, now, stateOf }), [sessions, tasks, limits, guard, now]);
 
+  // One live region that stays mounted, so screen readers hear rows come and go (and the strip empty out).
+  // Additions only: the "N분째" clock ticking every 15 s is a text change and stays quiet.
+  return <div aria-live="polite" aria-relevant="additions">{items.length ? <Rows items={items} now={now} go={go} listId={listId} all={all} setAll={setAll} /> : <Empty />}</div>;
+}
+
+function Empty() {
+  return (
+    <div className="flex h-8 items-center gap-2 rounded-[var(--radius)] border bg-card px-3 text-xs text-muted-foreground">
+      <CircleCheck aria-hidden className="size-3.5 shrink-0" style={{ color: "var(--ok)" }} />
+      지금 볼 것 없어요
+    </div>
+  );
+}
+
+function Rows({ items, now, go, listId, all, setAll }: {
+  items: AttentionItem[]; now: number; go: (i: AttentionItem) => (() => void) | undefined;
+  listId: string; all: boolean; setAll: (f: (v: boolean) => boolean) => void;
+}) {
+  const bad = items.filter(i => i.level === "bad").length;
+  const shown = all ? items : items.slice(0, SHOWN);
   return (
     <Panel
       title="확인 필요"
@@ -112,14 +122,16 @@ export function AttentionStrip({ onOpen, onUsage }: { onOpen: (id: string) => vo
       }
       bodyClassName="p-0"
     >
-      <ul className="divide-y">
+      <ul id={listId} className="divide-y">
         {shown.map(i => <Row key={i.key} item={i} now={now} onClick={go(i)} />)}
       </ul>
       {items.length > SHOWN && (
         <button
           type="button"
           onClick={() => setAll(v => !v)}
-          className="num w-full cursor-pointer border-t px-3 py-1.5 text-left text-xs text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+          aria-expanded={all}
+          aria-controls={listId}
+          className="num w-full cursor-pointer border-t px-3 py-1.5 text-left text-xs text-muted-foreground transition-colors hover:bg-accent hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset focus-visible:outline-none"
         >
           {all ? "접기" : `${items.length - SHOWN}건 더 보기`}
         </button>

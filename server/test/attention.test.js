@@ -57,6 +57,44 @@ test("limits from 75 %, 90 % is bad", () => {
   assert.equal(run({ limits: { five: 0.74, seven: null, fiveReset: null, sevenReset: null, updatedAt: null } }).length, 0);
 });
 
+const lim = (o) => ({ five: null, seven: null, fiveReset: null, sevenReset: null, updatedAt: NOW, ...o });
+
+test("limit urgency follows the guard settings", () => {
+  const guard = { five: 0.8, seven: 0.95 };
+  const items = run({ guard, limits: lim({ five: 0.8, seven: 0.9 }) });
+  assert.deepEqual(items.map(i => [i.who, i.level]), [["Claude 5시간 한도", "bad"], ["Claude 주간 한도", "warn"]]);
+  // A guard below 75 % pulls the row in at the guard itself.
+  assert.deepEqual(run({ guard: { five: 0.6, seven: 0.85 }, limits: lim({ five: 0.62 }) }).map(i => i.level), ["bad"]);
+  // Default guard (server defaults): weekly is urgent from 85 %.
+  assert.equal(run({ limits: lim({ seven: 0.86 }) })[0].level, "bad");
+});
+
+test("one rounded percent decides colour and text", () => {
+  const [i] = run({ limits: lim({ five: 0.895 }) });
+  assert.equal(i.reason, "90% 썼어요");
+  assert.equal(i.level, "bad");
+  assert.equal(run({ limits: lim({ five: 0.745 }) }).length, 1);
+  assert.equal(run({ limits: lim({ five: 0.744 }) }).length, 0);
+});
+
+test("a limit window past its reset drops out", () => {
+  assert.equal(run({ limits: lim({ five: 0.95, fiveReset: NOW }) }).length, 0);
+  assert.equal(run({ limits: lim({ five: 0.95, fiveReset: NOW - MIN }) }).length, 0);
+  assert.equal(run({ limits: lim({ five: 0.95, fiveReset: NOW + MIN }) }).length, 1);
+});
+
+test("the server's task.stuck decides lateness when present", () => {
+  const t = (o) => ({ id: "t", lead: null, title: "로그인", stage: "impl", owner: null, ...o });
+  // Past the estimate but under 1.5×: the server says not stuck yet.
+  assert.equal(run({ tasks: [t({ etaAt: NOW - MIN, stuck: null })] }).length, 0);
+  const [i] = run({ tasks: [t({ etaAt: NOW - 30 * MIN, stuck: { reason: "over-eta", since: NOW - 5 * MIN } })] });
+  assert.equal(i.kind, "late");
+  assert.equal(i.since, NOW - 30 * MIN);
+  // Older server without the field: etaAt < now.
+  assert.equal(run({ tasks: [t({ etaAt: NOW - MIN })] }).length, 1);
+  assert.equal(run({ tasks: [t({ etaAt: null, stuck: true })] })[0].since, null);
+});
+
 test("elapsed", () => {
   assert.equal(elapsed(null, NOW), null);
   assert.equal(elapsed(NOW - 30_000, NOW), "");

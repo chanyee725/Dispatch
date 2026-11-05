@@ -7,7 +7,12 @@ export interface MergeCheck { ok: boolean | null; commit: string | null; base: s
 export interface AttentionTask {
   id: string; lead: string | null; title: string; stage: string; owner: string | null;
   etaAt: number | null; mergeCheck?: MergeCheck | null;
+  /** Server's over-estimate flag (1.5× the estimate). When the field is present it decides lateness, not etaAt. */
+  stuck?: { reason?: string | null; since?: number | null } | boolean | null;
 }
+
+/** Usage-limit guard thresholds (settings.guard): at or past them a limit row is urgent. */
+export interface LimitGuard { five: number; seven: number }
 
 export type AttentionKind = "session" | "late" | "limit" | "merge";
 export interface AttentionItem {
@@ -29,6 +34,9 @@ export interface AttentionItem {
 }
 
 export const LIMIT_WARN = 0.75;
+/** Used when no guard settings are loaded; the server's defaults. */
+export const DEFAULT_GUARD: LimitGuard = { five: 0.9, seven: 0.85 };
+const pct = (x: number) => Math.round(x * 100);
 const ACTIVE: SessionState[] = ["failed", "waiting", "stuck"];
 
 /** Fallback for servers that predate `attention`: the same rules as server/state.js attentionOf. */
@@ -52,8 +60,8 @@ function ownerSession(owner: string | null, sessions: Session[]) {
  * `stateOf` is passed in so this file stays free of app imports.
  */
 export function attentionItems(
-  { sessions, tasks, limits, now, stateOf }:
-  { sessions: Session[]; tasks: AttentionTask[]; limits: Limits | null; now: number; stateOf: (s: Session) => SessionState },
+  { sessions, tasks, limits, guard, now, stateOf }:
+  { sessions: Session[]; tasks: AttentionTask[]; limits: Limits | null; guard?: LimitGuard | null; now: number; stateOf: (s: Session) => SessionState },
 ): AttentionItem[] {
   const out: AttentionItem[] = [];
 
@@ -74,21 +82,28 @@ export function attentionItems(
     if (t.mergeCheck?.ok === false) {
       out.push({ key: `m:${t.id}`, kind: "merge", level: "bad", who: t.title, reason: t.mergeCheck.reason || "병합을 확인하지 못했어요", since: t.mergeCheck.at, sessionId: t.lead ?? target });
     }
-    if (t.etaAt != null && t.etaAt < now) {
-      out.push({ key: `t:${t.id}`, kind: "late", level: "warn", who: t.title, reason: t.owner ? `예상 시간을 넘겼어요 · ${t.owner}` : "예상 시간을 넘겼어요", since: t.etaAt, sessionId: target });
+    const late = t.stuck !== undefined ? !!t.stuck : t.etaAt != null && t.etaAt < now;
+    if (late) {
+      const since = t.etaAt ?? (typeof t.stuck === "object" ? t.stuck?.since ?? null : null);
+      out.push({ key: `t:${t.id}`, kind: "late", level: "warn", who: t.title, reason: t.owner ? `예상 시간을 넘겼어요 · ${t.owner}` : "예상 시간을 넘겼어요", since, sessionId: target });
     }
   }
 
   if (limits) {
     const windows = [
-      { id: "five", label: "Claude 5시간 한도", value: limits.five, reset: limits.fiveReset },
-      { id: "seven", label: "Claude 주간 한도", value: limits.seven, reset: limits.sevenReset },
+      { id: "five" as const, label: "Claude 5시간 한도", value: limits.five, reset: limits.fiveReset },
+      { id: "seven" as const, label: "Claude 주간 한도", value: limits.seven, reset: limits.sevenReset },
     ];
     for (const w of windows) {
-      if (w.value == null || w.value < LIMIT_WARN) continue;
+      // A window past its reset time is stale until the next poll; it has already started over.
+      if (w.value == null || (w.reset && w.reset <= now)) continue;
+      // One rounded number decides the colour and is what the row shows, so "90%" is never amber.
+      const used = pct(w.value);
+      const urgent = pct((guard ?? DEFAULT_GUARD)[w.id]);
+      if (used < Math.min(pct(LIMIT_WARN), urgent)) continue;
       out.push({
-        key: `l:${w.id}`, kind: "limit", level: w.value >= 0.9 ? "bad" : "warn", who: w.label,
-        reason: `${Math.round(w.value * 100)}% 썼어요`, since: null, resetAt: w.reset,
+        key: `l:${w.id}`, kind: "limit", level: used >= urgent ? "bad" : "warn", who: w.label,
+        reason: `${used}% 썼어요`, since: null, resetAt: w.reset,
       });
     }
   }
