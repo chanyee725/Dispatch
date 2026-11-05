@@ -22,6 +22,7 @@ A session object carries `id`, `name`, `role`, `provider`, `model`, `effort`, `p
 Monitoring fields, decided on the server so every view agrees:
 
 - `state` — what the session needs from a person: `working` (a turn is running) · `waiting` (a permission prompt is open, or a session without a lead ended its turn asking the user something) · `stuck` (flagged by the per-session stall check) · `failed` (last turn ended in an error) · `resting` (turn finished, nothing asked) · `done`. A teammate's question goes to its lead, so it stays `resting`.
+- `asksUser` — true when the last turn ended by asking its reader something (checked on the final answer's last lines). With no `parent` this is what makes `state` `waiting`; the web UI then pins the question as a '답할 것' card in the session sheet, read from the transcript in the browser — the question text itself is not stored.
 - `stateSince` — epoch ms when the session entered its current `state`.
 - `attention` — `{ level: "bad" | "warn", reason, since }` for `failed`, `waiting` and `stuck`; `null` otherwise.
 
