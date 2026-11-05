@@ -99,3 +99,29 @@ test("Hub: a fresh server reads the shared value, and another server's change re
   assert.equal(hub.guardCheck(1), null);
   assert.equal((await hub.providerLimits()).claude.windows[0].used, 0.2);
 });
+
+test("SharedLimits: concurrent writes from two servers always leave the newest value", async t => {
+  const file = await tmpFile(t);
+  for (let i = 0; i < 200; i++) {
+    await rm(file, { force: true });
+    const a = new SharedLimits(file), b = new SharedLimits(file);
+    await Promise.all([a.setClaude(claude(0.2, 2000 + i * 10)), b.setClaude(claude(0.9, 1000 + i * 10))]);
+    assert.equal(JSON.parse(await readFile(file, "utf8")).claude.updatedAt, 2000 + i * 10, `run ${i}`);
+  }
+  assert.deepEqual((await readdir(path.dirname(file))).filter(f => f !== "limits.json"), []);
+});
+
+test("SharedLimits: a stale lock is taken over, and refresh repairs a file that lost a race", async t => {
+  const file = await tmpFile(t);
+  const a = new SharedLimits(file);
+  await writeFile(file + ".lock", "");
+  const { utimes } = await import("node:fs/promises");
+  const old = new Date(Date.now() - 60_000);
+  await utimes(file + ".lock", old, old);
+  await a.setClaude(claude(0.4, 3000));
+  assert.equal(JSON.parse(await readFile(file, "utf8")).claude.five, 0.4);
+
+  await writeFile(file, JSON.stringify({ claude: claude(0.9, 1000), gemini: null })); // older value won on disk
+  assert.equal(await a.refresh(), false);
+  assert.equal(JSON.parse(await readFile(file, "utf8")).claude.updatedAt, 3000);
+});

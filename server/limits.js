@@ -104,6 +104,8 @@ export function mergeLimits(a, b) {
  * server) picks up another server's change and emits "change".
  */
 export class SharedLimits extends EventEmitter {
+  static WAIT_MS = 2000;
+  static STALE_MS = 10_000;
   constructor(file = LIMITS_FILE) {
     super();
     this.file = file;
@@ -141,22 +143,52 @@ export class SharedLimits extends EventEmitter {
     const changed = JSON.stringify(next) !== JSON.stringify(this.data);
     this.data = next;
     if (changed) this.emit("change", this.data);
+    // Ours is newer than the disk (a write that lost a race): put it back so other servers see it.
+    if (JSON.stringify(next) !== JSON.stringify(data)) await this.write({});
     return changed;
+  }
+
+  /**
+   * Holds ~/.dispatch/limits.json.lock (O_EXCL create) around read → merge → rename, so two servers
+   * writing at once cannot replace a newer value with an older one. A lock older than STALE_MS is
+   * left over from a crashed server and is taken over; if the lock cannot be had within WAIT_MS the
+   * write goes ahead anyway and refresh() repairs the file on its next tick.
+   */
+  async lock() {
+    const lock = this.file + ".lock";
+    const until = Date.now() + SharedLimits.WAIT_MS;
+    await mkdir(path.dirname(this.file), { recursive: true });
+    for (;;) {
+      try {
+        await (await open(lock, "wx")).close();
+        return () => rm(lock, { force: true });
+      } catch (e) {
+        if (e.code !== "EEXIST") throw e;
+        const st = await stat(lock).catch(() => null);
+        if (st && Date.now() - st.mtimeMs > SharedLimits.STALE_MS) { await rm(lock, { force: true }); continue; }
+        if (Date.now() > until) return async () => {};
+        await new Promise(r => setTimeout(r, 5 + Math.random() * 10));
+      }
+    }
   }
 
   /** Records new values (each section only if newer) and writes the merged result. */
   async write(patch) {
     this.data = mergeLimits(this.data, patch);
-    const { data } = await this.read();
-    this.data = mergeLimits(this.data, data);
-    await mkdir(path.dirname(this.file), { recursive: true });
-    const tmp = `${this.file}.${process.pid}.${randomBytes(4).toString("hex")}.tmp`;
+    const unlock = await this.lock();
     try {
-      await writeFile(tmp, JSON.stringify(this.data, null, 2));
-      await rename(tmp, this.file);
-    } catch (e) {
-      await rm(tmp, { force: true });
-      throw e;
+      const { data } = await this.read();
+      this.data = mergeLimits(this.data, data);
+      const tmp = `${this.file}.${process.pid}.${randomBytes(4).toString("hex")}.tmp`;
+      try {
+        await writeFile(tmp, JSON.stringify(this.data, null, 2));
+        await rename(tmp, this.file);
+      } catch (e) {
+        await rm(tmp, { force: true });
+        throw e;
+      }
+    } finally {
+      await unlock();
     }
     return this.data;
   }
