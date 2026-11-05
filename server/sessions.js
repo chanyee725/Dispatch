@@ -127,7 +127,11 @@ export class Hub extends EventEmitter {
 
   touch(s, patch = {}) {
     // A turn that ends by asking its reader something leaves the session waiting on a person, not resting.
-    if (patch.status && !("asksUser" in patch)) patch.asksUser = patch.status === "idle" && asksUser(this.live.get(s.id)?.lastText);
+    // Only on a real change of status: Codex/Gemini touch idle again when the process exits, after
+    // reportToParent() has cleared lastText, and that must not wipe the question.
+    if (patch.status && patch.status !== s.status && !("asksUser" in patch)) {
+      patch.asksUser = patch.status === "idle" && asksUser(this.live.get(s.id)?.lastText);
+    }
     Object.assign(s, patch, { updatedAt: Date.now() });
     // A removed session's process exits a moment after remove(); its late "done" must not reach the
     // UI, which would add the session back until the page is reloaded.
