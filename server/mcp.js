@@ -158,13 +158,25 @@ async function handle(msg) {
         const args = params.arguments || {};
         // A misnamed argument (e.g. `message` for `text`) used to reach the server as "" and report ok.
         const props = tool.inputSchema.properties || {};
-        const missing = (tool.inputSchema.required || []).filter(k => args[k] == null || String(args[k]).trim() === "");
         const unknown = Object.keys(args).filter(k => !(k in props));
+        const itemProps = Object.entries(props).filter(([, p]) => p.type === "array" && p.items?.properties)
+          .map(([k, p]) => `${k}[]: ${Object.keys(p.items.properties).join(", ")}`);
+        const empty = v => v == null || String(v).trim() === "";
+        const missing = (tool.inputSchema.required || []).filter(k => empty(args[k]));
+        // Array items too: create_sessions with `text`/`instruction` instead of `task` started blank sessions.
+        for (const [k, p] of Object.entries(props)) {
+          if (p.type !== "array" || !Array.isArray(args[k]) || !p.items?.required) continue;
+          args[k].forEach((it, i) => {
+            for (const r of p.items.required) if (empty(it?.[r])) missing.push(`${k}[${i}].${r}`);
+            const extra = Object.keys(it || {}).filter(x => !(x in (p.items.properties || {})));
+            if (extra.length && missing.some(m => m.startsWith(`${k}[${i}].`))) unknown.push(...extra.map(x => `${k}[${i}].${x}`));
+          });
+        }
         if (missing.length) { // extra harmless fields alone pass; they are only named to explain the miss
           throw new Error([
             missing.length && `필수 인자 ${missing.join(", ")}이(가) 비어 있어요`,
             unknown.length && `모르는 인자 ${unknown.join(", ")}`,
-          ].filter(Boolean).join(". ") + `. 받는 인자: ${Object.keys(props).join(", ")}. 아무것도 보내지 않았으니 고쳐서 다시 호출하세요.`);
+          ].filter(Boolean).join(". ") + `. 받는 인자: ${[Object.keys(props).join(", "), ...itemProps].join(" / ")}. 아무것도 보내지 않았으니 고쳐서 다시 호출하세요.`);
         }
         const out = await tool.run(args);
         return reply(id, { content: [{ type: "text", text: JSON.stringify(out, null, 2) }] });

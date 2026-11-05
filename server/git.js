@@ -2,6 +2,7 @@ import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import { appendFile, mkdir, readFile } from "node:fs/promises";
 import path from "node:path";
+import { existsSync } from "node:fs";
 
 const run = promisify(execFile);
 const git = (cwd, ...args) => run("git", ["-C", cwd, ...args], { maxBuffer: 32 << 20 });
@@ -46,7 +47,23 @@ export async function prepareWorkdir(root, slug, useWorktree) {
     return { cwd: root, branch: await currentBranch(root), worktree: false,
       warning: `worktree 생성 실패: ${String(e.stderr || e.message).trim().slice(0, 200)}` };
   }
-  return { cwd: dir, branch, worktree: true };
+  const warning = await shareDeps(root, dir);
+  return { cwd: dir, branch, worktree: true, ...(warning && { warning }) };
+}
+
+/**
+ * A fresh worktree has no node_modules, and sessions burned 10+ minutes on it: a symlink breaks
+ * bundlers that refuse files outside the project root (Next/Turbopack font imports), so e2e servers
+ * timed out. Hard links give real files inside the worktree at no disk cost (~0.4 s for 46k files);
+ * macOS clones with APFS copy-on-write. Other platforms keep the old behaviour.
+ */
+async function shareDeps(root, dir) {
+  const src = path.join(root, "node_modules"), dst = path.join(dir, "node_modules");
+  if (!existsSync(src) || existsSync(dst)) return null;
+  const args = process.platform === "linux" ? ["-al", src, dst] : process.platform === "darwin" ? ["-Rc", src, dst] : null;
+  if (!args) return null;
+  try { await run("cp", args); return null; }
+  catch (e) { return `node_modules를 작업 폴더에 연결하지 못했어요: ${String(e.stderr || e.message).trim().slice(0, 160)}`; }
 }
 
 const NOISE = ["node_modules", ".next", ".next-prod", "dist", ".playwright-mcp"];
