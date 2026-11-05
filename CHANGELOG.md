@@ -2,6 +2,12 @@
 
 Every release is tagged `vX.Y.Z` and published on [GitHub Releases](https://github.com/chanyee725/Dispatch/releases). The plugin version in `.claude-plugin/plugin.json` matches the tag.
 
+## 0.10.1 — 2026-11-05
+
+### Fixed
+
+- 확인 필요 strip: a task whose board stage disagrees with its owner (`stage-mismatch`) was hidden whenever the target session had any row — waiting, silent, or the lead it falls back to when no owner session matches (#18). It now folds only into the found owner's repeat-fail row and shows otherwise.
+
 ## 0.10.0 — 2026-11-05
 
 ### Added
