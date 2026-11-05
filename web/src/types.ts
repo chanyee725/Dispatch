@@ -41,6 +41,8 @@ export interface Session {
   error: string | null;
   /** Watchdog flag: a teammate no lead hears, or a whole team idle for a long time. */
   stall?: { reason: string; since: number } | null;
+  /** What a running session is doing right now ("e2e 실행"), and since when; null when idle. */
+  activity?: { label: string; since: number } | null;
   pending: Pending[];
 }
 

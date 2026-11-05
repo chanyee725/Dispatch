@@ -35,7 +35,7 @@ export function ClearAllButton() {
             <DialogTitle>세션을 모두 정리할까요?</DialogTitle>
             <DialogDescription>
               {project.name}의 세션 {sessions.length}개를 종료하고 목록에서 지워요.
-              {running > 0 && <> 지금 일하는 세션 <b className="text-foreground">{running}개</b>도 멈춰요.</>} 브랜치와 작업 폴더는 그대로 남아요. 다른 프로젝트는 건드리지 않아요.
+              {running > 0 && <> 지금 일하는 세션 <b className="text-foreground">{running}개</b>도 멈춰요.</>} 브랜치는 남고, 커밋 안 한 변경이 없는 작업 폴더는 함께 지워져요. 다른 프로젝트는 건드리지 않아요.
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>

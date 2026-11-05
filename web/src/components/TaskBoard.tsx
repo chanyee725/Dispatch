@@ -4,6 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { cn } from "@/lib/utils";
 import { api, useApp, type BoardTask, type TaskStage, type Ticket } from "@/store";
+import type { Session } from "@/types";
 
 const STEPS: { id: TaskStage; label: string }[] = [
   { id: "plan", label: "계획" },
@@ -42,7 +43,38 @@ function Stepper({ stage }: { stage: TaskStage }) {
   );
 }
 
-function Row({ t, lead, now, onOpen }: { t: BoardTask; lead?: string; now: number; onOpen?: () => void }) {
+/** Sessions named in a task's owner text ("Remy", "Hana · Zed"). */
+function ownersOf(t: BoardTask, sessions: Session[]) {
+  const owner = t.owner ?? "";
+  if (!owner) return [];
+  const esc = (x: string) => x.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  return sessions.filter(s => s.status !== "done" && new RegExp(`(^|[^\\p{L}\\d])${esc(s.name)}($|[^\\p{L}\\d])`, "u").test(owner));
+}
+
+// Long-running checks deserve a look sooner than ordinary edits.
+const SLOW_AFTER = (label: string) => (/e2e|테스트|빌드|타입|lint/.test(label) ? 5 : 10);
+
+/** "Remy · e2e 실행 · 4분째" under a task; amber once it has gone on too long. */
+function Activity({ owners, now }: { owners: Session[]; now: number }) {
+  const busy = owners.filter(s => s.activity);
+  if (!busy.length) return null;
+  return (
+    <div className="flex min-w-0 flex-wrap gap-x-3 text-xs">
+      {busy.map(s => {
+        const a = s.activity!;
+        const m = mins(now - a.since);
+        return (
+          <span key={s.id} className={cn("num truncate", m >= SLOW_AFTER(a.label) ? "text-warn" : "text-muted-foreground")}>
+            <span className="font-medium text-foreground">{s.name}</span> · {a.label}
+            {m > 0 ? ` · ${fmtMin(m)}째` : ""}
+          </span>
+        );
+      })}
+    </div>
+  );
+}
+
+function Row({ t, lead, owners, now, onOpen }: { t: BoardTask; lead?: string; owners: Session[]; now: number; onOpen?: () => void }) {
   const done = t.stage === "done";
   const left = t.etaAt ? mins(t.etaAt - now) : null;
   const over = t.etaAt != null && t.etaAt < now && !done;
@@ -68,6 +100,7 @@ function Row({ t, lead, now, onOpen }: { t: BoardTask; lead?: string; now: numbe
         <div className="truncate text-xs text-muted-foreground">
           {[lead, t.owner, t.note].filter(Boolean).join(" · ") || " "}
         </div>
+        {!done && <Activity owners={owners} now={now} />}
       </div>
       <div className="flex flex-col items-end gap-1">
         <Stepper stage={t.stage} />
@@ -75,7 +108,7 @@ function Row({ t, lead, now, onOpen }: { t: BoardTask; lead?: string; now: numbe
       </div>
       <div className="flex w-24 items-center justify-end gap-1">
         <span className={cn("num text-right text-sm", over ? "text-warn" : done ? "text-muted-foreground" : "font-semibold")}>
-          {done ? "완료" : left == null ? "?" : over ? "지연" : `${fmtMin(left)} 남음`}
+          {done ? "완료" : left == null ? "?" : over ? `${fmtMin(Math.max(1, mins(now - t.etaAt!)))} 지연` : `${fmtMin(left)} 남음`}
         </span>
         <button
           aria-label="보드에서 지우기"
@@ -144,13 +177,9 @@ export function TaskBoardButton({ onOpen }: { onOpen?: (id: string) => void }) {
   const openTickets = tickets.filter(t => t.status === "open").length;
   const sessions = useApp(s => s.sessions);
   const names = useMemo(() => new Map(sessions.map(s => [s.id, s.name])), [sessions]);
-  const byName = useMemo(() => new Map(sessions.map(s => [s.name.replace(/\s+/g, ""), s.id])), [sessions]);
   const [open, setOpen] = useState(false);
-  // The row opens its owner's session (owner is a name like "구현자 #69"), else the lead's.
-  const target = (t: BoardTask) => {
-    const m = /(관리자|구현자|리뷰어|테스터|디자이너|문서화)\s*#\d+/.exec(t.owner ?? "");
-    return (m && byName.get(m[0].replace(/\s+/g, ""))) || t.lead || null;
-  };
+  // The row opens its owner's session (a name such as "Remy" in the owner text), else the lead's.
+  const target = (t: BoardTask) => ownersOf(t, sessions)[0]?.id || t.lead || null;
   return (
     <>
       <Button variant="outline" size="sm" onClick={() => setOpen(true)} className="shrink-0 gap-2">
@@ -182,6 +211,7 @@ export function TaskBoardButton({ onOpen }: { onOpen?: (id: string) => void }) {
                   key={t.id}
                   t={t}
                   lead={t.lead ? names.get(t.lead) : undefined}
+                  owners={ownersOf(t, sessions)}
                   now={now}
                   onOpen={onOpen && target(t) ? () => { setOpen(false); onOpen(target(t)!); } : undefined}
                 />

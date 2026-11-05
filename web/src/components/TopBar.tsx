@@ -3,6 +3,7 @@ import { Button } from "@/components/ui/button";
 import { ProjectSwitcher } from "@/components/ProjectSwitcher";
 import { ProviderLimits } from "@/components/ProviderLimits";
 import { ClearAllButton } from "@/components/ClearAllButton";
+import { ClearDoneButton } from "@/components/ClearDoneButton";
 import { useApp } from "@/store";
 
 export function TopBar({ title, onCreate, canCreate }: { title: string; onCreate: () => void; canCreate: boolean }) {
@@ -30,6 +31,7 @@ export function TopBar({ title, onCreate, canCreate }: { title: string; onCreate
           <Plus />
           <span className="max-sm:hidden">새 세션</span>
         </Button>
+        <ClearDoneButton />
         <ClearAllButton />
       </div>
     </header>

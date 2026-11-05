@@ -228,6 +228,7 @@ const routes = [
   ["POST", /^\/api\/sessions\/([\w-]+)\/kill$/, async ([id]) => { hub.kill(id); return { ok: true }; }],
   ["POST", /^\/api\/sessions\/([\w-]+)\/remove$/, async ([id]) => { hub.remove(id); return { ok: true }; }],
   ["POST", /^\/api\/sessions\/clear$/, async () => ({ removed: hub.clearAll() })],
+  ["POST", /^\/api\/sessions\/clear-done$/, async () => ({ removed: hub.clearDone() })],
   ["GET", /^\/api\/limits$/, async () => hub.providerLimits()],
   ["GET", /^\/api\/tasks$/, async () => ({ tasks: hub.tasks })],
   ["GET", /^\/api\/branches$/, async () => branchGraph(root, { active: hub.sessions.filter(x => x.status !== "done" && x.branch).map(x => x.branch) })],

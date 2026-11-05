@@ -45,6 +45,32 @@ function onJsonLines(stream, fn) {
   });
 }
 
+/** A short Korean label for what a tool call is doing, from its name and (for shells) its command. */
+export function activityOf(name = "", text = "") {
+  const t = String(text);
+  if (/^(Bash|shell)$/i.test(name)) {
+    if (/playwright/.test(t)) return "e2e 실행";
+    if (/vitest|jest|npm (run )?test\b|pytest/.test(t)) return "단위 테스트";
+    if (/\btsc\b|typecheck/.test(t)) return "타입 검사";
+    if (/eslint|npm run lint/.test(t)) return "lint";
+    if (/next build|vite build|npm run build/.test(t)) return "빌드";
+    if (/\bgit\b[^|;&]*\b(merge|cherry-pick|rebase)\b/.test(t)) return "병합";
+    if (/\bgit\b[^|;&]*\bcommit\b/.test(t)) return "커밋";
+    if (/\bgit\b[^|;&]*\b(diff|log|show|status)\b/.test(t)) return "변경 확인";
+    if (/npm (i|install|ci)\b/.test(t)) return "패키지 설치";
+    if (/^\W*"?(\{"command":"?)?\s*(cat|sed -n|grep|rg|ls|find|head|tail)\b/.test(t)) return "코드 읽기";
+    return "명령 실행";
+  }
+  if (/^(Edit|Write|MultiEdit|NotebookEdit|edit)$/.test(name)) return "파일 수정";
+  if (/^(Read|Grep|Glob)$/.test(name)) return "코드 읽기";
+  if (name === "Skill") return "스킬 불러오기";
+  if (/^mcp__dispatch__/.test(name) || /^dispatch\./.test(name)) return "팀 관리";
+  if (/^mcp__.*playwright|^browser_/.test(name)) return "화면 확인";
+  if (/^Web(Fetch|Search)$/.test(name)) return "웹 검색";
+  if (/^(Monitor|TaskStop|TaskOutput|ToolSearch)$/.test(name)) return "기다리는 중";
+  return name.replace(/^mcp__[^_]+__/, "");
+}
+
 export class Hub extends EventEmitter {
   constructor({ root, store, models, roles, port }) {
     super();
@@ -90,11 +116,17 @@ export class Hub extends EventEmitter {
 
   publicSession(s) {
     const r = this.live.get(s.id);
-    return { ...s, pending: r ? [...r.perms.values()] : [] };
+    const busy = s.status === "running" || s.status === "starting";
+    return { ...s, pending: r ? [...r.perms.values()] : [], activity: busy ? r?.activity ?? null : null };
   }
 
   touch(s, patch = {}) {
     Object.assign(s, patch, { updatedAt: Date.now() });
+    // A finished turn ends its activity, so the next turn's clock starts fresh.
+    if (patch.status && patch.status !== "running" && patch.status !== "starting") {
+      const r = this.live.get(s.id);
+      if (r) r.activity = null;
+    }
     this.store.save();
     this.emit("session", this.publicSession(s));
   }
@@ -102,7 +134,16 @@ export class Hub extends EventEmitter {
   push(s, entry) {
     const r = this.rt(s.id);
     entry.at = Date.now();
-    if (entry.kind === "tool") r.lastTool = entry.name + (entry.text ? ` ${clip(entry.text, 80)}` : "");
+    if (entry.kind === "tool") {
+      r.lastTool = entry.name + (entry.text ? ` ${clip(entry.text, 80)}` : "");
+      // What the session is doing right now, for the board ("e2e 실행 · 4분째"). The clock keeps
+      // running across consecutive tools of the same kind, so a stuck test loop shows its real age.
+      const label = activityOf(entry.name, entry.text);
+      if (label !== r.activity?.label) {
+        r.activity = { label, since: Date.now() };
+        this.emit("session", this.publicSession(s));
+      }
+    }
     r.transcript.push(entry);
     if (r.transcript.length > MAX_TRANSCRIPT) r.transcript.splice(0, r.transcript.length - MAX_TRANSCRIPT);
     try {
@@ -228,6 +269,13 @@ export class Hub extends EventEmitter {
     delete (this.store.data.tasks ||= {})[id];
     this.store.save();
     this.emit("tasks", this.tasks);
+  }
+
+  /** Removes finished sessions (done or error) and, through remove(), their clean worktrees. */
+  clearDone() {
+    const ids = this.sessions.filter(s => s.status === "done" || s.status === "error").map(s => s.id);
+    for (const id of ids) this.remove(id);
+    return ids.length;
   }
 
   /** Stops and removes every session of this project. */
