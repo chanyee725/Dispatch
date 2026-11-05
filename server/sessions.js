@@ -9,6 +9,7 @@ import { CHILD_PROMPT, NAMES, PERMS, SPAWN_PROMPT } from "./roles.js";
 import { replyStyle } from "./style.js";
 import { effectiveRoles, teamSettings } from "./settings.js";
 import { codexLimits, geminiResetFrom, isQuotaError } from "./limits.js";
+import { asksUser, attentionOf, sessionState } from "./state.js";
 
 const MCP_SCRIPT = path.join(path.dirname(fileURLToPath(import.meta.url)), "mcp.js");
 const MAX_TRANSCRIPT = 400;
@@ -116,10 +117,17 @@ export class Hub extends EventEmitter {
   publicSession(s) {
     const r = this.live.get(s.id);
     const busy = s.status === "running" || s.status === "starting";
-    return { ...s, pending: r ? [...r.perms.values()] : [], activity: busy ? r?.activity ?? null : null };
+    const pending = r ? [...r.perms.values()] : [];
+    // stateSince moves only on a change of state, so "사람 기다림 · 8분째" counts from the real start.
+    const state = sessionState(s, pending.length);
+    if (state !== s.state) { s.state = state; s.stateSince = Date.now(); }
+    return { ...s, pending, activity: busy ? r?.activity ?? null : null,
+      attention: attentionOf(s, state, pending.length, s.stateSince) };
   }
 
   touch(s, patch = {}) {
+    // A turn that ends by asking its reader something leaves the session waiting on a person, not resting.
+    if (patch.status && !("asksUser" in patch)) patch.asksUser = patch.status === "idle" && asksUser(this.live.get(s.id)?.lastText);
     Object.assign(s, patch, { updatedAt: Date.now() });
     // A removed session's process exits a moment after remove(); its late "done" must not reach the
     // UI, which would add the session back until the page is reloaded.

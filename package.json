@@ -9,7 +9,8 @@
     "start": "node server/index.js",
     "build": "npm --prefix web run build",
     "dev:web": "npm --prefix web run dev",
-    "setup": "scripts/setup.sh"
+    "setup": "scripts/setup.sh",
+    "test": "node --test server/test/*.test.js"
   },
   "engines": {
     "node": ">=20"
