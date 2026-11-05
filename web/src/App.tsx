@@ -11,6 +11,7 @@ import { UsagePage } from "@/components/UsagePage";
 import { BranchesPage } from "@/components/BranchGraph";
 import { SettingsPage } from "@/components/SettingsPage";
 import { TvView } from "@/components/TvView";
+import { AlertWatcher } from "@/components/AlertWatcher";
 import { connect, useApp } from "@/store";
 
 const TITLES: Record<Page, string> = { sessions: "세션", branches: "브랜치", usage: "사용량", settings: "설정" };
@@ -64,6 +65,7 @@ export default function App() {
       <ConnectDialog open={connecting} onOpenChange={setConnecting} />
       <SessionSheet id={openId} onClose={() => setOpenId(null)} />
       {tv && ready && <TvView onExit={() => setTvMode(false)} onOpen={id => { setTvMode(false); setOpenId(id); }} />}
+      <AlertWatcher onOpen={id => { setTvMode(false); setOpenId(id); }} />
       <Toaster position="bottom-center" />
     </TooltipProvider>
   );

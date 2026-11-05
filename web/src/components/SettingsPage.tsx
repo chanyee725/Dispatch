@@ -1,9 +1,12 @@
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
+import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectGroup, SelectItem, SelectLabel, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { LIMIT_ALERT_PCT, WAIT_ALERT_MS } from "@/lib/alerts";
 import { roleColor } from "@/lib/format";
+import { turnAlertsOff, turnAlertsOn, useAlertStatus } from "@/lib/notify";
 import { api, useApp } from "@/store";
 import type { Settings, TeamSettings } from "@/types";
 
@@ -22,7 +25,7 @@ function Section({ title, note, children }: { title: string; note?: string; chil
   );
 }
 
-function Row({ label, hint, children }: { label: string; hint?: string; children: React.ReactNode }) {
+function Row({ label, hint, children }: { label: string; hint?: React.ReactNode; children: React.ReactNode }) {
   return (
     <div className="flex items-center justify-between gap-6 px-5 py-3.5 max-sm:flex-col max-sm:items-start max-sm:gap-2">
       <div className="min-w-0">
@@ -60,6 +63,31 @@ function NumberField({ value, min, max, unit, label, onSave }: {
 
 function Toggle({ checked, label, onChange }: { checked: boolean; label: string; onChange: (v: boolean) => void }) {
   return <Checkbox checked={checked} aria-label={label} onCheckedChange={v => onChange(v === true)} className="size-5" />;
+}
+
+/** Browser notifications: permission is asked only from this button; a refusal leaves the tab badge. */
+function AlertsRow() {
+  const status = useAlertStatus();
+  const n = (x: number) => <span className="num">{x}</span>;
+  return (
+    <Row
+      label="브라우저 알림"
+      hint={<>사람을 {n(WAIT_ALERT_MS / 60_000)}분 넘게 기다리거나, 멈추거나, 오류로 끝나거나, Claude 한도를 {n(LIMIT_ALERT_PCT)}% 넘게 쓰면 알려요. 진행과 완료는 알리지 않아요. 탭 제목의 숫자는 알림과 상관없이 확인 필요 건수를 보여 줘요.</>}
+    >
+      {status === "on" ? (
+        <>
+          <span className="text-sm text-muted-foreground">켜져 있어요</span>
+          <Button variant="outline" size="sm" onClick={turnAlertsOff}>끄기</Button>
+        </>
+      ) : status === "off" ? (
+        <Button size="sm" onClick={() => void turnAlertsOn()}>알림 켜기</Button>
+      ) : (
+        <span className="text-sm text-muted-foreground">
+          {status === "denied" ? "브라우저에서 막혀 있어요. 탭 제목 숫자로만 알려요." : "이 브라우저는 알림을 지원하지 않아요. 탭 제목 숫자로만 알려요."}
+        </span>
+      )}
+    </Row>
+  );
 }
 
 export function SettingsPage() {
@@ -125,6 +153,10 @@ export function SettingsPage() {
         <Row label="답변 스타일 지침 넣기" hint="모든 세션의 지시에 읽기 쉬운 답변 규칙을 붙여요.">
           <Toggle checked={team.replyStyle} label="답변 스타일 지침 넣기" onChange={v => save({ team: { replyStyle: v } })} />
         </Row>
+      </Section>
+
+      <Section title="알림" note="이 브라우저에만 적용돼요.">
+        <AlertsRow />
       </Section>
 
       <Section title="사용 한도" note="Claude 사용량이 기준에 닿으면 새 Claude 세션을 막아요. Codex·Gemini는 막지 않아요.">

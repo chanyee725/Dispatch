@@ -7,6 +7,7 @@ Every release is tagged `vX.Y.Z` and published on [GitHub Releases](https://gith
 ### Added
 
 - 세션 board: cards are ordered by urgency (실패 > 사람 기다림 > 멈춤 > 작업 중 > 쉼 > 완료, longest in its state first, then start time and id, so they move only when a state changes), every card shows "N분째" in its current state, and finished sessions hide behind a **완료 N개 보기** toggle (#6).
+- Alerts (#10): the tab title carries the 확인 필요 count (`(2) Dispatch`), and 설정 → 알림 turns on browser notifications for four cases only — waiting on a person for 3 minutes, a stuck flag, an error exit, a Claude limit at 90 % — once per session and reason until it clears. Notifications carry the session name and a one-line reason; only the on/off choice is stored.
 
 ## 0.10.1 — 2026-11-05
 
