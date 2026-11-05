@@ -13,6 +13,7 @@ test("waiting alerts only from 3 minutes", () => {
   const at = (ms: number) => alertCandidates([item({ state: "waiting", since: NOW - ms })], NOW, nameOf);
   assert.deepEqual(at(WAIT_ALERT_MS - 1), []);
   assert.deepEqual(at(WAIT_ALERT_MS).map(a => a.reason), ["wait"]);
+  assert.equal(at(WAIT_ALERT_MS)[0].body, `${WAIT_ALERT_MS / 60_000}분 넘게 사람을 기다려요`);
   assert.deepEqual(alertCandidates([item({ state: "waiting", since: null })], NOW, nameOf), []);
 });
 
@@ -36,6 +37,8 @@ test("task rows are titled by the session, never the task text", () => {
   assert.ok(!JSON.stringify(a).includes("비밀"));
   const [b] = alertCandidates([item({ key: "t:2", kind: "late", who: "x", sessionId: "gone", flagged: true })], NOW, nameOf);
   assert.equal(b.title, "작업");
+  // A server over-eta flag is late, not stopped.
+  assert.equal(b.body, "작업이 예상보다 오래 걸려요");
 });
 
 test("limits alert from 90 %", () => {

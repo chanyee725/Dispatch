@@ -72,7 +72,7 @@ function AlertsRow() {
   return (
     <Row
       label="브라우저 알림"
-      hint={<>사람을 {n(WAIT_ALERT_MS / 60_000)}분 넘게 기다리거나, 멈추거나, 오류로 끝나거나, Claude 한도를 {n(LIMIT_ALERT_PCT)}% 넘게 쓰면 알려요. 진행과 완료는 알리지 않아요. 탭 제목의 숫자는 알림과 상관없이 확인 필요 건수를 보여 줘요.</>}
+      hint={<>사람을 {n(WAIT_ALERT_MS / 60_000)}분 넘게 기다리거나, 멈추거나, 오류로 끝나거나, Claude 한도를 {n(LIMIT_ALERT_PCT)}% 이상 쓰면 알려요. 진행과 완료는 알리지 않아요. 탭 제목의 숫자는 알림과 상관없이 확인 필요 건수를 보여 줘요.</>}
     >
       {status === "on" ? (
         <>

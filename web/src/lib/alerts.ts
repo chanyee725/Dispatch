@@ -23,10 +23,14 @@ export interface Alert {
 }
 
 const BODY: Record<Exclude<AlertReason, "limit">, string> = {
-  wait: "3분 넘게 사람을 기다려요",
+  wait: `${WAIT_ALERT_MS / 60_000}분 넘게 사람을 기다려요`,
   stuck: "멈췄어요",
   failed: "오류로 끝났어요",
 };
+
+/** Task-row body: a server over-eta flag means "running long", not "stopped". */
+const taskBody = (i: AttentionItem, reason: Exclude<AlertReason, "limit">) =>
+  i.kind === "late" && reason === "stuck" ? "작업이 예상보다 오래 걸려요" : `작업이 ${BODY[reason]}`;
 
 function reasonOf(i: AttentionItem, now: number): AlertReason | null {
   if (i.kind === "limit") return (i.used ?? 0) >= LIMIT_ALERT_PCT ? "limit" : null;
@@ -48,7 +52,7 @@ export function alertCandidates(items: AttentionItem[], now: number, nameOf: (id
     if (!reason) continue;
     const sessionId = i.kind === "limit" ? null : i.sessionId ?? null;
     const title = i.kind === "limit" ? i.who : i.kind === "session" ? i.who : (sessionId && nameOf(sessionId)) || "작업";
-    const body = reason === "limit" ? `${i.used}% 썼어요` : i.kind === "session" ? BODY[reason] : `작업이 ${BODY[reason]}`;
+    const body = reason === "limit" ? `${i.used}% 썼어요` : i.kind === "session" ? BODY[reason] : taskBody(i, reason);
     out.push({ key: `${i.key}|${reason}`, reason, sessionId, title, body });
   }
   return out;
