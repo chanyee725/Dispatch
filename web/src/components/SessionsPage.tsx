@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { GitBranch, Plus, ShieldAlert, TriangleAlert } from "lucide-react";
+import { ChartGantt, GitBranch, LayoutGrid, Plus, ShieldAlert, TriangleAlert } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Meter, ModelTag, StatusBadge, ThinkingLine } from "@/components/bits";
@@ -11,6 +11,7 @@ import { fmtK, fmtUsd, isOpen, pct, roleColor, stateOf, totalTok } from "@/lib/f
 import { cn } from "@/lib/utils";
 import { ModelBreakdown } from "@/components/ModelBreakdown";
 import { TaskBoardButton } from "@/components/TaskBoard";
+import { SessionTimeline } from "@/components/SessionTimeline";
 import { useApp } from "@/store";
 import type { Session, SessionState } from "@/types";
 
@@ -23,6 +24,36 @@ const FILTERS: { id: "all" | SessionState; label: string }[] = [
   { id: "resting", label: "쉼" },
   { id: "done", label: "완료" },
 ];
+
+type View = "cards" | "timeline";
+const VIEW_KEY = "dispatch.boardView";
+
+/** 카드 ⇄ 타임라인 switch; the choice is remembered in this browser. */
+function ViewToggle({ view, onChange }: { view: View; onChange: (v: View) => void }) {
+  const opts: { id: View; label: string; Icon: typeof LayoutGrid }[] = [
+    { id: "cards", label: "카드", Icon: LayoutGrid },
+    { id: "timeline", label: "타임라인", Icon: ChartGantt },
+  ];
+  return (
+    <div role="radiogroup" aria-label="보기 방식" className="inline-flex shrink-0 rounded-lg bg-muted p-[3px]">
+      {opts.map(({ id, label, Icon }) => (
+        <button
+          key={id}
+          role="radio"
+          aria-checked={view === id}
+          onClick={() => onChange(id)}
+          className={cn(
+            "inline-flex h-[calc(2.25rem-6px)] cursor-pointer items-center gap-1.5 rounded-md px-2.5 text-sm font-medium transition-colors focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none",
+            view === id ? "bg-background text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground",
+          )}
+        >
+          <Icon className="size-4" aria-hidden />
+          <span className="max-sm:sr-only">{label}</span>
+        </button>
+      ))}
+    </div>
+  );
+}
 
 const sumCost = (ss: Session[]) => (ss.some(s => s.cost != null) ? ss.reduce((a, s) => a + (s.cost ?? 0), 0) : null);
 
@@ -95,6 +126,8 @@ export function SessionsPage({ onOpen, onCreate, onUsage }: { onOpen: (id: strin
     const t = setInterval(() => setNow(Date.now()), 20_000);
     return () => clearInterval(t);
   }, []);
+  const [view, setViewState] = useState<View>(() => (localStorage.getItem(VIEW_KEY) === "timeline" ? "timeline" : "cards"));
+  const setView = (v: View) => { setViewState(v); try { localStorage.setItem(VIEW_KEY, v); } catch { /* private mode */ } };
 
   const byId = useMemo(() => new Map(sessions.map(s => [s.id, s])), [sessions]);
   const counts = useMemo(() => {
@@ -140,14 +173,19 @@ export function SessionsPage({ onOpen, onCreate, onUsage }: { onOpen: (id: strin
               ))}
             </TabsList>
           </Tabs>
-          <TaskBoardButton onOpen={onOpen} />
+          <div className="flex shrink-0 items-center gap-2">
+            <ViewToggle view={view} onChange={setView} />
+            <TaskBoardButton onOpen={onOpen} />
+          </div>
           </div>
 
           {list.length === 0 && (
             <p className="py-10 text-center text-sm text-muted-foreground">{hideDone ? "열려 있는 세션이 없어요." : "이 상태의 세션이 없어요."}</p>
           )}
 
-          <div className="flex flex-col gap-8">
+          {view === "timeline" && list.length > 0 && <SessionTimeline list={list} onOpen={onOpen} />}
+
+          {view === "cards" && <div className="flex flex-col gap-8">
             {roles.map(role => {
               const ss = list.filter(s => s.role === role.id);
               if (!ss.length) return null;
@@ -167,7 +205,7 @@ export function SessionsPage({ onOpen, onCreate, onUsage }: { onOpen: (id: strin
                 </section>
               );
             })}
-          </div>
+          </div>}
 
           {filter === "all" && doneCount > 0 && (
             <Button variant="ghost" size="sm" className="num cursor-pointer self-start text-muted-foreground" onClick={() => setShowDone(v => !v)}>
