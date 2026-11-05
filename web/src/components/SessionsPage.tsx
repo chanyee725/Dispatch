@@ -1,10 +1,12 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { GitBranch, Plus, ShieldAlert, TriangleAlert } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Meter, ModelTag, StatusBadge, ThinkingLine } from "@/components/bits";
 import { AttentionStrip, SummaryLine } from "@/components/AttentionStrip";
 import { turn } from "@/lib/turn";
+import { elapsed } from "@/lib/attention";
+import { byUrgency, stateStart } from "@/lib/order";
 import { fmtK, fmtUsd, isOpen, pct, roleColor, stateOf, totalTok } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import { ModelBreakdown } from "@/components/ModelBreakdown";
@@ -24,11 +26,12 @@ const FILTERS: { id: "all" | SessionState; label: string }[] = [
 
 const sumCost = (ss: Session[]) => (ss.some(s => s.cost != null) ? ss.reduce((a, s) => a + (s.cost ?? 0), 0) : null);
 
-function SessionCard({ s, parent, onOpen }: { s: Session; parent?: Session; onOpen: () => void }) {
+function SessionCard({ s, parent, now, onOpen }: { s: Session; parent?: Session; now: number; onOpen: () => void }) {
   const ctx = s.ctxWindow ? s.ctx / s.ctxWindow : 0;
   const state = stateOf(s);
   const asking = s.pending.length > 0 || s.status === "waiting";
   const live = s.status === "running" || s.status === "starting";
+  const since = elapsed(stateStart(s, state), now);
   return (
     <button
       onClick={onOpen}
@@ -41,7 +44,10 @@ function SessionCard({ s, parent, onOpen }: { s: Session; parent?: Session; onOp
       <div className="flex min-w-0 items-center gap-2">
         <span className="shrink-0 text-sm font-semibold">{s.name}</span>
         <ModelTag provider={s.provider} label={`${s.modelLabel}${s.effort ? ` ${s.effort}` : ""}`} className="min-w-0" />
-        <StatusBadge state={state} className="ml-auto" />
+        <span className="ml-auto flex shrink-0 items-center gap-1.5">
+          <span className="num text-[11px] text-muted-foreground" title="이 상태가 된 뒤 지난 시간">{since ? `${since}째` : "방금"}</span>
+          <StatusBadge state={state} />
+        </span>
       </div>
 
       {s.stall && (
@@ -82,6 +88,13 @@ export function SessionsPage({ onOpen, onCreate, onUsage }: { onOpen: (id: strin
   const roles = useApp(s => s.roles);
   const [filter, setFilter] = useState<"all" | SessionState>("all");
   const [breakdown, setBreakdown] = useState(false);
+  const [showDone, setShowDone] = useState(false);
+  // "N분째" only needs minute precision.
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    const t = setInterval(() => setNow(Date.now()), 20_000);
+    return () => clearInterval(t);
+  }, []);
 
   const byId = useMemo(() => new Map(sessions.map(s => [s.id, s])), [sessions]);
   const counts = useMemo(() => {
@@ -89,12 +102,16 @@ export function SessionsPage({ onOpen, onCreate, onUsage }: { onOpen: (id: strin
     for (const s of sessions) { const st = stateOf(s); c[st] = (c[st] ?? 0) + 1; }
     return c;
   }, [sessions]);
+  // Done sessions stay out of 전체 until asked for; failed ones are not done and stay in the strip.
+  const hideDone = filter === "all" && !showDone;
   const list = useMemo(
-    () => [...sessions]
-      .filter(s => filter === "all" || stateOf(s) === filter)
-      .sort((a, b) => b.startedAt - a.startedAt),
-    [sessions, filter],
+    () => byUrgency(sessions.filter(s => {
+      const st = stateOf(s);
+      return filter === "all" ? !(hideDone && st === "done") : st === filter;
+    }), stateOf),
+    [sessions, filter, hideDone],
   );
+  const doneCount = counts.done ?? 0;
 
   return (
     <div className="mx-auto flex max-w-[1400px] flex-col gap-6 p-6 max-md:p-4">
@@ -126,7 +143,9 @@ export function SessionsPage({ onOpen, onCreate, onUsage }: { onOpen: (id: strin
           <TaskBoardButton onOpen={onOpen} />
           </div>
 
-          {list.length === 0 && <p className="py-10 text-center text-sm text-muted-foreground">이 상태의 세션이 없어요.</p>}
+          {list.length === 0 && (
+            <p className="py-10 text-center text-sm text-muted-foreground">{hideDone ? "열려 있는 세션이 없어요." : "이 상태의 세션이 없어요."}</p>
+          )}
 
           <div className="flex flex-col gap-8">
             {roles.map(role => {
@@ -143,12 +162,18 @@ export function SessionsPage({ onOpen, onCreate, onUsage }: { onOpen: (id: strin
                     {cost != null && <span className="num text-sm text-muted-foreground">{fmtUsd(cost)}</span>}
                   </header>
                   <div className="grid grid-cols-[repeat(auto-fill,minmax(260px,1fr))] gap-2.5">
-                    {ss.map(s => <SessionCard key={s.id} s={s} parent={s.parent ? byId.get(s.parent) : undefined} onOpen={() => onOpen(s.id)} />)}
+                    {ss.map(s => <SessionCard key={s.id} s={s} parent={s.parent ? byId.get(s.parent) : undefined} now={now} onOpen={() => onOpen(s.id)} />)}
                   </div>
                 </section>
               );
             })}
           </div>
+
+          {filter === "all" && doneCount > 0 && (
+            <Button variant="ghost" size="sm" className="num cursor-pointer self-start text-muted-foreground" onClick={() => setShowDone(v => !v)}>
+              {showDone ? "완료 숨기기" : `완료 ${doneCount}개 보기`}
+            </Button>
+          )}
         </>
       )}
     </div>

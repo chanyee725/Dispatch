@@ -2,6 +2,12 @@
 
 Every release is tagged `vX.Y.Z` and published on [GitHub Releases](https://github.com/chanyee725/Dispatch/releases). The plugin version in `.claude-plugin/plugin.json` matches the tag.
 
+## 0.11.0 — Unreleased
+
+### Added
+
+- 세션 board: cards are ordered by urgency (실패 > 사람 기다림 > 멈춤 > 작업 중 > 쉼 > 완료, longest in its state first, then start time and id, so they move only when a state changes), every card shows "N분째" in its current state, and finished sessions hide behind a **완료 N개 보기** toggle (#6).
+
 ## 0.10.1 — 2026-11-05
 
 ### Fixed
