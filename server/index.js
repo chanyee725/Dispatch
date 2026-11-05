@@ -5,6 +5,7 @@ import { mkdir, readdir, readFile, rm, writeFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 import { cancelLogin, login, loginWithKey, logout, providerStatus, publicStatus } from "./auth.js";
 import { branchGraph, currentBranch, diff, projectRoot } from "./git.js";
+import { SharedLimits } from "./limits.js";
 import { loadModels } from "./models.js";
 import { PERMS, ROLES } from "./roles.js";
 import { Hub } from "./sessions.js";
@@ -21,7 +22,12 @@ const root = await projectRoot(path.resolve(process.argv[2] || process.cwd()));
 const store = new Store(root);
 await store.load();
 const models = await loadModels();
-const hub = new Hub({ root, store, models, roles: ROLES, port: PORT });
+// Claude limits and the Gemini quota live in ~/.dispatch/limits.json, shared by every server. The
+// per-project copies in state.json seed it once (newest wins) and are then dropped.
+const limits = new SharedLimits();
+await limits.load({ claude: store.data.limits, gemini: store.data.geminiQuota }).catch(e => console.error("limits:", e.message));
+if ("limits" in store.data || "geminiQuota" in store.data) { delete store.data.limits; delete store.data.geminiQuota; store.save(); }
+const hub = new Hub({ root, store, models, roles: ROLES, port: PORT, limits });
 
 // A provider counts as connected only after the user connects it in Dispatch, even if its CLI is
 // already logged in on this machine. `cliLoggedIn` keeps the CLI's own state for the UI.
@@ -301,6 +307,8 @@ const server = http.createServer(async (req, res) => {
 });
 
 setInterval(() => hub.checkTeams(), 30000);
+// Another server may have written newer limits; the Hub broadcasts a "limits" event when it did.
+setInterval(() => limits.refresh().catch(() => {}), 5000);
 
 server.listen(PORT, HOST, () => {
   hub.resumeInterrupted();
