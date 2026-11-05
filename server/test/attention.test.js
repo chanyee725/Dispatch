@@ -109,6 +109,27 @@ test("task.stuck stage-mismatch: its own row, unless the owner session already s
   assert.deepEqual(both.map(i => [i.kind, i.reason]), [["session", "테스트 3번 연속 실패"]]);
 });
 
+test("stage-mismatch hides only behind the found owner's repeat-fail row", () => {
+  const mis = { reason: "stage-mismatch", label: "보드는 구현인데 15분 넘게 테스트 실행 중이에요", sinceMs: NOW - 15 * MIN };
+  const task = { id: "t", lead: "L", title: "로그인", stage: "impl", owner: "Remy", etaAt: null, stuck: mis };
+  const kinds = (items) => items.map(i => [i.kind, i.sessionId]);
+  // Owner found, but its row is about something else (waiting on a person): the mismatch still shows.
+  const waiting = ses({ id: "r", name: "Remy", state: "waiting", attention: { level: "warn", reason: "사용자 답을 기다려요", since: NOW - 2 * MIN } });
+  assert.deepEqual(kinds(run({ sessions: [waiting], tasks: [task] })), [["mismatch", "r"], ["session", "r"]]);
+  // Owner found and silent-stuck (not repeat-fail): still shows.
+  const silent = ses({ id: "r", name: "Remy", state: "stuck", stuck: { reason: "silent", label: "10분째 출력이 없어요", sinceMs: NOW - 10 * MIN },
+    attention: { level: "warn", reason: "10분째 출력이 없어요", since: NOW - 10 * MIN } });
+  assert.deepEqual(kinds(run({ sessions: [silent], tasks: [task] })).sort(), [["mismatch", "r"], ["session", "r"]]);
+  // Owner not found: the target falls back to the lead, whose own row must not hide the task.
+  const lead = ses({ id: "L", name: "Lea", role: "lead", state: "waiting", attention: { level: "warn", reason: "사용자 답을 기다려요", since: NOW - MIN } });
+  const orphan = run({ sessions: [lead], tasks: [{ ...task, owner: "Nobody" }] });
+  assert.deepEqual(kinds(orphan), [["mismatch", "L"], ["session", "L"]]);
+  // Owner found and flagged repeat-fail: one row, the session's.
+  const looping = ses({ id: "r", name: "Remy", state: "stuck", stuck: { reason: "repeat-fail", label: "테스트 3번 연속 실패", sinceMs: NOW - 4 * MIN },
+    attention: { level: "warn", reason: "테스트 3번 연속 실패", since: NOW - 4 * MIN } });
+  assert.deepEqual(kinds(run({ sessions: [looping, lead], tasks: [task] })).filter(([, id]) => id === "r"), [["session", "r"]]);
+});
+
 test("session.stuck reaches the strip once, through state + attention (or the fallback)", () => {
   const stuck = { reason: "silent", label: "10분째 출력이 없어요", sinceMs: NOW - 12 * MIN };
   const withAttention = run({ sessions: [ses({ id: "a", name: "Ari", state: "stuck", stuck, attention: { level: "warn", reason: stuck.label, since: stuck.sinceMs } })] });

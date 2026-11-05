@@ -88,14 +88,17 @@ export function attentionItems(
 
   for (const t of tasks) {
     if (t.stage === "done") continue;
-    const target = ownerSession(t.owner, sessions)?.id ?? t.lead;
+    const owner = ownerSession(t.owner, sessions);
+    const target = owner?.id ?? t.lead;
     if (t.mergeCheck?.ok === false) {
       out.push({ key: `m:${t.id}`, kind: "merge", level: "bad", who: t.title, reason: t.mergeCheck.reason || "병합을 확인하지 못했어요", since: t.mergeCheck.at, sessionId: t.lead ?? target });
     }
-    // One row per task. A stage mismatch whose owner already has a row (its repeat-fail flag) adds nothing new.
+    // One row per task. A stage mismatch adds nothing only when the owner session was found and its row is
+    // the repeat-fail flag about the same loop; any other row (waiting, silent, the lead fallback) says something else.
     const st = t.stuck;
     const by = (x: string) => (t.owner ? `${x} · ${t.owner}` : x);
-    if (st?.reason === "stage-mismatch" && !(target && out.some(i => i.kind === "session" && i.sessionId === target))) {
+    const folded = owner?.stuck?.reason === "repeat-fail" && out.some(i => i.kind === "session" && i.sessionId === owner.id);
+    if (st?.reason === "stage-mismatch" && !folded) {
       out.push({ key: `t:${t.id}`, kind: "mismatch", level: "warn", who: t.title, reason: by(st.label), since: st.sinceMs ?? null, sessionId: target });
     } else if (st?.reason === "over-eta" || (t.etaAt != null && t.etaAt < now)) {
       // Lateness counts from the estimate either way; the server's sentence says how far past it is.
