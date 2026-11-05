@@ -8,8 +8,10 @@ Local web UI for running several role-based Claude Code, Codex and Gemini sessio
 - Each session works in its own git worktree (`.dispatch/wt/<role>-<n>`, branch `dispatch/<role>-<n>`), so parallel sessions never overwrite each other.
 - 관리자 sessions get a Dispatch MCP server and can create, message and stop other sessions; teammates report back to their lead automatically.
 - Live transcript with a CLI-style thinking line (`✻ Untangling… (1m 5s · ↓ 12.3k tokens)`), collapsible tool calls, and coloured `+`/`-` lines for diffs and `git --stat`.
-- Long-lived sessions stay cheap: after 5 turns for a lead and 10 for other roles, a session continues in a fresh CLI session with a handoff note (its last answer and, for a lead, its teammates), so the context does not keep growing. `DISPATCH_ROTATE_TURNS_LEAD` / `DISPATCH_ROTATE_TURNS` change the counts, `0` turns it off.
-- Every session answers in a short, action-first style (the `i-have-adhd` rules when that Claude Code plugin is installed; `DISPATCH_REPLY_STYLE=off` turns it off).
+- Sessions get short names (Juno, Cal, Sam …); the role shows beside the name and in every report.
+- Long-lived sessions stay cheap: after 5 turns for a lead and 10 for other roles, a session continues in a fresh CLI session with a handoff note (its last answer and, for a lead, its teammates), so the context does not keep growing. Change the counts on the **설정** page (`0` turns it off).
+- Teams are tuned for speed and tokens: the lead runs on Sonnet, each implementer takes one task, a review without must-fixes merges at once, and finished sessions are removed as the team goes. New worktrees get `node_modules` as hard links, so nobody waits on an install.
+- Every session answers in a short, action-first style (the `i-have-adhd` rules when that Claude Code plugin is installed; turn it off on the 설정 page).
 - Works as a skill in both Claude Code and Codex.
 
 | | |
@@ -21,7 +23,9 @@ Local web UI for running several role-based Claude Code, Codex and Gemini sessio
 
 - **Top bar:** usage limits per provider — Claude 5-hour and weekly, GPT (Codex) windows, and Gemini's state (Gemini reports no percentage, so it shows OK until a quota error, then the reset time). Hover for reset times.
 - **프로젝트 선택:** switch between the Dispatch servers running on this machine (one per project).
-- **새 세션** starts sessions; the broom icon next to it stops and removes every session of this project after a confirmation (branches and worktrees stay).
+- **새 세션** starts sessions. **끝난 세션 정리** removes finished sessions in one click; the broom icon stops and removes every session of this project after a confirmation. Branches stay; a worktree goes with its session only when nothing uncommitted is left.
+- **작업** opens the lead's task board: stage, owner, time left or how late ("12분 지연"), and what each owner is doing right now ("Remy · e2e 실행 · 4분째", amber when it has run long).
+- **설정** (bottom left): per-project team settings — when sessions continue fresh, teammates per lead, default model per role, worktree handling, reply style and the usage-limit guard.
 - **사용량 → 한도 가까우면 막기** blocks new Claude sessions above the thresholds you set. When a threshold is reached, every lead's unfinished board tasks (and its last note and team) are saved as a **ticket**; after the reset the ticket is handed back to the lead automatically, or resume it yourself from the 작업 dialog.
 
 Requires Node.js 20+, git, and at least one of the `claude`, `codex` or `agy` (Antigravity, for Gemini) CLIs.
@@ -91,7 +95,7 @@ npm run dev -- --no-web     # server only, serving the last build
 npm run build               # builds web/ into public/
 ```
 
-`npm run dev` installs `web/` dependencies on first run. Ports: `DISPATCH_PORT`, `WEB_PORT`. The HTTP API is documented in [skills/dispatch/reference/api.md](skills/dispatch/reference/api.md); contributor notes for agents are in [AGENTS.md](AGENTS.md).
+`npm run dev` installs `web/` dependencies on first run. Ports: `DISPATCH_PORT`, `WEB_PORT`. The HTTP API is documented in [skills/dispatch/reference/api.md](skills/dispatch/reference/api.md); contributor notes for agents are in [AGENTS.md](AGENTS.md). What changed in each version: [CHANGELOG.md](CHANGELOG.md) and [Releases](https://github.com/chanyee725/Dispatch/releases).
 
 ## Privacy
 

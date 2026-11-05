@@ -22,3 +22,14 @@
 - Point the server at a scratch git repo with one commit, not this repo: `npm run dev -- <scratch-repo>` or `DISPATCH_PORT=4399 skills/dispatch/scripts/start.sh <scratch-repo>`.
 - Claude sessions spend the user's shared limit. Exercise flows with Codex models or `claude-haiku-5-5` at `effort: low` and one-line prompts.
 - Check UI changes in a browser at 1440px and 390px, in light and dark.
+
+## Releasing
+
+Every change that ships leaves a trace on GitHub, and every version is released.
+
+1. **Issue first** for a bug or a user request (`gh issue create`), unless the change is a one-line chore. Say what broke or what is wanted, and how it showed up.
+2. **Branch and PR.** Work on a branch (`fix/…`, `feat/…`, `docs/…`), open a PR against `develop` with `gh pr create` and `Closes #<issue>` in the body, then merge it (`gh pr merge --merge`). Don't push feature work straight to `develop`.
+3. **Version.** Bump `.claude-plugin/plugin.json` (patch for fixes, minor for features).
+4. **Docs in the same PR.** Add the change to `CHANGELOG.md` under the new version (Added / Changed / Fixed), and update `README.md` whenever behaviour a user sees changed — new buttons, pages, settings, defaults. Update `skills/dispatch/reference/api.md` with any route change.
+5. **Release.** After the merge: `git tag vX.Y.Z && git push origin vX.Y.Z`, then `gh release create vX.Y.Z --title "vX.Y.Z" --notes-file <that version's CHANGELOG section>`.
+
