@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Add one teammate to an existing lead, with the shared team rules and the lead as its parent.
 #   add.sh <lead-name-or-id> <role> "<task>" [model]
-# e.g. add.sh "관리자 #1" design "Review every merged screen against the design guide." claude-opus-5-5
+# e.g. add.sh "Juno" design "Review every merged screen against the design guide." claude-opus-5-5
 set -euo pipefail
 
 here="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")" && pwd)"

@@ -34,7 +34,7 @@ Dispatch MCP 도구로 다른 세션을 만들고 관리할 수 있다.
 - send_message: 진행 중인 세션에 추가 지시
 - stop_session: 끝난 세션 정리
 - set_task: 작업 보드. 맡은 일마다 작업을 만들고, 단계가 바뀔 때마다(plan→impl→review→test→merge→done, 막히면 blocked) stage·owner·eta_minutes를 갱신한다. 갱신은 처음 받은 id로 하고, 같은 일을 다른 제목으로 다시 만들지 않는다. develop에 병합하면 그 자리에서 done으로 닫는다. 사용자는 이 보드로 남은 시간을 본다.
-- 내가 만든 세션이 한 턴을 끝내면 그 마지막 응답이 "[이름 보고 · 브랜치]" 메시지로 나에게 자동으로 온다. 중단되면 "[이름 중단]" 요약이 온다. 보고/중단 요약을 받으면 바로 다음 단계를 진행한다.
+- 내가 만든 세션이 한 턴을 끝내면 그 마지막 응답이 "[이름(역할) 보고 · 브랜치]" 메시지로 나에게 자동으로 온다. 중단되면 "[이름(역할) 중단]" 요약이 온다. 보고/중단 요약을 받으면 바로 다음 단계를 진행한다.
 - 팀원 상태를 파악할 때 get_session으로 대화 전체를 다시 읽지 마라(토큰 낭비). 자동으로 온 보고/중단 요약, list_sessions의 last, 그리고 git diff/log로 파악한다. get_session은 꼭 필요한 한 세션만, 최근 몇 줄만.
 - 구현자는 작업 하나만 맡는다. 그 작업이 병합 후보까지 가면 stop_session하고, 다음 작업이나 다른 팀원 실패 조사 같은 곁일은 새 구현자를 만들어 맡긴다. 한 세션에 작업을 이어 붙이면 맥락이 쌓여 매 호출이 비싸진다. 리뷰어·테스터는 짧은 일이라 재사용해도 되지만, 맥락이 커지면 새로 만든다.
 - 나도 호출할 때마다 대화 전체를 다시 읽는다. 지시·set_task는 한 번에 묶어 보내고, 같은 내용을 여러 번 보내지 않는다. list_sessions를 반복해서 확인하지 말고 보고를 기다린다.
@@ -49,3 +49,12 @@ export const CHILD_PROMPT = `
 네 마지막 답변 하나하나가 관리자를 깨워 한 턴을 쓰게 한다. "알겠습니다", "대기하겠습니다" 같은 확인 답장으로 턴을 끝내지 말고, 일을 끝낸 뒤 결과(브랜치·커밋·검사 결과·남은 일)를 한 번에 짧게 보고한다. 할 일이 없으면 한 줄로 끝낸다.`;
 
 export const PERMS = ["manual", "acceptEdits", "auto", "plan"];
+
+// Session names: short (≤ 6 letters), easy to say and tell apart. The role shows beside the name.
+export const NAMES = [
+  "Sam", "Juno", "Dino", "Cal", "Chan", "Col", "Ari", "Bo", "Remy", "Kai", "Leo", "Mina",
+  "Nova", "Ollie", "Pia", "Rio", "Sora", "Theo", "Uma", "Vic", "Wren", "Yuki", "Zed", "Ash",
+  "Bea", "Cleo", "Dex", "Eli", "Finn", "Gus", "Hana", "Ivy", "Jae", "Kit", "Luca", "Milo",
+  "Nico", "Otto", "Pax", "Quin", "Ruby", "Saki", "Tao", "Vera", "Wes", "Yuna", "Zoe", "Arlo",
+  "Bram", "Cora", "Dana", "Ezra", "Faye", "Gil", "Hugo", "Iris", "Jude", "Koa", "Lyra", "Max",
+];

@@ -114,7 +114,7 @@ const LEAD_TOOLS = [
         id: { type: "string" },
         title: { type: "string", description: "짧은 작업 이름 (예: 홈 레이아웃 정리)" },
         stage: { type: "string", enum: ["plan", "impl", "review", "test", "merge", "done", "blocked"] },
-        owner: { type: "string", description: "지금 맡은 세션 이름 (예: 구현자 #69)" },
+        owner: { type: "string", description: "지금 맡은 세션 이름 (예: Juno)" },
         eta_minutes: { type: "number", description: "끝날 때까지 남은 예상 분" },
         note: { type: "string", description: "한 줄 상태" },
       },

@@ -5,7 +5,7 @@ import { EventEmitter } from "node:events";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { prepareWorkdir } from "./git.js";
-import { CHILD_PROMPT, PERMS, SPAWN_PROMPT } from "./roles.js";
+import { CHILD_PROMPT, NAMES, PERMS, SPAWN_PROMPT } from "./roles.js";
 import { replyStyle } from "./style.js";
 import { codexLimits, geminiResetFrom, isQuotaError } from "./limits.js";
 
@@ -197,6 +197,14 @@ export class Hub extends EventEmitter {
       .map(t => ({ id: t.id, title: t.title, stage: t.stage }));
   }
 
+  /** A random name no listed session uses yet; once all are taken, the name gets the session number. */
+  pickName(n) {
+    const taken = new Set(Object.values(this.store.data.sessions || {}).map(s => s.name));
+    const free = NAMES.filter(x => !taken.has(x));
+    if (free.length) return free[Math.floor(Math.random() * free.length)];
+    return `${NAMES[n % NAMES.length].slice(0, 3)}${n % 1000}`; // still ≤ 6 letters
+  }
+
   removeTask(id) {
     delete (this.store.data.tasks ||= {})[id];
     this.store.save();
@@ -256,7 +264,7 @@ export class Hub extends EventEmitter {
         const slug = `${role.id}-${n}`;
         const wd = await prepareWorkdir(this.root, slug, worktree);
         const s = {
-          id: randomUUID(), n, name: `${role.name} #${n}`, role: role.id, roleName: role.name,
+          id: randomUUID(), n, name: this.pickName(n), role: role.id, roleName: role.name,
           provider: model.provider, model: model.id, modelLabel: model.label,
           effort: it.effort || null, perm: it.perm || role.perm,
           prompt: it.prompt ?? role.prompt, canSpawn: !!role.canSpawn,
@@ -318,7 +326,7 @@ export class Hub extends EventEmitter {
     old?.kill("SIGTERM");
     const kids = this.sessions.filter(c => c.parent === s.id && !["done"].includes(c.status));
     const team = kids.length
-      ? `\n\n[팀원]\n${kids.map(c => `- ${c.name} (id ${c.id}, ${c.status}${c.branch ? `, 브랜치 ${c.branch}` : ""}): ${clip(c.last || "", 160)}`).join("\n")}`
+      ? `\n\n[팀원]\n${kids.map(c => `- ${c.name} (${c.roleName}, id ${c.id}, ${c.status}${c.branch ? `, 브랜치 ${c.branch}` : ""}): ${clip(c.last || "", 160)}`).join("\n")}`
       : "";
     const last = clip(r.lastText || s.last || "", 2500);
     const note = `[Dispatch] 컨텍스트를 줄이려고 ${s.turnsSinceRotate ?? s.turns}턴 만에 새 CLI 세션으로 이어 간다. 이전 대화는 이 세션에 없다. 필요한 상태는 작업 폴더·브랜치·git log·docs로 다시 확인하라.\n\n[직전 내 응답]\n${last || "(없음)"}${team}\n\n[이어서 할 일]\n${text}`;
@@ -349,7 +357,7 @@ export class Hub extends EventEmitter {
     const r = this.live.get(s.id);
     if (!r || s.canSpawn || !s.parent) return;
     const doing = clip(r.lastText || "", 600) || (r.lastTool ? `도구 실행 중: ${r.lastTool}` : "작업 진행 중");
-    r.pendingReport = `[${s.name} 중단${s.branch ? ` · ${s.branch}` : ""}] 턴 중간에 멈췄다. 하던 일:\n${doing}\n(재개하려면 이 세션에 지시를 보내면 된다. 전체 대화를 다시 읽지 말고 이 요약과 git diff/log로 상태를 파악하라.)`;
+    r.pendingReport = `[${s.name}(${s.roleName}) 중단${s.branch ? ` · ${s.branch}` : ""}] 턴 중간에 멈췄다. 하던 일:\n${doing}\n(재개하려면 이 세션에 지시를 보내면 된다. 전체 대화를 다시 읽지 말고 이 요약과 git diff/log로 상태를 파악하라.)`;
     r.lastText = null;
     this.deliverReport(s);
   }
@@ -428,7 +436,7 @@ export class Hub extends EventEmitter {
     const p = s.parent && this.get(s.parent);
     if (!p || p.status === "done") throw Object.assign(new Error("연결된 관리자가 없어요"), { status: 400 });
     if (!String(text).trim()) throw Object.assign(new Error("보낼 내용이 없어요"), { status: 400 });
-    this.send(p.id, `[${s.name} 메시지${s.branch ? ` · ${s.branch}` : ""}]\n${clip(text, 4000)}`);
+    this.send(p.id, `[${s.name}(${s.roleName}) 메시지${s.branch ? ` · ${s.branch}` : ""}]\n${clip(text, 4000)}`);
   }
 
   // Resume every session a restart cut off mid-turn, once its provider is connected.
@@ -564,7 +572,7 @@ export class Hub extends EventEmitter {
   reportToParent(s) {
     const r = this.live.get(s.id);
     if (!r?.lastText) return;
-    r.pendingReport = `[${s.name} 보고${s.branch ? ` · ${s.branch}` : ""}]\n${clip(r.lastText, 2500)}`;
+    r.pendingReport = `[${s.name}(${s.roleName}) 보고${s.branch ? ` · ${s.branch}` : ""}]\n${clip(r.lastText, 2500)}`;
     r.lastText = null;
     this.deliverReport(s);
   }
