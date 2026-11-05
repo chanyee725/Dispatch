@@ -22,6 +22,7 @@ Local web UI for running several role-based Claude Code, Codex and Gemini sessio
 
 ### At a glance
 
+- **확인 필요** (top of 세션): one row per thing that needs you — a session waiting on your answer or a permission, a stuck or failed session, a task past its estimate or whose board stage disagrees with what its owner is doing, a task whose merge check failed, a Claude limit at 75 % or more (red once it reaches the usage-limit guard set in 설정). Each row says why and for how long, and opens the session (or 사용량). Empty, it folds to "지금 볼 것 없어요". Open sessions, cost and tokens sit in one small line under it; click cost or tokens for the per-model breakdown.
 - **Top bar:** usage limits per provider — Claude 5-hour and weekly, GPT (Codex) windows, and Gemini's state (Gemini reports no percentage, so it shows OK until a quota error, then the reset time). Hover for reset times.
 - **프로젝트 선택:** switch between the Dispatch servers running on this machine (one per project).
 - **새 세션** starts sessions. **끝난 세션 정리** removes finished sessions in one click; the broom icon stops and removes every session of this project after a confirmation. Branches stay; a worktree goes with its session only when nothing uncommitted is left.
@@ -30,7 +31,7 @@ Local web UI for running several role-based Claude Code, Codex and Gemini sessio
 - **사용량** also shows what the project is spending right now (**지금 시간당**, $/h over the last 30 minutes, falling back to 0 while sessions sit idle), the ten sessions that cost the most with a warning when one spends 3× the team's rate or has run 3 hours on a large context (for a lead: start a fresh one), and a marker on days that cost 2× the usual, naming the sessions behind them.
 - **사용량 → 한도 가까우면 막기** blocks new Claude sessions above the thresholds you set. When a threshold is reached, every lead's unfinished board tasks (and its last note and team) are saved as a **ticket**; after the reset the ticket is handed back to the lead automatically, or resume it yourself from the 작업 dialog.
 
-Requires Node.js 20+, git, and at least one of the `claude`, `codex` or `agy` (Antigravity, for Gemini) CLIs.
+Requires Node.js 22.6+ (Node 20 is end-of-life; `npm test` loads TypeScript files directly, which needs 22.6), git, and at least one of the `claude`, `codex` or `agy` (Antigravity, for Gemini) CLIs.
 
 ## Install as a Claude Code plugin
 

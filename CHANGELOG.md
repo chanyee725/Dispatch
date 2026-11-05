@@ -2,6 +2,16 @@
 
 Every release is tagged `vX.Y.Z` and published on [GitHub Releases](https://github.com/chanyee725/Dispatch/releases). The plugin version in `.claude-plugin/plugin.json` matches the tag.
 
+## 0.9.0 — 2026-11-05
+
+### Added
+
+- **확인 필요 strip** at the top of 세션, in place of the five KPI cards (#3): sessions waiting on a person, stuck or failed, tasks past their estimate (worded by the server's over-eta flag once it fires), tasks whose board stage disagrees with what the owner is doing (`stage-mismatch`, folded into the owner's row when that session is already flagged), tasks whose merge check failed, and Claude limits at 75 % or more — urgent from the usage-limit guard threshold in 설정, and gone once the window has reset. Each row shows shape + label, the reason, how long, and opens the session (limit rows open 사용량). The KPIs shrink to one summary line.
+
+### Changed
+
+- **Node.js 22.6+ is required** (was 20+, now end-of-life). `npm test` loads TypeScript helpers from `web/` directly; `scripts/setup.sh` checks the new minimum.
+
 ## 0.8.0 — 2026-11-05
 
 ### Added

@@ -53,6 +53,8 @@ export interface Session {
   stateSince?: number;
   /** Why a person should look (failed, waiting, stuck); null otherwise. */
   attention?: Attention | null;
+  /** Per-session stuck flag (repeat-fail, silent); the server folds it into state and attention. */
+  stuck?: { reason: string; label: string; sinceMs: number | null; count?: number; kind?: string } | null;
   /** $/h over the last 30 minutes (perHour null while under 5 minutes); null when the provider reports no cost. */
   burn?: { perHour: number | null; windowMin: number } | null;
   /** Why this session's spending needs a look; null otherwise. */
