@@ -39,7 +39,7 @@ On **Windows** (PowerShell, no bash): find the clone with `(Get-Item <skill-dir>
 
 | id | name | default model | permission | notes |
 |---|---|---|---|---|
-| `lead` | 관리자 | claude-opus-5-5 | auto | Splits work and creates/steers other sessions through the Dispatch MCP tools (max 8 open children). |
+| `lead` | 관리자 | claude-sonnet-5-5 | auto | Splits work and creates/steers other sessions through the Dispatch MCP tools (max 8 open children). Mostly bookkeeping, so it runs on Sonnet; swap in a fresh lead after ~10 merges because every call rereads its whole conversation. |
 | `impl` | 구현자 | claude-opus-5-5 | auto | Implements in small commits, runs tests. |
 | `review` | 리뷰어 | claude-opus-5-5 | auto | Reads only, reports risks in priority order. |
 | `test` | 테스터 | claude-sonnet-5-5 | auto | Adds edge-case tests. |

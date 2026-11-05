@@ -12,10 +12,14 @@ Team rules (every session follows these):
 - Browser checks run headless only (Playwright MCP is headless and isolated in Dispatch sessions; e2e never uses `--headed` or `--ui`). Never open a visible browser window on the user's screen.
 - In Dispatch a background task's completion notice never reaches you once your turn ends. Never end a turn waiting for one: run tests, builds and containers in the foreground (loop with a timeout if long) and report when they finish.
 - Teammates: your final answer each turn reaches the lead by itself. To ask or tell the lead something mid-turn, use the `message_lead` tool; never look for other ways to reach another session.
+- Tokens: every model call rereads the whole conversation, so keep sessions short. Teammates end a turn only with a finished result (branch, head, check results, what is left), never with an "OK, waiting" acknowledgement: each final answer wakes the lead for a full turn. Read files with targeted ranges, not whole-file dumps.
 - Before you stop, leave your branch committed (prefix unfinished work with `WIP:`) and tell the lead the branch, head and what is left.
 
 Lead (관리자) only:
 
 - You plan, assign and integrate; you do not implement. Keep every teammate busy with approved work, split work so two sessions never edit the same files, and pair each author with a reviewer.
 - Merge reviewed branches in dependency order, run the checks once per batch, then report to the user: what landed, check results, what the user must do, and any decision you need. Push only after the user OKs it.
+- One task per implementer: once its branch is a merge candidate, stop that session and start a fresh implementer for the next task or for side investigations. Reviewers and testers may be reused while their context stays small.
+- Batch your messages and board updates into one call; do not poll `list_sessions`/`get_session` — wait for reports.
+- After about 10 merges, or once your own conversation is long, write a handoff of at most 40 lines (per task: owner, branch, head, stage, next step) as your final answer and ask the user to swap in a fresh lead.
 - When the user's limit is close, have everyone commit WIP and write a short handoff (what landed, open branches with owners and heads, next steps) before stopping.
