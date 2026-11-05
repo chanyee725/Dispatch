@@ -23,6 +23,7 @@ Local web UI for running several role-based Claude Code, Codex and Gemini sessio
 ### At a glance
 
 - **확인 필요** (top of 세션): one row per thing that needs you — a session waiting on your answer or a permission, a stuck or failed session, a task past its estimate or whose board stage disagrees with what its owner is doing, a task whose merge check failed, a Claude limit at 75 % or more (red once it reaches the usage-limit guard set in 설정). Each row says why and for how long, and opens the session (or 사용량). Empty, it folds to "지금 볼 것 없어요". Open sessions, cost and tokens sit in one small line under it; click cost or tokens for the per-model breakdown.
+- **Session cards** are ordered by what needs you: 실패, 사람 기다림, 멈춤, 작업 중, 쉼, 완료 — the longest-standing first within a state — and each shows how long it has been in that state ("12분째"). Cards move only when a state changes. Finished sessions are hidden under **완료 N개 보기** at the bottom; a failed session is never hidden and stays in 확인 필요.
 - **상시 화면 (TV):** the top-bar **상시 화면** button (or `#tv` in the address bar) opens a dark, always-on view: a big state grid and the "확인 필요" area, no scrolling. Every state shows a shape, a colour and a label. `Esc` closes it.
 - **Session sheet:** runs of tool calls fold into one counted line; open it for the raw input and output.
 - **Top bar:** usage limits per provider — Claude 5-hour and weekly, GPT (Codex) windows, and Gemini's state (Gemini reports no percentage, so it shows OK until a quota error, then the reset time). Hover for reset times.
