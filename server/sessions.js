@@ -159,7 +159,10 @@ export class Hub extends EventEmitter {
 
   get tasks() {
     const cut = Date.now() - 6 * 3600_000; // finished work drops off after six hours
+    const sessions = this.store.data.sessions || {};
     return Object.values(this.store.data.tasks ||= {})
+      // A removed lead's tasks have no one left to close them.
+      .filter(t => !t.lead || sessions[t.lead])
       .filter(t => t.stage !== "done" || t.updatedAt > cut)
       .sort((a, b) => a.createdAt - b.createdAt);
   }
@@ -185,6 +188,13 @@ export class Hub extends EventEmitter {
     this.store.save();
     this.emit("tasks", this.tasks);
     return t;
+  }
+
+  /** Open tasks of one lead other than `except`, as { id, title, stage }. */
+  openTasks(lead, except) {
+    return Object.values(this.store.data.tasks || {})
+      .filter(t => t.lead === lead && t.id !== except && t.stage !== "done")
+      .map(t => ({ id: t.id, title: t.title, stage: t.stage }));
   }
 
   removeTask(id) {
@@ -356,10 +366,15 @@ export class Hub extends EventEmitter {
   remove(id) {
     this.kill(id);
     delete this.store.data.sessions[id];
+    // Its board goes with it: a removed lead can no longer close its tasks.
+    for (const bag of [this.store.data.tasks, this.store.data.tickets])
+      for (const [k, v] of Object.entries(bag || {})) if (v.lead === id) delete bag[k];
     this.live.delete(id);
     rmSync(this.tfile(id), { force: true });
     this.store.save();
     this.emit("removed", { id });
+    this.emit("tasks", this.tasks);
+    this.emit("tickets", this.tickets);
   }
 
   respondPermission(id, requestId, behavior, always = false) {

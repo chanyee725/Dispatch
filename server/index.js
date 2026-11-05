@@ -227,7 +227,12 @@ const routes = [
   ["GET", /^\/api\/tickets$/, async () => ({ tickets: hub.tickets })],
   ["POST", /^\/api\/tickets\/([\w-]+)\/resume$/, async ([id]) => ({ ok: hub.resumeTicket(id) })],
   ["POST", /^\/api\/tickets\/([\w-]+)\/close$/, async ([id]) => { hub.closeTicket(id); return { ok: true }; }],
-  ["POST", /^\/api\/tasks$/, async (_, b) => hub.setTask(b.lead || null, b || {})],
+  ["POST", /^\/api\/tasks$/, async (_, b) => {
+    const isNew = !b?.id;
+    const t = hub.setTask(b?.lead || null, b || {});
+    // Creating by title: show the lead what is already open so a renamed copy of the same work stands out.
+    return isNew && t.lead ? { ...t, open: hub.openTasks(t.lead, t.id) } : t;
+  }],
   ["POST", /^\/api\/tasks\/([\w-]+)\/remove$/, async ([id]) => { hub.removeTask(id); return { ok: true }; }],
   ["POST", /^\/api\/sessions\/([\w-]+)\/to-lead$/, async ([id], b) => { hub.messageLead(id, String(b.text || "")); return { ok: true }; }],
   ["POST", /^\/api\/sessions\/([\w-]+)\/parent$/, async ([id], b) => { hub.setParent(id, b.parent ? String(b.parent) : null); return { ok: true }; }],
