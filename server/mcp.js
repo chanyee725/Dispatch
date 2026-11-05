@@ -106,7 +106,7 @@ const LEAD_TOOLS = [
   },
   {
     name: "set_task",
-    description: "작업 보드를 갱신한다. 맡은 일 하나마다 한 번만 만들고(title), 그 뒤로는 돌려받은 id로 stage·owner·eta_minutes·note를 고친다. 같은 일을 제목만 바꿔 새로 만들지 않는다(제목을 바꿀 때도 id와 함께 보낸다). develop에 병합했거나 그만둔 일은 바로 stage done으로 닫는다. 새로 만들면 결과의 open에 이미 열려 있는 내 작업이 온다. 같은 일이 있으면 그 id를 쓰고 방금 만든 것은 done으로 닫는다.",
+    description: "작업 보드를 갱신한다. 맡은 일 하나마다 한 번만 만들고(title), 그 뒤로는 돌려받은 id로 stage·owner·eta_minutes·note를 고친다. 같은 일을 제목만 바꿔 새로 만들지 않는다(제목을 바꿀 때도 id와 함께 보낸다). develop에 병합한 일은 commit(병합한 브랜치 이름이나 끝 커밋)과 함께 stage done으로 닫는다. 서버가 그 커밋이 통합 브랜치에 들어 있는지 확인하고, 없으면 닫지 않고 merge_check에 이유를 돌려준다. 그만둔 일은 commit 없이 done으로 닫는다. 새로 만들면 결과의 open에 이미 열려 있는 내 작업이 온다. 같은 일이 있으면 그 id를 쓰고 방금 만든 것은 done으로 닫는다.",
     inputSchema: {
       type: "object",
       required: ["title"],
@@ -117,11 +117,16 @@ const LEAD_TOOLS = [
         owner: { type: "string", description: "지금 맡은 세션 이름 (예: Juno)" },
         eta_minutes: { type: "number", description: "끝날 때까지 남은 예상 분" },
         note: { type: "string", description: "한 줄 상태" },
+        commit: { type: "string", description: "병합한 브랜치 이름이나 커밋. done으로 닫을 때 통합 브랜치 포함 여부를 확인한다. 빈 문자열이면 지운다" },
       },
     },
     run: async args => {
       const t = await api("POST", "/api/tasks", { ...args, lead: PARENT });
-      return { id: t.id, title: t.title, stage: t.stage, ...(t.open?.length && { open: t.open }) };
+      return {
+        id: t.id, title: t.title, stage: t.stage,
+        ...(args.stage === "done" && t.mergeCheck && { merge_check: t.mergeCheck }),
+        ...(t.open?.length && { open: t.open }),
+      };
     },
   },
   {

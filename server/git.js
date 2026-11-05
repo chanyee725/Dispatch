@@ -131,12 +131,47 @@ export async function diff(cwd, root = cwd) {
  * branched off what and what merged back. Returns commits newest-first with parent links, the
  * branch tips, and which branch each session HEAD sits on (by matching session.branch).
  */
+/** Local branch names of the repo at `root`. */
+async function localBranches(root) {
+  try {
+    return (await git(root, "for-each-ref", "--format=%(refname:short)", "refs/heads")).stdout.split("\n").map(s => s.trim()).filter(Boolean);
+  } catch { return []; }
+}
+
+/** The branch work merges into: develop, else main/master, else whatever the project folder is on. */
+export async function integrationBranch(root, base = "develop") {
+  const branches = await localBranches(root);
+  return [base, "main", "master"].find(b => branches.includes(b)) ?? (await currentBranch(root)) ?? "HEAD";
+}
+
+/**
+ * Whether `commit` (a hash or branch name) is already part of the integration branch in the
+ * project folder — `git merge-base --is-ancestor`. Leads closed tasks as merged that were not on
+ * develop; this is the check behind closing one. Returns { ok, commit, base, reason }.
+ */
+export async function verifyMerged(root, commit) {
+  const ref = String(commit || "").trim();
+  const base = await integrationBranch(root);
+  // A leading "-" would read as an option to git.
+  if (!ref || ref.startsWith("-")) return { ok: false, commit: ref, base, reason: "커밋을 알 수 없어요" };
+  let sha;
+  try { sha = (await git(root, "rev-parse", "--verify", "--quiet", `${ref}^{commit}`)).stdout.trim(); }
+  catch { return { ok: false, commit: ref, base, reason: `${ref} 커밋을 프로젝트 폴더에서 찾을 수 없어요` }; }
+  try {
+    await git(root, "merge-base", "--is-ancestor", sha, base);
+    return { ok: true, commit: sha, base, reason: null };
+  } catch (e) {
+    // Exit 1 means "not an ancestor"; anything else is git failing.
+    if (e.code === 1) return { ok: false, commit: sha, base, reason: `${sha.slice(0, 7)} 커밋이 아직 ${base}에 없어요. 병합하고 프로젝트 폴더의 ${base} 브랜치를 최신으로 맞춘 뒤 다시 닫으세요` };
+    return { ok: false, commit: sha, base, reason: `병합 확인에 실패했어요: ${String(e.stderr || e.message).trim().slice(0, 120)}` };
+  }
+}
+
 export async function branchGraph(root, { base = "develop", limit = 80, active = [] } = {}) {
   const activeSet = new Set(active);
   const sh = async (...a) => { try { return (await git(root, ...a)).stdout; } catch { return ""; } };
-  // Pick the base branch: prefer develop, else main/master, else current.
-  const branches = (await sh("for-each-ref", "--format=%(refname:short)", "refs/heads")).split("\n").map(s => s.trim()).filter(Boolean);
-  const mainB = [base, "main", "master"].find(b => branches.includes(b)) ?? (await currentBranch(root)) ?? "HEAD";
+  const branches = await localBranches(root);
+  const mainB = await integrationBranch(root, base);
   // Which dispatch/* branches are worth showing: a live session's branch, or work not yet merged.
   const dispatchB = branches.filter(b => b.startsWith("dispatch/"));
   // Only branches a live session is on (what the team is working on right now). If none are

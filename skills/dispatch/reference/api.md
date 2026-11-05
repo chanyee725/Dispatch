@@ -51,6 +51,14 @@ Per item: `role` (required), `n` (copies, default 1), `model`, `effort` (one of 
 | `POST /api/sessions/clear-done` | — | Removes every finished session (`done` or `error`) the same way. Returns `{ removed }`. |
 | `POST /api/sessions/<id>/remove` | — | Removes a session from the list, with its tasks; its worktree too when nothing uncommitted is left (the branch stays). The lead does this through `stop_session` with `remove: true`. |
 
+## Task board
+
+| Request | Body | Effect |
+|---|---|---|
+| `GET /api/tasks` | — | `{ tasks }`: each lead's board — `id`, `lead`, `title`, `stage` (`plan` · `impl` · `review` · `test` · `merge` · `done` · `blocked`), `owner`, `etaAt`, `note`, `commit`, `mergeCheck`. Done tasks drop off after six hours. |
+| `POST /api/tasks` | `{ "id"?, "lead", "title", "stage"?, "owner"?, "eta_minutes"?, "note"?, "commit"? }` | Creates a task (by `title`) or updates one (by `id`). What the lead's `set_task` tool calls. A new task returns `open`, the lead's other open tasks. `commit` is a branch name or commit hash; `""` clears it. Moving a task with a `commit` to `done` first runs `git merge-base --is-ancestor <commit> <integration branch>` in the project folder (integration branch: `develop`, else `main`/`master`, else the current branch). If that fails the stage stays as it was and `mergeCheck` is `{ ok: false, commit, base, reason, at }`; on success it is `{ ok: true, … }`. Closing without a commit (abandoned work) skips the check: `mergeCheck.ok` is `null`. |
+| `POST /api/tasks/<id>/remove` | — | Deletes a task. |
+
 ## Providers and settings
 
 | Request | Body | Effect |
@@ -64,4 +72,4 @@ Per item: `role` (required), `n` (copies, default 1), `model`, `effort` (one of 
 
 ## Manager MCP tools
 
-`lead` sessions get an MCP server named `dispatch` with `list_roles`, `create_sessions`, `list_sessions`, `get_session`, `send_message`, `stop_session`. Every other session gets the same server with one tool, `message_lead`. Sessions it creates have `parent` set to the manager's id. These tools wrap the endpoints above, so the same rules (connected providers, limit guard, 8 open children per manager) apply.
+`lead` sessions get an MCP server named `dispatch` with `list_roles`, `create_sessions`, `list_sessions`, `get_session`, `send_message`, `set_task`, `stop_session`. `set_task` returns `merge_check` when it was asked to close a task as done. Every other session gets the same server with one tool, `message_lead`. Sessions it creates have `parent` set to the manager's id. These tools wrap the endpoints above, so the same rules (connected providers, limit guard, 8 open children per manager) apply.
