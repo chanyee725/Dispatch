@@ -61,9 +61,10 @@ Per item: `role` (required), `n` (copies, default 1), `model`, `effort` (one of 
 
 | Request | Body | Effect |
 |---|---|---|
-| `GET /api/tasks` | — | `{ tasks }`: each lead's board — `id`, `lead`, `title`, `stage` (`plan` · `impl` · `review` · `test` · `merge` · `done` · `blocked`), `owner`, `etaAt`, `note`, `commit`, `mergeCheck`. Done tasks drop off after six hours. |
+| `GET /api/tasks` | — | `{ tasks }`: each lead's board — `id`, `lead`, `title`, `stage` (`plan` · `impl` · `review` · `test` · `merge` · `done` · `blocked`), `owner`, `createdAt`, `stageAt`, `stages` (`[{ stage, at }]`, oldest first: each stage the task entered and when — stage and time only, last 40), `etaAt`, `note`, `commit`, `mergeCheck`. Done tasks drop off after six hours. |
 | `POST /api/tasks` | `{ "id"?, "lead", "title", "stage"?, "owner"?, "eta_minutes"?, "note"?, "commit"? }` | Creates a task (by `title`) or updates one (by `id`). What the lead's `set_task` tool calls. A new task returns `open`, the lead's other open tasks. `commit` is a branch name or commit hash; `""` clears it. Moving a task with a `commit` to `done` first runs `git merge-base --is-ancestor <commit> <integration branch>` in the project folder (integration branch: `develop`, else `main`/`master`, else the current branch). If that fails the stage stays as it was and `mergeCheck` is `{ ok: false, commit, base, reason, at }`; on success it is `{ ok: true, … }`. Closing without a commit (abandoned work) skips the check: `mergeCheck.ok` is `null`. |
 | `POST /api/tasks/<id>/remove` | — | Deletes a task. |
+| `GET /api/branches` | — | `{ base, commits, tips }` for the 브랜치 page. `base` is the integration branch (`develop`, else `main`/`master`). `commits` (newest first, at most 80): `hash`, `short`, `parents`, `author`, `at`, `subject`, `merge`. `tips`, one per shown branch (live sessions' `dispatch/*` branches, else the eight most ahead, plus `base`): `branch`, `hash`, `short`, `base`, `active`, `ahead` / `behind` (commits only on the branch / only on `base`), `lastAt` (tip commit time), `state` (`open` · `merged` — on `base` after commits of its own · `empty` — nothing committed; `null` for `base`). |
 
 ## Providers and settings
 

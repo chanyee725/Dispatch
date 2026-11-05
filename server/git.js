@@ -167,6 +167,27 @@ export async function verifyMerged(root, commit) {
   }
 }
 
+/**
+ * One table row per branch against the integration branch: commits ahead (`ahead`) and behind
+ * (`behind`), the tip's commit time (`lastAt`, ms) and `state`:
+ * - "merged": the tip is on `base` and the branch made commits of its own (first reflog entry
+ *   differs from the tip), so the work went in;
+ * - "empty": the tip is on `base` and nothing was committed — a fresh worktree branch;
+ * - "open": commits not on `base` yet.
+ */
+export async function branchStatus(root, branch, base) {
+  const sh = async (...a) => { try { return (await git(root, ...a)).stdout.trim(); } catch { return ""; } };
+  const [counts, ct, tip, born] = await Promise.all([
+    sh("rev-list", "--left-right", "--count", `${base}...${branch}`),
+    sh("log", "-1", "--format=%ct", branch),
+    sh("rev-parse", branch),
+    sh("reflog", "show", "--format=%H", branch).then(r => r.split("\n").filter(Boolean).at(-1) || ""),
+  ]);
+  const [behind, ahead] = counts.split(/\s+/).map(n => +n || 0);
+  const state = ahead > 0 ? "open" : born && born !== tip ? "merged" : "empty";
+  return { ahead, behind: behind ?? 0, lastAt: ct ? +ct * 1000 : null, state };
+}
+
 export async function branchGraph(root, { base = "develop", limit = 80, active = [] } = {}) {
   const activeSet = new Set(active);
   const sh = async (...a) => { try { return (await git(root, ...a)).stdout; } catch { return ""; } };
@@ -200,7 +221,9 @@ export async function branchGraph(root, { base = "develop", limit = 80, active =
   const tips = [];
   for (const b of refs) {
     const tip = (await sh("rev-parse", b)).trim();
-    tips.push({ branch: b, hash: tip, short: tip.slice(0, 7), ahead: b === mainB ? 0 : (aheadOf.get(b) ?? 0), base: b === mainB, active: activeSet.has(b) });
+    const row = b === mainB ? { ahead: 0, behind: 0, lastAt: null, state: null } : await branchStatus(root, b, mainB);
+    if (b === mainB) row.lastAt = +((await sh("log", "-1", "--format=%ct", b)).trim() || 0) * 1000 || null;
+    tips.push({ branch: b, hash: tip, short: tip.slice(0, 7), ...row, ahead: b === mainB ? 0 : (aheadOf.get(b) ?? row.ahead), base: b === mainB, active: activeSet.has(b) });
   }
   return { base: mainB, commits, tips };
 }

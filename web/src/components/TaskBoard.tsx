@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { CircleCheck, ListChecks, Ticket as TicketIcon, TriangleAlert, X } from "lucide-react";
+import { ChevronRight, CircleCheck, ListChecks, Ticket as TicketIcon, TriangleAlert, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { cn } from "@/lib/utils";
@@ -24,23 +24,66 @@ function useNow(ms = 10_000) {
   return now;
 }
 
-function Stepper({ stage }: { stage: TaskStage }) {
-  const at = stepIndex(stage);
+/** Time spent in each stage (ms), summed over revisits; the open stage runs up to `now`. */
+function stageTimes(t: BoardTask, now: number) {
+  const h = t.stages?.length ? t.stages : [{ stage: t.stage, at: t.stageAt ?? t.createdAt }];
+  const out: Partial<Record<TaskStage, number>> = {};
+  h.forEach((e, i) => {
+    const end = i + 1 < h.length ? h[i + 1].at : e.stage === "done" ? e.at : now;
+    out[e.stage] = (out[e.stage] ?? 0) + Math.max(0, end - e.at);
+  });
+  return out;
+}
+
+/** The stage a blocked task was in before it got stuck. */
+function lastStep(t: BoardTask) {
+  if (t.stage !== "blocked") return t.stage;
+  return [...(t.stages ?? [])].reverse().find(e => e.stage !== "blocked")?.stage ?? "plan";
+}
+
+/** Five cells, one per stage; each fills in proportion to the time spent there (a mini Gantt). */
+function Stepper({ t, now }: { t: BoardTask; now: number }) {
+  const stage = t.stage;
+  const at = stepIndex(lastStep(t));
+  const times = stageTimes(t, now);
+  const longest = Math.max(1, ...STEPS.map(s => times[s.id] ?? 0));
+  // Tasks saved before stage history: fill every reached cell, as before.
+  const known = (t.stages?.length ?? 0) > 0;
+  const seen = new Set((t.stages ?? []).map(e => e.stage));
   return (
-    <ol className="flex items-center gap-1" aria-label={`단계: ${STEPS[at]?.label ?? stage}`}>
-      {STEPS.map((s, i) => (
-        <li key={s.id} className="flex items-center gap-1">
-          <span
-            title={s.label}
-            className={cn(
-              "h-1.5 w-5 rounded-full",
-              stage === "done" || i < at ? "bg-ok" : i === at ? (stage === "blocked" ? "bg-warn" : "bg-[var(--role-impl)]") : "bg-muted",
+    <ol className="flex items-center gap-1" aria-label={`단계: ${stage === "blocked" ? "막힘" : STEPS[at]?.label ?? stage}`}>
+      {STEPS.map((s, i) => {
+        const ms = times[s.id] ?? 0;
+        const m = mins(ms);
+        const reached = known ? seen.has(s.id) || i === at : stage === "done" || i <= at;
+        return (
+          <li key={s.id} title={reached ? (known ? `${s.label} ${m < 1 ? "1분 미만" : fmtMin(m)}` : s.label) : `${s.label} ${stage !== "done" && i > at ? "아직" : "거치지 않음"}`} className="h-1.5 w-6 overflow-hidden rounded-full bg-muted">
+            {reached && (
+              <span
+                className={cn(
+                  "block h-full rounded-full",
+                  stage === "done" || i < at ? "bg-ok" : stage === "blocked" ? "bg-warn" : "bg-[var(--role-impl)]",
+                )}
+                style={{ width: known ? `${Math.max(12, Math.round((ms / longest) * 100))}%` : "100%" }}
+              />
             )}
-          />
-        </li>
-      ))}
+          </li>
+        );
+      })}
     </ol>
   );
+}
+
+/** "예상 20분 → 34분째 (+14분) · 테스트 단계 12분째"; `over` is the minutes past the estimate. */
+function timing(t: BoardTask, now: number) {
+  const inStage = mins(now - t.stageAt);
+  const stageLabel = t.stage === "blocked" ? "막힌 지" : `${STEPS[stepIndex(t.stage)]?.label ?? t.stage} 단계`;
+  const stagePart = `${stageLabel} ${fmtMin(inStage)}째`;
+  if (t.etaAt == null) return { text: `예상 없음 · ${stagePart}`, over: 0 };
+  const planned = mins(t.etaAt - t.createdAt);
+  const spent = mins(now - t.createdAt);
+  const over = t.etaAt < now ? Math.max(1, mins(now - t.etaAt)) : 0;
+  return { text: `예상 ${fmtMin(planned)} → ${fmtMin(spent)}째${over ? ` (+${fmtMin(over)})` : ""} · ${stagePart}`, over };
 }
 
 /** Sessions named in a task's owner text ("Remy", "Hana · Zed"). */
@@ -77,7 +120,7 @@ function Activity({ owners, now }: { owners: Session[]; now: number }) {
 function Row({ t, lead, owners, now, onOpen }: { t: BoardTask; lead?: string; owners: Session[]; now: number; onOpen?: () => void }) {
   const done = t.stage === "done";
   const left = t.etaAt ? mins(t.etaAt - now) : null;
-  const over = t.etaAt != null && t.etaAt < now && !done;
+  const time = done ? null : timing(t, now);
   const label = done ? "완료" : t.stage === "blocked" ? "막힘" : STEPS[stepIndex(t.stage)]?.label ?? t.stage;
   return (
     <li
@@ -87,34 +130,35 @@ function Row({ t, lead, owners, now, onOpen }: { t: BoardTask; lead?: string; ow
       onKeyDown={e => { if (onOpen && (e.key === "Enter" || e.key === " ")) { e.preventDefault(); onOpen(); } }}
       title={onOpen ? "세션 열기" : undefined}
       className={cn(
-        "group grid grid-cols-[minmax(0,1fr)_auto_auto] items-center gap-x-4 gap-y-0.5 px-3 py-2 focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-ring",
+        "group grid grid-cols-[minmax(0,1fr)_auto_auto] items-center gap-x-4 gap-y-0.5 px-3 py-2 focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-ring max-sm:grid-cols-[minmax(0,1fr)_auto] max-sm:gap-x-2",
         onOpen && "cursor-pointer hover:bg-accent/50",
         done && "text-muted-foreground",
       )}
     >
-      <div className="min-w-0">
+      <div className="min-w-0 max-sm:col-span-2">
         <div className="flex min-w-0 items-center gap-2">
           {done ? <CircleCheck className="size-3.5 shrink-0 text-ok" /> : t.stage === "blocked" ? <TriangleAlert className="size-3.5 shrink-0 text-warn" /> : null}
           <span className={cn("truncate text-sm font-medium", done && "line-through")}>{t.title}</span>
         </div>
         <div className="truncate text-xs text-muted-foreground">
-          {[lead, t.owner, t.note].filter(Boolean).join(" · ") || " "}
+          {[lead, t.owner, t.note].filter(Boolean).join(" · ") || " "}
         </div>
+        {time && <div className={cn("num truncate text-xs", time.over ? "text-warn" : "text-muted-foreground")}>{time.text}</div>}
         {!done && <Activity owners={owners} now={now} />}
       </div>
-      <div className="flex flex-col items-end gap-1">
-        <Stepper stage={t.stage} />
+      <div className="flex flex-col items-end gap-1 max-sm:items-start">
+        <Stepper t={t} now={now} />
         <span className="text-[11px] text-muted-foreground">{label}</span>
       </div>
       <div className="flex w-24 items-center justify-end gap-1">
-        <span className={cn("num text-right text-sm", over ? "text-warn" : done ? "text-muted-foreground" : "font-semibold")}>
-          {done ? "완료" : left == null ? "?" : over ? `${fmtMin(Math.max(1, mins(now - t.etaAt!)))} 지연` : `${fmtMin(left)} 남음`}
+        <span className={cn("num text-right text-sm", time?.over ? "text-warn" : done ? "text-muted-foreground" : "font-semibold")}>
+          {done ? "완료" : left == null ? "?" : time?.over ? `+${fmtMin(time.over)}` : `${fmtMin(left)} 남음`}
         </span>
         <button
           aria-label="보드에서 지우기"
           title="보드에서 지우기"
           onClick={e => { e.stopPropagation(); api("POST", `/api/tasks/${t.id}/remove`).catch(() => {}); }}
-          className="grid size-5 place-items-center rounded text-muted-foreground opacity-0 transition-opacity group-hover:opacity-100 hover:bg-accent focus-visible:opacity-100"
+          className="grid size-5 cursor-pointer place-items-center rounded text-muted-foreground opacity-0 transition-opacity group-hover:opacity-100 hover:bg-accent focus-visible:opacity-100 max-sm:opacity-100"
         >
           <X className="size-3" />
         </button>
@@ -127,9 +171,11 @@ function useBoard() {
   const tasks = useApp(s => s.tasks ?? []);
   const now = useNow();
   const active = tasks.filter(t => t.stage !== "done");
-  const etas = active.map(t => t.etaAt).filter((x): x is number => x != null);
+  // Overdue work is counted apart; it would otherwise read as "0분 남음".
+  const etas = active.map(t => t.etaAt).filter((x): x is number => x != null && x > now);
+  const late = active.filter(t => t.etaAt != null && t.etaAt <= now).length;
   return {
-    tasks, active, now,
+    tasks, active, now, late,
     first: etas.length ? mins(Math.min(...etas) - now) : null,
     last: etas.length ? mins(Math.max(...etas) - now) : null,
   };
@@ -172,7 +218,7 @@ function Tickets({ tickets, now }: { tickets: Ticket[]; now: number }) {
 
 /** "작업 n · ~m분" button at the right of the filter row; opens the board in a dialog. */
 export function TaskBoardButton({ onOpen }: { onOpen?: (id: string) => void }) {
-  const { tasks, active, now, first, last } = useBoard();
+  const { tasks, active, now, late, first, last } = useBoard();
   const tickets = useApp(s => s.tickets ?? []);
   const openTickets = tickets.filter(t => t.status === "open").length;
   const sessions = useApp(s => s.sessions);
@@ -180,6 +226,19 @@ export function TaskBoardButton({ onOpen }: { onOpen?: (id: string) => void }) {
   const [open, setOpen] = useState(false);
   // The row opens its owner's session (a name such as "Remy" in the owner text), else the lead's.
   const target = (t: BoardTask) => ownersOf(t, sessions)[0]?.id || t.lead || null;
+  // Finished work stays folded to its count; only what is still moving is spelled out.
+  const [showDone, setShowDone] = useState(false);
+  const finished = tasks.filter(t => t.stage === "done");
+  const row = (t: BoardTask) => (
+    <Row
+      key={t.id}
+      t={t}
+      lead={t.lead ? names.get(t.lead) : undefined}
+      owners={ownersOf(t, sessions)}
+      now={now}
+      onOpen={onOpen && target(t) ? () => { setOpen(false); onOpen(target(t)!); } : undefined}
+    />
+  );
   return (
     <>
       <Button variant="outline" size="sm" onClick={() => setOpen(true)} className="shrink-0 gap-2">
@@ -189,6 +248,7 @@ export function TaskBoardButton({ onOpen }: { onOpen?: (id: string) => void }) {
           {active.length}
           {first != null ? ` · ${fmtMin(first)} 남음` : ""}
         </span>
+        {late > 0 && <span className="num text-xs text-warn">예상 넘김 {late}</span>}
         {openTickets > 0 && (
           <span className="num rounded-full bg-warn/15 px-1.5 text-xs text-warn" title="한도로 멈춘 티켓">티켓 {openTickets}</span>
         )}
@@ -201,22 +261,35 @@ export function TaskBoardButton({ onOpen }: { onOpen?: (id: string) => void }) {
               진행 중 {active.length}
               {first != null ? ` · 가장 빠른 완료까지 ${fmtMin(first)}` : ""}
               {last != null && last !== first ? ` · 전부 끝나기까지 ${fmtMin(last)}` : ""}
+              {late > 0 ? ` · 예상을 넘긴 작업 ${late}개` : ""}
             </DialogDescription>
           </DialogHeader>
           <Tickets tickets={tickets} now={now} />
           {tasks.length ? (
-            <ul className="max-h-[60vh] divide-y overflow-y-auto rounded-lg border">
-              {[...active, ...tasks.filter(t => t.stage === "done")].map(t => (
-                <Row
-                  key={t.id}
-                  t={t}
-                  lead={t.lead ? names.get(t.lead) : undefined}
-                  owners={ownersOf(t, sessions)}
-                  now={now}
-                  onOpen={onOpen && target(t) ? () => { setOpen(false); onOpen(target(t)!); } : undefined}
-                />
-              ))}
-            </ul>
+            <div className="flex max-h-[60vh] min-h-0 flex-col gap-2 overflow-y-auto">
+              {active.length > 0 && (
+                <ul className="divide-y rounded-lg border">
+                  {active.map(row)}
+                </ul>
+              )}
+              {finished.length > 0 && (
+                <>
+                  <button
+                    onClick={() => setShowDone(v => !v)}
+                    aria-expanded={showDone}
+                    className="flex cursor-pointer items-center gap-1.5 self-start rounded-md px-1.5 py-1 text-xs text-muted-foreground hover:bg-accent hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
+                  >
+                    <ChevronRight className={cn("size-3.5 transition-transform", showDone && "rotate-90")} />
+                    <span className="num">완료 {finished.length}개</span>
+                  </button>
+                  {showDone && (
+                    <ul className="divide-y rounded-lg border">
+                      {finished.map(row)}
+                    </ul>
+                  )}
+                </>
+              )}
+            </div>
           ) : (
             <p className="py-8 text-center text-sm text-muted-foreground">관리자가 올린 작업이 없어요</p>
           )}
