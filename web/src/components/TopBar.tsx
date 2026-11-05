@@ -1,4 +1,4 @@
-import { GitBranch, Plus } from "lucide-react";
+import { GitBranch, Plus, Tv } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { ProjectSwitcher } from "@/components/ProjectSwitcher";
 import { ProviderLimits } from "@/components/ProviderLimits";
@@ -6,7 +6,7 @@ import { ClearAllButton } from "@/components/ClearAllButton";
 import { ClearDoneButton } from "@/components/ClearDoneButton";
 import { useApp } from "@/store";
 
-export function TopBar({ title, onCreate, canCreate }: { title: string; onCreate: () => void; canCreate: boolean }) {
+export function TopBar({ title, onCreate, canCreate, onTv }: { title: string; onCreate: () => void; canCreate: boolean; onTv?: () => void }) {
   const project = useApp(s => s.project);
   return (
     <header className="sticky top-0 z-10 flex items-center gap-6 border-b bg-background/85 px-6 py-3 backdrop-blur max-md:flex-wrap max-md:gap-3 max-md:px-4">
@@ -31,6 +31,12 @@ export function TopBar({ title, onCreate, canCreate }: { title: string; onCreate
           <Plus />
           <span className="max-sm:hidden">새 세션</span>
         </Button>
+        {onTv && (
+          <Button variant="outline" onClick={onTv} aria-label="상시 화면" title="상시 화면 (TV)">
+            <Tv />
+            <span className="max-xl:hidden">상시 화면</span>
+          </Button>
+        )}
         <ClearDoneButton />
         <ClearAllButton />
       </div>

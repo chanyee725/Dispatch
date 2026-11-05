@@ -121,6 +121,42 @@ function EntryView({ m, agent }: { m: Entry; agent: string }) {
   }
 }
 
+type Indexed = { e: Entry; i: number };
+
+/** Splits the transcript into single messages and runs of tool calls (tool + tool_result entries back to back). */
+function groupTools(entries: Entry[]): Indexed[][] {
+  const out: Indexed[][] = [];
+  let run: Indexed[] | null = null;
+  entries.forEach((e, i) => {
+    const isTool = e.kind === "tool" || e.kind === "tool_result";
+    if (isTool && run) run.push({ e, i });
+    else { run = isTool ? [{ e, i }] : null; out.push(run ?? [{ e, i }]); }
+  });
+  return out;
+}
+
+/** A run of 2+ tool calls folds into one counted line; the raw input and output show only when opened. */
+function ToolRun({ run, agent }: { run: Indexed[]; agent: string }) {
+  const calls = run.filter(x => x.e.kind === "tool");
+  if (calls.length < 2) return <>{run.map(x => <EntryView key={x.i} m={x.e} agent={agent} />)}</>;
+  const names = new Map<string, number>();
+  for (const c of calls) { const n = c.e.name ?? "도구"; names.set(n, (names.get(n) ?? 0) + 1); }
+  const failed = run.some(x => x.e.kind === "tool_result" && x.e.error);
+  return (
+    <details className="group rounded-lg border bg-muted/30 text-xs text-muted-foreground">
+      <summary className="flex cursor-pointer list-none items-center gap-2 px-3 py-1.5 hover:bg-muted/60 [&::-webkit-details-marker]:hidden">
+        <span className="num shrink-0 font-semibold text-foreground">도구 호출 {calls.length}개</span>
+        <span className="min-w-0 truncate">{[...names].map(([n, c]) => (c > 1 ? `${n} ${c}` : n)).join(", ")}</span>
+        {failed && <span className="shrink-0 text-bad">오류 있음</span>}
+        <ChevronRight className="ml-auto size-3.5 shrink-0 transition-transform group-open:rotate-90" />
+      </summary>
+      <div className="flex flex-col gap-2 border-t p-2">
+        {run.map(x => <EntryView key={x.i} m={x.e} agent={agent} />)}
+      </div>
+    </details>
+  );
+}
+
 function PermissionCard({ s, p }: { s: Session; p: Pending }) {
   const respond = (behavior: "allow" | "deny", always = false) =>
     run(api("POST", `/api/sessions/${s.id}/permission`, { requestId: p.requestId, behavior, always }));
@@ -160,7 +196,9 @@ function Chat({ s }: { s: Session }) {
       {entries?.length === 0 && (
         <p className="text-sm text-muted-foreground">이번 서버 실행 중에 주고받은 대화가 없어요. 메시지를 보내면 이전 세션을 이어서 실행해요.</p>
       )}
-      {entries?.map((m, i) => <EntryView key={i} m={m} agent={agent} />)}
+      {entries && groupTools(entries).map(g => g.length === 1 && g[0].e.kind !== "tool"
+        ? <EntryView key={g[0].i} m={g[0].e} agent={agent} />
+        : <ToolRun key={g[0].i} run={g} agent={agent} />)}
       {s.pending.map(p => <PermissionCard key={p.requestId} s={s} p={p} />)}
       <ThinkingLine status={s.status} turnStartedAt={turn(s).at} tokens={turn(s).tokens} />
     </div>

@@ -2,6 +2,18 @@
 
 Every release is tagged `vX.Y.Z` and published on [GitHub Releases](https://github.com/chanyee725/Dispatch/releases). The plugin version in `.claude-plugin/plugin.json` matches the tag.
 
+## 0.10.0 — Unreleased
+
+### Added
+
+- **모니터링 theme** next to system / light / dark (sidebar, bottom left): dark-first, flat panels with thin borders, tight radius, and a status palette (`--ok/--warn/--bad/--idle`) kept apart from the role lane colours. Reusable `Panel`, `Metric` and `StateMark` components for dense screens.
+- **상시 화면 (TV)**: top-bar button or `#tv` in the address bar. Always dark, a big state grid under the 확인 필요 strip, no auto-scroll, state shown as shape + colour + label. `Esc` closes it.
+- Session sheet: a run of two or more tool calls folds into one line ("도구 호출 3개 · Bash 2, Read"). The raw input and output show only when you open it.
+
+### Changed
+
+- The always-on grid is ordered by state, then start time and id, so tiles move only when a state changes.
+
 ## 0.9.0 — 2026-11-05
 
 ### Added
