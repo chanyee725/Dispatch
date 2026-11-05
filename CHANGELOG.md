@@ -2,7 +2,7 @@
 
 Every release is tagged `vX.Y.Z` and published on [GitHub Releases](https://github.com/chanyee725/Dispatch/releases). The plugin version in `.claude-plugin/plugin.json` matches the tag.
 
-## 0.10.0 — Unreleased
+## 0.10.0 — 2026-11-05
 
 ### Added
 
