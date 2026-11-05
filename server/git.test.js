@@ -5,7 +5,7 @@ import { execFileSync } from "node:child_process";
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { integrationBranch, verifyMerged } from "./git.js";
+import { branchStatus, integrationBranch, verifyMerged } from "./git.js";
 
 function scratchRepo() {
   const dir = mkdtempSync(path.join(tmpdir(), "dispatch-merge-"));
@@ -46,5 +46,22 @@ test("unknown or option-like refs fail without running them", async () => {
     assert.equal((await verifyMerged(dir, "nope")).ok, false);
     assert.equal((await verifyMerged(dir, "--all")).ok, false);
     assert.equal((await verifyMerged(dir, "")).ok, false);
+  } finally { rmSync(dir, { recursive: true, force: true }); }
+});
+
+test("branchStatus: ahead/behind, last commit time and merge state", async () => {
+  const { dir, g } = scratchRepo();
+  try {
+    // develop gets one commit of its own, so feat/x is 1 ahead and 1 behind.
+    writeFileSync(path.join(dir, "c.txt"), "c\n"); g("add", "."); g("commit", "-qm", "dev");
+    let r = await branchStatus(dir, "feat/x", "develop");
+    assert.deepEqual({ ahead: r.ahead, behind: r.behind, state: r.state }, { ahead: 1, behind: 1, state: "open" });
+    assert.ok(r.lastAt > Date.now() - 60_000);
+    g("merge", "-q", "--no-ff", "-m", "merge", "feat/x");
+    r = await branchStatus(dir, "feat/x", "develop");
+    assert.deepEqual({ ahead: r.ahead, behind: r.behind, state: r.state }, { ahead: 0, behind: 2, state: "merged" });
+    g("branch", "fresh", "develop");
+    r = await branchStatus(dir, "fresh", "develop");
+    assert.deepEqual({ ahead: r.ahead, behind: r.behind, state: r.state }, { ahead: 0, behind: 0, state: "empty" });
   } finally { rmSync(dir, { recursive: true, force: true }); }
 });
