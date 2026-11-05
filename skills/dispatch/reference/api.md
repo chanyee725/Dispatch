@@ -60,7 +60,7 @@ Per item: `role` (required), `n` (copies, default 1), `model`, `effort` (one of 
 | `POST /api/providers/<id>/logout` | `{ "cli": false }` | Disconnects in Dispatch; `cli: true` also logs the CLI out. |
 | `POST /api/providers/openai/key` | `{ "key": "..." }` | Codex API-key login, piped straight to `codex login --with-api-key`. Only for keys the user enters in the UI themselves. |
 | `POST /api/providers/refresh` | — | Re-reads CLI login status. |
-| `POST /api/settings` | `{ "guard": { "enabled", "five", "seven" } }` | Limit guard thresholds (0–1). |
+| `POST /api/settings` | `{ "guard": { "enabled", "five", "seven" }, "team": { … } }` | Limit guard thresholds (0–1) and team settings from the 설정 page: `rotateLead` / `rotateOthers` (turns before a fresh CLI session, 0 = off), `maxChildren` (1–16), `replyStyle`, `shareDeps`, `dropWorktrees` (booleans), `roleModels` (`{ role: modelId }`, `null` resets). Saved per project; the matching `DISPATCH_*` env vars only seed the defaults. |
 
 ## Manager MCP tools
 

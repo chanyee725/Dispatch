@@ -9,9 +9,10 @@ import { Sidebar, type Page } from "@/components/Sidebar";
 import { TopBar } from "@/components/TopBar";
 import { UsagePage } from "@/components/UsagePage";
 import { BranchesPage } from "@/components/BranchGraph";
+import { SettingsPage } from "@/components/SettingsPage";
 import { connect, useApp } from "@/store";
 
-const TITLES: Record<Page, string> = { sessions: "세션", branches: "브랜치", usage: "사용량" };
+const TITLES: Record<Page, string> = { sessions: "세션", branches: "브랜치", usage: "사용량", settings: "설정" };
 
 export default function App() {
   const ready = useApp(s => s.ready);
@@ -42,6 +43,8 @@ export default function App() {
               <SessionsPage onOpen={setOpenId} onCreate={() => setCreating(true)} />
             ) : page === "branches" ? (
               <BranchesPage onOpen={setOpenId} />
+            ) : page === "settings" ? (
+              <SettingsPage />
             ) : (
               <UsagePage />
             )}

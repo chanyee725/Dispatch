@@ -1,11 +1,11 @@
-import { BarChart3, GitBranch, LayoutGrid, Monitor, Moon, PlugZap, Sun } from "lucide-react";
+import { BarChart3, GitBranch, LayoutGrid, Monitor, Moon, PlugZap, Settings as SettingsIcon, Sun } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { isOpen } from "@/lib/format";
 import { useApp } from "@/store";
 import { useTheme, type ThemeChoice } from "@/lib/theme";
 
-export type Page = "sessions" | "branches" | "usage";
+export type Page = "sessions" | "branches" | "usage" | "settings";
 
 const NAV: { id: Page; label: string; icon: typeof LayoutGrid }[] = [
   { id: "sessions", label: "세션", icon: LayoutGrid },
@@ -57,7 +57,7 @@ export function Sidebar({ page, onPage, onConnect }: { page: Page; onPage: (p: P
         ))}
       </nav>
 
-      <div className="mt-auto flex flex-col gap-2 border-t pt-3 max-md:mt-0 max-md:ml-auto max-md:border-t-0 max-md:pt-0">
+      <div className="mt-auto flex flex-col gap-2 border-t pt-3 max-md:mt-0 max-md:ml-auto max-md:flex-row max-md:items-center max-md:border-t-0 max-md:pt-0">
         <ul className="flex flex-col gap-1.5 px-2 max-md:hidden">
           {list.map(p => (
             <li key={p.name} className="flex items-center gap-2 text-[13px]">
@@ -72,6 +72,17 @@ export function Sidebar({ page, onPage, onConnect }: { page: Page; onPage: (p: P
             </li>
           ))}
         </ul>
+        <button
+          onClick={() => onPage("settings")}
+          aria-current={page === "settings" ? "page" : undefined}
+          className={cn(
+            "flex items-center gap-2.5 rounded-lg px-2.5 py-2 text-sm whitespace-nowrap transition-colors focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none",
+            page === "settings" ? "bg-accent font-medium text-foreground" : "text-muted-foreground hover:bg-accent/60 hover:text-foreground",
+          )}
+        >
+          <SettingsIcon className="size-4" />
+          <span className="max-sm:hidden">설정</span>
+        </button>
         <Button variant="outline" size="sm" onClick={onConnect} aria-label={allConnected ? "연결 관리" : "연결하기"}>
           <PlugZap />
           <span className="max-sm:hidden">{allConnected ? "연결 관리" : "연결하기"}</span>

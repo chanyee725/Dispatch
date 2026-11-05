@@ -98,7 +98,16 @@ export interface Limits {
   updatedAt: number | null;
 }
 
-export interface Settings { guard: { enabled: boolean; five: number; seven: number } }
+export interface TeamSettings {
+  rotateLead: number;
+  rotateOthers: number;
+  maxChildren: number;
+  replyStyle: boolean;
+  shareDeps: boolean;
+  dropWorktrees: boolean;
+  roleModels: Record<string, string>;
+}
+export interface Settings { guard: { enabled: boolean; five: number; seven: number }; team: TeamSettings }
 
 export interface Project { name: string; path: string; branch: string | null }
 

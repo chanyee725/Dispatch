@@ -7,19 +7,15 @@ import { fileURLToPath } from "node:url";
 import { dropWorktree, prepareWorkdir } from "./git.js";
 import { CHILD_PROMPT, NAMES, PERMS, SPAWN_PROMPT } from "./roles.js";
 import { replyStyle } from "./style.js";
+import { effectiveRoles, teamSettings } from "./settings.js";
 import { codexLimits, geminiResetFrom, isQuotaError } from "./limits.js";
 
 const MCP_SCRIPT = path.join(path.dirname(fileURLToPath(import.meta.url)), "mcp.js");
 const MAX_TRANSCRIPT = 400;
-const MAX_CHILDREN = 8;
 const STALL_MS = 10 * 60 * 1000;
-// After this many turns a session continues in a fresh CLI session (a handoff note carries the
-// essentials), so a long-lived lead does not keep re-reading an ever-growing context.
-// DISPATCH_ROTATE_TURNS=0 turns it off.
-const ROTATE_TURNS = Number(process.env.DISPATCH_ROTATE_TURNS ?? 10);
-// Leads take many short turns (a report in, a few messages out), so they rotate sooner.
-const ROTATE_TURNS_LEAD = Number(process.env.DISPATCH_ROTATE_TURNS_LEAD ?? 5);
-const rotateAfter = s => (s.canSpawn ? ROTATE_TURNS_LEAD : ROTATE_TURNS);
+// After teamSettings().rotateLead / rotateOthers turns a session continues in a fresh CLI session
+// (a handoff note carries the essentials), so a long-lived lead does not keep re-reading an
+// ever-growing context. Leads take many short turns, so they rotate sooner. 0 turns it off.
 const RESUME_TEXT = "[Dispatch] 서버가 재시작되어 직전 턴이 중간에 끊겼다. 작업 폴더와 브랜치 상태를 확인하고 하던 일을 이어서 끝내라.";
 // Browser tools in team sessions run headless, each in its own throwaway profile, so checks never pop
 // windows on the user's screen or steer another session's tab. A session can still opt out via its own env.
@@ -113,6 +109,9 @@ export class Hub extends EventEmitter {
     for (const l of lines.slice(-MAX_TRANSCRIPT - 1)) { if (l) try { out.push(JSON.parse(l)); } catch { /* torn last line */ } }
     return out.slice(-MAX_TRANSCRIPT);
   }
+
+  /** Current team settings (설정 page), defaults seeded from the environment. */
+  team() { return teamSettings(this.store); }
 
   publicSession(s) {
     const r = this.live.get(s.id);
@@ -321,19 +320,20 @@ export class Hub extends EventEmitter {
     if (blocked) throw new Error(blocked);
     if (parent) {
       const active = this.sessions.filter(s => s.parent === parent && !["done", "error"].includes(s.status)).length;
-      if (active + total > MAX_CHILDREN) throw new Error(`관리자 한 명이 동시에 둘 수 있는 세션은 ${MAX_CHILDREN}개까지예요 (현재 ${active}개)`);
+      const max = this.team().maxChildren;
+      if (active + total > max) throw new Error(`관리자 한 명이 동시에 둘 수 있는 세션은 ${max}개까지예요 (현재 ${active}개)`);
     }
 
     const made = [];
     for (const it of items) {
-      const role = this.roles.find(r => r.id === it.role);
+      const role = effectiveRoles(this.roles, this.store).find(r => r.id === it.role);
       if (!role) throw new Error(`알 수 없는 역할: ${it.role}`);
       const model = this.models.find(m => m.id === (it.model || role.model));
       if (!model) throw new Error(`알 수 없는 모델: ${it.model}`);
       for (let k = 0; k < (it.n || 1); k++) {
         const n = ++this.store.data.seq;
         const slug = `${role.id}-${n}`;
-        const wd = await prepareWorkdir(this.root, slug, worktree);
+        const wd = await prepareWorkdir(this.root, slug, worktree, { shareDeps: this.team().shareDeps });
         const s = {
           id: randomUUID(), n, name: this.pickName(n), role: role.id, roleName: role.name,
           provider: model.provider, model: model.id, modelLabel: model.label,
@@ -384,7 +384,8 @@ export class Hub extends EventEmitter {
 
   /** Idle (between turns) and past the turn budget since its CLI session started. */
   shouldRotate(s) {
-    return rotateAfter(s) > 0 && !!s.providerSessionId && (s.turnsSinceRotate ?? s.turns ?? 0) >= rotateAfter(s)
+    const after = s.canSpawn ? this.team().rotateLead : this.team().rotateOthers;
+    return after > 0 && !!s.providerSessionId && (s.turnsSinceRotate ?? s.turns ?? 0) >= after
       && (s.status === "idle" || s.status === "error");
   }
 
@@ -454,7 +455,7 @@ export class Hub extends EventEmitter {
     this.store.save();
     this.emit("removed", { id });
     // Its worktree goes too when nothing uncommitted is left in it; the branch stays.
-    if (gone?.worktree) setTimeout(() => dropWorktree(this.root, gone.cwd).catch(() => {}), 1500);
+    if (gone?.worktree && this.team().dropWorktrees) setTimeout(() => dropWorktree(this.root, gone.cwd).catch(() => {}), 1500);
     this.emit("tasks", this.tasks);
     this.emit("tickets", this.tickets);
   }
@@ -497,7 +498,8 @@ export class Hub extends EventEmitter {
       if (p.id === s.id) throw Object.assign(new Error("자기 자신을 관리자로 둘 수 없어요"), { status: 400 });
       if (!p.canSpawn) throw Object.assign(new Error(`${p.name}은 관리자 역할이 아니에요`), { status: 400 });
       const active = this.sessions.filter(x => x.parent === p.id && x.id !== s.id && !["done", "error"].includes(x.status)).length;
-      if (active + 1 > MAX_CHILDREN) throw Object.assign(new Error(`관리자 한 명이 동시에 둘 수 있는 세션은 ${MAX_CHILDREN}개까지예요 (현재 ${active}개)`), { status: 400 });
+      const max = this.team().maxChildren;
+      if (active + 1 > max) throw Object.assign(new Error(`관리자 한 명이 동시에 둘 수 있는 세션은 ${max}개까지예요 (현재 ${active}개)`), { status: 400 });
     }
     this.touch(s, { parent: parent || null });
     this.deliverReport(s);
@@ -676,7 +678,7 @@ export class Hub extends EventEmitter {
     const where = s.canSpawn && s.worktree
       ? `\n\n[병합 위치] 너의 작업 폴더는 ${s.cwd} (브랜치 ${s.branch})이고 통합 브랜치가 아니다. 병합은 프로젝트 폴더 ${this.root}에서 한다: git -C ${this.root} merge --no-ff <브랜치> (또는 --ff-only). 병합 뒤 git -C ${this.root} log --oneline -1 로 통합 브랜치 HEAD를 확인하고 보고에 적는다.`
       : "";
-    return [s.prompt, (s.canSpawn ? SPAWN_PROMPT : CHILD_PROMPT) + where, replyStyle()].filter(Boolean).join("\n\n");
+    return [s.prompt, (s.canSpawn ? SPAWN_PROMPT : CHILD_PROMPT) + where, this.team().replyStyle ? replyStyle() : ""].filter(Boolean).join("\n\n");
   }
 
   start(s, prompt) {

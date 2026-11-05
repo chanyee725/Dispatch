@@ -32,7 +32,7 @@ async function ensureExcluded(root) {
 }
 
 // Returns { cwd, branch, worktree, warning }. Falls back to the project dir when a worktree can't be made.
-export async function prepareWorkdir(root, slug, useWorktree) {
+export async function prepareWorkdir(root, slug, useWorktree, { shareDeps: share = true } = {}) {
   if (!useWorktree) return { cwd: root, branch: await currentBranch(root), worktree: false };
   if (!(await hasHead(root))) {
     return { cwd: root, branch: await currentBranch(root), worktree: false,
@@ -47,7 +47,7 @@ export async function prepareWorkdir(root, slug, useWorktree) {
     return { cwd: root, branch: await currentBranch(root), worktree: false,
       warning: `worktree 생성 실패: ${String(e.stderr || e.message).trim().slice(0, 200)}` };
   }
-  const warning = await shareDeps(root, dir);
+  const warning = share ? await shareDeps(root, dir) : null;
   return { cwd: dir, branch, worktree: true, ...(warning && { warning }) };
 }
 

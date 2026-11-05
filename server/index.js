@@ -8,6 +8,7 @@ import { branchGraph, currentBranch, diff, projectRoot } from "./git.js";
 import { loadModels } from "./models.js";
 import { PERMS, ROLES } from "./roles.js";
 import { Hub } from "./sessions.js";
+import { effectiveRoles, patchTeam, teamSettings } from "./settings.js";
 import { Store } from "./store.js";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
@@ -55,8 +56,8 @@ setInterval(() => { for (const res of clients) res.write(": ping\n\n"); }, 25000
 async function snapshot() {
   return {
     project: { name: path.basename(root), path: root.replace(process.env.HOME || "\0", "~"), branch: await currentBranch(root) },
-    roles: ROLES, perms: PERMS, models, providers,
-    limits: hub.currentLimits(), settings: store.data.settings,
+    roles: effectiveRoles(ROLES, store), perms: PERMS, models, providers,
+    limits: hub.currentLimits(), settings: { ...store.data.settings, team: teamSettings(store) },
     sessions: hub.sessions.map(s => hub.publicSession(s)),
     prefs: await readPrefs(),
     tasks: hub.tasks,
@@ -206,9 +207,13 @@ const routes = [
   ["GET", /^\/api\/projects$/, async () => ({ projects: await projects() })],
   ["POST", /^\/api\/settings$/, async (_, b) => {
     if (b.guard) store.data.settings.guard = { ...store.data.settings.guard, ...b.guard };
+    if (b.team) patchTeam(store, b.team, { roles: ROLES, models });
     store.save();
-    broadcast("settings", store.data.settings);
-    return store.data.settings;
+    const settings = { ...store.data.settings, team: teamSettings(store) };
+    broadcast("settings", settings);
+    // Role default models live in the snapshot's roles, so a model change re-sends the snapshot.
+    if (b.team?.roleModels) broadcast("snapshot", await snapshot());
+    return settings;
   }],
   ["POST", /^\/api\/sessions$/, async (_, b) => ({
     sessions: await hub.create({ items: b.items || [], commonPrompt: b.commonPrompt || "", worktree: b.worktree !== false, parent: b.parent || null }),

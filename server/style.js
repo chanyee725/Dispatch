@@ -29,7 +29,6 @@ function adhdSkill() {
 
 let cached;
 export function replyStyle() {
-  if (process.env.DISPATCH_REPLY_STYLE === "off") return "";
   if (cached === undefined) cached = adhdSkill() ?? FALLBACK;
   return cached;
 }
