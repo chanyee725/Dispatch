@@ -36,3 +36,17 @@ test("options are capped at five", () => {
   const q = questionOf("어느 걸 고를까요?\n" + [1, 2, 3, 4, 5, 6, 7].map(n => `${n}. 옵션${n}`).join("\n"));
   assert.equal(q?.options.length, 5);
 });
+
+test("a question followed by three choices", () => {
+  const q = questionOf("어느 쪽으로 갈까요?\n1. A안\n2. B안\n3) C안");
+  assert.deepEqual(q, { summary: "어느 쪽으로 갈까요?", options: ["A안", "B안", "C안"] });
+});
+
+test("a question followed by five choices", () => {
+  const q = questionOf("작업을 나눴어요.\n**어느 것부터 할까요?**\n- 하나\n- 둘\n- 셋\n- 넷\n- 다섯");
+  assert.deepEqual(q, { summary: "어느 것부터 할까요?", options: ["하나", "둘", "셋", "넷", "다섯"] });
+});
+
+test("a trailing list with no question above it asks nothing", () => {
+  assert.equal(questionOf("바꾼 것:\n- 하나\n- 둘\n- 셋"), null);
+});

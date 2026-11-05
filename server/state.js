@@ -7,17 +7,14 @@
 //   failed   — the last turn ended in an error
 //   resting  — turn finished, nothing asked; waiting for the next instruction
 //   done     — closed
+import { askIndex, linesOf } from "../shared/ask.js";
+
 export const STATES = ["working", "waiting", "stuck", "failed", "resting", "done"];
 
-// Phrases that end a turn by handing a decision to the reader. Checked against the last few lines only,
-// so a question quoted mid-answer does not count.
-const ASK = /(\?|？)\s*$|(할까요|될까요|일까요|을까요|좋을까요|괜찮을까요|습니까|원하세요|주실래요|주시겠어요|답해\s?주세요|알려\s?주세요|골라\s?주세요|정해\s?주세요|선택해\s?주세요|결정해\s?주세요|승인해\s?주세요)[.!…\s]*$/;
-
-/** True when a final answer ends by asking its reader something. */
+/** True when a final answer ends by asking its reader something (see shared/ask.js). */
 export function asksUser(text) {
   if (!text) return false;
-  const lines = String(text).split("\n").map(l => l.replace(/[*_`>#\s]+$/g, "").replace(/^[\s>*#-]+/, "").trim()).filter(Boolean);
-  return lines.slice(-3).some(l => ASK.test(l));
+  return askIndex(linesOf(text)) >= 0;
 }
 
 /**
