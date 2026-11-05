@@ -25,7 +25,7 @@ test("sessionState", () => {
   assert.equal(sessionState({ status: "idle" }), "resting");
   assert.equal(sessionState({ status: "idle", asksUser: true }), "waiting");
   assert.equal(sessionState({ status: "idle", asksUser: true, parent: "lead" }), "resting");
-  assert.equal(sessionState({ status: "idle", stuck: { reason: "x", since: 1 } }), "stuck");
+  assert.equal(sessionState({ status: "idle", stuck: { reason: "silent", sinceMs: 1 } }), "stuck");
   assert.equal(sessionState({ status: "error" }), "failed");
   assert.equal(sessionState({ status: "done" }), "done");
 });
@@ -36,5 +36,6 @@ test("attentionOf", () => {
   assert.deepEqual(attentionOf({ status: "error" }, "failed", 0, 5), { level: "bad", reason: "오류로 멈췄어요", since: 5 });
   assert.equal(attentionOf({ status: "waiting" }, "waiting", 1).reason, "권한 승인을 기다려요");
   assert.equal(attentionOf({ status: "idle", asksUser: true }, "waiting").reason, "사용자 답을 기다려요");
-  assert.equal(attentionOf({ status: "idle", stuck: { reason: "같은 테스트가 3번 실패했어요", since: 9 } }, "stuck").since, 9);
+  const stuck = attentionOf({ status: "idle", stuck: { reason: "repeat-fail", label: "e2e가 3번 연속 실패했어요", count: 3, sinceMs: 9 } }, "stuck");
+  assert.deepEqual(stuck, { level: "warn", reason: "e2e가 3번 연속 실패했어요", since: 9 });
 });
