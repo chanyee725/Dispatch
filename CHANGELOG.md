@@ -8,6 +8,14 @@ Every release is tagged `vX.Y.Z` and published on [GitHub Releases](https://gith
 
 - **Burn rate per session** (#9): every Claude session carries `burn` ($/h over the last 30 minutes) and `burnWarn` — a spike at 3× the team median, or a long-lived session on a large context, with "start a fresh lead" advice for a lead. The rate is recomputed every minute, so an idle session falls back to 0 without any activity of its own.
 - **사용량 page**: a **지금 시간당** card, the top 10 sessions by cost with their rate and warning, and outlier days (2× the usual day) marked with the sessions that spent the most that day. Only numbers are stored per day (session id, name, role, cost).
+- **Stuck detection per session and per task** (#5): a session is flagged when the same check command (test, build, lint, typecheck, e2e) fails 3 times in a row or a running turn is silent for 10 minutes; a board task when its stage runs past 1.5× its eta or the board says 계획/구현 while the owner is looping on tests. One event per flag, not per failure. Thresholds are the `stuckFails`, `stuckSilentMinutes`, `stuckEtaRatio` and `stuckMismatchMinutes` team settings (`0` = off). Only a hash of the command and the counts are stored.
+
+### Fixed
+
+- A check piped into a filter (`npm test 2>&1 | tail -20`) exited with the filter's 0 and counted as a pass, wiping the failure count. Commands whose exit code hides the result (a pipe without `pipefail`, or `||`) are now left uncounted.
+- The same check run in another directory (`cd web && npm test` vs `cd server && npm test`) shared one count; `cd` now stays in the command hash.
+- A repeat-fail flag stayed up after a different command of the same kind passed; it now clears.
+- `stuckMismatchMinutes: 0` left the "board says 구현 but tests keep failing" flag on; it now turns off both mismatch checks.
 
 ## 0.7.0 — 2026-11-05
 
