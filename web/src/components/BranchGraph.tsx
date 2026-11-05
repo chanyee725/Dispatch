@@ -1,7 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
 import { GitBranch } from "lucide-react";
-import { Button } from "@/components/ui/button";
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { cn } from "@/lib/utils";
 import { api, useApp, type BranchGraph as Graph } from "@/store";
 
@@ -36,47 +34,40 @@ function layout(g: Graph) {
   return { rows, width };
 }
 
-export function BranchGraphButton() {
+export function BranchesPage({ onOpen }: { onOpen: (id: string) => void }) {
   const sessions = useApp(s => s.sessions);
-  const [open, setOpen] = useState(false);
   const [g, setG] = useState<Graph | null>(null);
   useEffect(() => {
-    if (!open) return;
     const load = () => api<Graph>("GET", "/api/branches").then(setG, () => {});
     load();
     const t = setInterval(load, 15_000);
     return () => clearInterval(t);
-  }, [open]);
+  }, []);
   const branchSession = useMemo(() => {
     const m = new Map<string, string>();
-    for (const s of sessions) if (s.branch && s.status !== "done") m.set(s.branch, s.name);
-    return m;
+    const id = new Map<string, string>();
+    for (const s of sessions) if (s.branch && s.status !== "done") { m.set(s.branch, s.name); id.set(s.branch, s.id); }
+    return { name: m, id };
   }, [sessions]);
-  const active = sessions.filter(s => s.branch && s.status !== "done").length;
-
+  const activeTips = g?.tips.filter(t => t.active).length ?? 0;
   return (
-    <>
-      <Button variant="outline" size="sm" onClick={() => setOpen(true)} className="shrink-0 gap-2">
-        <GitBranch />
-        브랜치
-        {active > 0 && <span className="num text-xs text-muted-foreground">{active}</span>}
-      </Button>
-      <Dialog open={open} onOpenChange={setOpen}>
-        <DialogContent className="gap-3 overflow-hidden sm:max-w-3xl">
-          <DialogHeader>
-            <DialogTitle>브랜치</DialogTitle>
-            <DialogDescription>
-              {g ? `${g.base} + 작업 중 ${g.tips.filter(t => t.active).length}개` : "불러오는 중…"}
-            </DialogDescription>
-          </DialogHeader>
-          {g ? <GraphView g={g} branchSession={branchSession} /> : null}
-        </DialogContent>
-      </Dialog>
-    </>
+    <div className="mx-auto flex max-w-[1400px] flex-col gap-4 p-6 max-md:p-4">
+      <div className="flex items-center gap-3">
+        <GitBranch className="size-4 text-muted-foreground" />
+        <span className="text-sm text-muted-foreground">
+          {g ? `${g.base} + 작업 중 ${activeTips}개 · 커밋 ${g.commits.length}` : "불러오는 중…"}
+        </span>
+      </div>
+      {g ? (
+        g.commits.length
+          ? <div className="rounded-xl border bg-card p-3"><GraphView g={g} branchSession={branchSession} onOpen={onOpen} /></div>
+          : <p className="py-10 text-center text-sm text-muted-foreground">표시할 브랜치가 없어요</p>
+      ) : null}
+    </div>
   );
 }
 
-function GraphView({ g, branchSession }: { g: Graph; branchSession: Map<string, string> }) {
+function GraphView({ g, branchSession, onOpen }: { g: Graph; branchSession: { name: Map<string, string>; id: Map<string, string> }; onOpen: (id: string) => void }) {
   const { rows, width } = useMemo(() => layout(g), [g]);
   // tip label per commit hash
   const tipsAt = new Map<string, typeof g.tips>();
@@ -107,13 +98,17 @@ function GraphView({ g, branchSession }: { g: Graph; branchSession: Map<string, 
               <span className="absolute rounded-full" style={{ left: (r.lane + 1) * COL - 3, width: 7, height: 7, background: r.c.merge ? "var(--card)" : color, border: `1.5px solid ${color}` }} />
               <div className="flex min-w-0 items-center gap-2 pl-1 text-xs" style={{ marginLeft: gw }}>
                 {tips.map(t => {
-                  const sess = branchSession.get(t.branch);
+                  const sess = branchSession.name.get(t.branch);
+                  const sid = branchSession.id.get(t.branch);
                   const label = t.base ? t.branch : t.branch.replace("dispatch/", "");
-                  return (
-                    <span key={t.branch} className={cn("shrink-0 rounded px-1.5 py-0.5 text-[11px] font-medium", t.base ? "bg-primary text-primary-foreground" : t.active ? "bg-ok/15 text-ok" : "bg-muted text-muted-foreground")}>
+                  const tag = (
+                    <span className={cn("shrink-0 rounded px-1.5 py-0.5 text-[11px] font-medium", t.base ? "bg-primary text-primary-foreground" : t.active ? "bg-ok/15 text-ok" : "bg-muted text-muted-foreground")}>
                       {label}{t.ahead ? ` +${t.ahead}` : ""}{sess ? ` · ${sess}` : ""}
                     </span>
                   );
+                  return sid
+                    ? <button key={t.branch} onClick={() => onOpen(sid)} title="세션 열기" className="shrink-0 hover:brightness-110">{tag}</button>
+                    : <span key={t.branch}>{tag}</span>;
                 })}
                 <span className="num shrink-0 text-muted-foreground">{r.c.short}</span>
                 <span className="truncate text-foreground/80">{r.c.subject}</span>

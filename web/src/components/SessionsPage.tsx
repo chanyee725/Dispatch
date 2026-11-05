@@ -8,7 +8,6 @@ import { fmtK, fmtUsd, isOpen, pct, roleColor, totalTok } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import { ModelBreakdown } from "@/components/ModelBreakdown";
 import { TaskBoardButton } from "@/components/TaskBoard";
-import { BranchGraphButton } from "@/components/BranchGraph";
 import { useApp } from "@/store";
 import type { Session, Status } from "@/types";
 
@@ -129,7 +128,6 @@ export function SessionsPage({ onOpen, onCreate }: { onOpen: (id: string) => voi
             </TabsList>
           </Tabs>
           <TaskBoardButton onOpen={onOpen} />
-          <BranchGraphButton />
           </div>
 
           {list.length === 0 && <p className="py-10 text-center text-sm text-muted-foreground">이 상태의 세션이 없어요.</p>}

@@ -1,14 +1,15 @@
-import { BarChart3, LayoutGrid, Monitor, Moon, PlugZap, Sun } from "lucide-react";
+import { BarChart3, GitBranch, LayoutGrid, Monitor, Moon, PlugZap, Sun } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { isOpen } from "@/lib/format";
 import { useApp } from "@/store";
 import { useTheme, type ThemeChoice } from "@/lib/theme";
 
-export type Page = "sessions" | "usage";
+export type Page = "sessions" | "branches" | "usage";
 
 const NAV: { id: Page; label: string; icon: typeof LayoutGrid }[] = [
   { id: "sessions", label: "세션", icon: LayoutGrid },
+  { id: "branches", label: "브랜치", icon: GitBranch },
   { id: "usage", label: "사용량", icon: BarChart3 },
 ];
 
