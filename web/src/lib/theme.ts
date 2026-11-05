@@ -11,8 +11,12 @@ export function useTheme(): [ThemeChoice, (t: ThemeChoice) => void] {
   const theme = useApp(s => s.prefs?.theme ?? "system");
   useEffect(() => {
     const mq = window.matchMedia("(prefers-color-scheme: dark)");
-    const apply = () =>
-      document.documentElement.classList.toggle("dark", theme === "dark" || (theme === "system" && mq.matches));
+    const apply = () => {
+      const root = document.documentElement;
+      // "monitor" is a dark-first theme: it carries .dark (so dark: variants work) plus .monitor (its own tokens).
+      root.classList.toggle("dark", theme === "dark" || theme === "monitor" || (theme === "system" && mq.matches));
+      root.classList.toggle("monitor", theme === "monitor");
+    };
     apply();
     try {
       if (theme === "system") localStorage.removeItem("dispatch-theme");

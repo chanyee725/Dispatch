@@ -8,8 +8,9 @@
     <script>
       try {
         var t = localStorage.getItem("dispatch-theme");
-        var d = t === "dark" || (t !== "light" && matchMedia("(prefers-color-scheme: dark)").matches);
-        document.documentElement.classList.toggle("dark", d);
+        var d = t === "dark" || t === "monitor" || (t !== "light" && matchMedia("(prefers-color-scheme: dark)").matches);
+        document.documentElement.classList.toggle("dark", d || t === "monitor");
+        document.documentElement.classList.toggle("monitor", t === "monitor");
       } catch (e) {}
     </script>
   </head>
