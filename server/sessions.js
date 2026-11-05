@@ -175,6 +175,11 @@ export class Hub extends EventEmitter {
     let t = (input.id && all[input.id]) || Object.values(all).find(x => x.lead === lead && x.title === title && x.stage !== "done");
     if (!t) {
       if (!title) throw new Error("title이 필요해요");
+      // Closing work by creating a fresh "done" task left the real one open with a stale eta.
+      const open = lead ? this.openTasks(lead) : [];
+      if (input.stage === "done" && open.length) {
+        throw Object.assign(new Error(`새 작업을 done으로 만들 수 없어요. 끝난 일은 기존 작업의 id로 닫으세요: ${open.map(x => `${x.title} (id ${x.id})`).join(", ")}`), { status: 400 });
+      }
       t = { id: randomUUID(), lead, title, stage: "plan", createdAt: Date.now(), stageAt: Date.now(), owner: null, etaAt: null, note: "" };
       all[t.id] = t;
     }
@@ -198,15 +203,17 @@ export class Hub extends EventEmitter {
   }
 
   /**
-   * Rides on a report the lead gets anyway (no extra turn): tasks past their eta, so the lead
-   * re-estimates and the board shows time left again instead of a bare "지연".
+   * Rides on every report the lead gets anyway (no extra turn): its open tasks with ids and time
+   * left, so the lead moves stage/owner/eta in the same turn and closes the right task by id.
+   * Without it leads let etas go stale ("17분 남음" on merged work) and closed renamed copies.
    */
-  overdueNote(lead) {
+  boardNote(lead) {
     const now = Date.now();
-    const late = this.tasks.filter(t => t.lead === lead && t.stage !== "done" && t.etaAt && t.etaAt < now);
-    if (!late.length) return "";
-    const lines = late.map(t => `- ${t.title} (id ${t.id}): ${Math.round((now - t.etaAt) / 60000)}분 지연`);
-    return `\n\n[작업 보드] 예상 시간이 지난 작업이 있다. 이 보고를 반영해 set_task(id)로 eta_minutes를 다시 잡고, 끝났거나 그만둔 일은 done으로 닫는다:\n${lines.join("\n")}`;
+    const open = this.tasks.filter(t => t.lead === lead && t.stage !== "done");
+    if (!open.length) return "";
+    const left = t => !t.etaAt ? "예상 없음" : t.etaAt < now ? `${Math.round((now - t.etaAt) / 60000)}분 지연` : `${Math.round((t.etaAt - now) / 60000)}분 남음`;
+    const lines = open.map(t => `- ${t.title} (id ${t.id}, ${t.stage}, ${t.owner || "담당 없음"}, ${left(t)})`);
+    return `\n\n[작업 보드] 이 보고로 바뀐 것을 같은 턴에 set_task(id)로 갱신한다(stage·owner·eta_minutes). 병합했거나 그만둔 일은 이 id로 done. 새 제목으로 다시 만들지 않는다:\n${lines.join("\n")}`;
   }
 
   /** A random name no listed session uses yet; once all are taken, the name gets the session number. */
@@ -593,7 +600,7 @@ export class Hub extends EventEmitter {
     const r = this.live.get(s.id), parent = s.parent && this.get(s.parent);
     if (!r?.pendingReport || !parent || parent.status === "done") return;
     if (this.paused) return; // kept; delivered after the reset
-    try { this.send(parent.id, r.pendingReport + this.overdueNote(parent.id)); r.pendingReport = null; } catch { /* retried by checkTeams */ }
+    try { this.send(parent.id, r.pendingReport + this.boardNote(parent.id)); r.pendingReport = null; } catch { /* retried by checkTeams */ }
   }
 
   stopAll() {
