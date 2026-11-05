@@ -40,7 +40,7 @@ export default function App() {
             ) : !anyConnected && page === "sessions" ? (
               <LoginGate />
             ) : page === "sessions" ? (
-              <SessionsPage onOpen={setOpenId} onCreate={() => setCreating(true)} />
+              <SessionsPage onOpen={setOpenId} onCreate={() => setCreating(true)} onUsage={() => setPage("usage")} />
             ) : page === "branches" ? (
               <BranchesPage onOpen={setOpenId} />
             ) : page === "settings" ? (

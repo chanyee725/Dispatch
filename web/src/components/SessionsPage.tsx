@@ -2,7 +2,8 @@ import { useMemo, useState } from "react";
 import { GitBranch, Plus, ShieldAlert, TriangleAlert } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Meter, ModelTag, Stat, StatusBadge, ThinkingLine } from "@/components/bits";
+import { Meter, ModelTag, StatusBadge, ThinkingLine } from "@/components/bits";
+import { AttentionStrip, SummaryLine } from "@/components/AttentionStrip";
 import { turn } from "@/lib/turn";
 import { fmtK, fmtUsd, isOpen, pct, roleColor, stateOf, totalTok } from "@/lib/format";
 import { cn } from "@/lib/utils";
@@ -76,7 +77,7 @@ function SessionCard({ s, parent, onOpen }: { s: Session; parent?: Session; onOp
   );
 }
 
-export function SessionsPage({ onOpen, onCreate }: { onOpen: (id: string) => void; onCreate: () => void }) {
+export function SessionsPage({ onOpen, onCreate, onUsage }: { onOpen: (id: string) => void; onCreate: () => void; onUsage?: () => void }) {
   const sessions = useApp(s => s.sessions);
   const roles = useApp(s => s.roles);
   const [filter, setFilter] = useState<"all" | SessionState>("all");
@@ -95,18 +96,12 @@ export function SessionsPage({ onOpen, onCreate }: { onOpen: (id: string) => voi
     [sessions, filter],
   );
 
-  const open = sessions.filter(isOpen);
-  const total = sessions.reduce((a, s) => a + totalTok(s.usage), 0);
-
   return (
     <div className="mx-auto flex max-w-[1400px] flex-col gap-6 p-6 max-md:p-4">
-      <section className="grid grid-cols-5 gap-3 max-xl:grid-cols-3 max-sm:grid-cols-2" aria-label="요약">
-        <Stat strong label="열린 세션" value={open.length} hint={`전체 ${sessions.length}개`} />
-        <Stat label="작업 중" value={counts.working ?? 0} hint="응답을 만드는 중" />
-        <Stat label="사람 기다림" value={counts.waiting ?? 0} hint={counts.waiting ? "승인이나 답이 필요해요" : "기다리는 세션 없음"} />
-        <Stat label="비용 (API 환산)" value={fmtUsd(sumCost(sessions) ?? 0)} hint="모델별로 보기" onClick={() => setBreakdown(true)} />
-        <Stat label="토큰" value={fmtK(total)} hint="입력 + 캐시 + 출력" onClick={() => setBreakdown(true)} />
-      </section>
+      <div className="flex flex-col gap-2">
+        <AttentionStrip onOpen={onOpen} onUsage={onUsage} />
+        <SummaryLine onBreakdown={() => setBreakdown(true)} />
+      </div>
       <ModelBreakdown sessions={sessions} open={breakdown} onOpenChange={setBreakdown} />
 
       {sessions.length === 0 ? (

@@ -2,6 +2,12 @@
 
 Every release is tagged `vX.Y.Z` and published on [GitHub Releases](https://github.com/chanyee725/Dispatch/releases). The plugin version in `.claude-plugin/plugin.json` matches the tag.
 
+## Unreleased
+
+### Added
+
+- **확인 필요 strip** at the top of 세션, in place of the five KPI cards (#3): sessions waiting on a person, stuck or failed, tasks past their estimate, tasks whose merge check failed, and Claude limits at 75 % or more. Each row shows shape + label, the reason, how long, and opens the session (limit rows open 사용량). The KPIs shrink to one summary line.
+
 ## 0.7.0 — 2026-11-05
 
 The first tagged release. It collects the 0.5.2 – 0.7.0 work, most of it found by running a real team for a day and reading where its time and tokens went.
