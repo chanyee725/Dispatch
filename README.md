@@ -21,7 +21,7 @@ Local web UI for running several role-based Claude Code, Codex and Gemini sessio
 
 ### At a glance
 
-- **확인 필요** (top of 세션): one row per thing that needs you — a session waiting on your answer or a permission, a stuck or failed session, a task past its estimate, a task whose merge check failed, a Claude limit at 75 % or more. Each row says why and for how long, and opens the session (or 사용량). Empty, it folds to "지금 볼 것 없어요". Open sessions, cost and tokens sit in one small line under it; click cost or tokens for the per-model breakdown.
+- **확인 필요** (top of 세션): one row per thing that needs you — a session waiting on your answer or a permission, a stuck or failed session, a task past its estimate, a task whose merge check failed, a Claude limit at 75 % or more (red once it reaches the usage-limit guard set in 설정). Each row says why and for how long, and opens the session (or 사용량). Empty, it folds to "지금 볼 것 없어요". Open sessions, cost and tokens sit in one small line under it; click cost or tokens for the per-model breakdown.
 - **Top bar:** usage limits per provider — Claude 5-hour and weekly, GPT (Codex) windows, and Gemini's state (Gemini reports no percentage, so it shows OK until a quota error, then the reset time). Hover for reset times.
 - **프로젝트 선택:** switch between the Dispatch servers running on this machine (one per project).
 - **새 세션** starts sessions. **끝난 세션 정리** removes finished sessions in one click; the broom icon stops and removes every session of this project after a confirmation. Branches stay; a worktree goes with its session only when nothing uncommitted is left.
