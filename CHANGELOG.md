@@ -2,6 +2,13 @@
 
 Every release is tagged `vX.Y.Z` and published on [GitHub Releases](https://github.com/chanyee725/Dispatch/releases). The plugin version in `.claude-plugin/plugin.json` matches the tag.
 
+## 0.8.0 — 2026-11-05
+
+### Added
+
+- **Burn rate per session** (#9): every Claude session carries `burn` ($/h over the last 30 minutes) and `burnWarn` — a spike at 3× the team median, or a long-lived session on a large context, with "start a fresh lead" advice for a lead. The rate is recomputed every minute, so an idle session falls back to 0 without any activity of its own.
+- **사용량 page**: a **지금 시간당** card, the top 10 sessions by cost with their rate and warning, and outlier days (2× the usual day) marked with the sessions that spent the most that day. Only numbers are stored per day (session id, name, role, cost).
+
 ## 0.7.0 — 2026-11-05
 
 The first tagged release. It collects the 0.5.2 – 0.7.0 work, most of it found by running a real team for a day and reading where its time and tokens went.

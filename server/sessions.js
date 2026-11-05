@@ -126,7 +126,13 @@ export class Hub extends EventEmitter {
     const state = sessionState(s, pending.length);
     if (state !== s.state) { s.state = state; s.stateSince = Date.now(); }
     return { ...s, pending, activity: busy ? r?.activity ?? null : null,
-      attention: attentionOf(s, state, pending.length, s.stateSince) };
+      attention: attentionOf(s, state, pending.length, s.stateSince), ...this.burn?.fields(s, this.sessions) };
+  }
+
+  /** Re-sends sessions whose burn rate has moved with time alone (idle sessions decay to 0 $/h). */
+  refreshBurn() {
+    if (!this.burn) return;
+    for (const s of this.burn.due(this.sessions)) this.emit("session", this.publicSession(s));
   }
 
   touch(s, patch = {}) {

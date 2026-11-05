@@ -3,11 +3,12 @@ import { toast } from "sonner";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { TriangleAlert } from "lucide-react";
 import { Meter, Stat } from "@/components/bits";
 import { cn } from "@/lib/utils";
-import { fmtK, fmtUsd, pct, roleColor } from "@/lib/format";
+import { burnWarnText, fmtK, fmtRate, fmtUsd, pct, roleColor } from "@/lib/format";
 import { api, useApp } from "@/store";
-import type { Settings, Usage, UsageDay } from "@/types";
+import type { Role, Session, Settings, Usage, UsageDay } from "@/types";
 
 const WEEK = 7;
 
@@ -83,6 +84,8 @@ export function UsagePage() {
 
   const sum = (ds: UsageDay[]) => ds.reduce((a, d) => a + d.cost, 0);
   const weekCost = sum(week), prevCost = sum(days.slice(0, -WEEK)), all = sum(days);
+  const rated = sessions.filter(s => s.burn?.perHour != null);
+  const burning = rated.reduce((a, s) => a + (s.burn?.perHour ?? 0), 0);
   const cache = Object.values(agg.byModel).reduce((a, u) => ({ r: a.r + u.cacheRead, t: a.t + u.cacheRead + u.cacheWrite + u.input }), { r: 0, t: 0 });
   const roleTotal = Object.values(agg.byRole).reduce((a, b) => a + b, 0) || 1;
   const label = (id: string) => models.find(m => m.id === id)?.label ?? id;
@@ -93,14 +96,16 @@ export function UsagePage() {
     <div className="mx-auto flex max-w-[1400px] flex-col gap-4 p-6 max-md:p-4">
       <div className="grid grid-cols-5 gap-3 max-xl:grid-cols-3 max-sm:grid-cols-1">
         <Stat label="오늘" value={fmtUsd(days.at(-1)?.cost ?? 0)} hint="Claude API 환산" />
-        <Stat label="최근 7일" value={fmtUsd(weekCost)} hint={prevCost ? `그 전 7일보다 ${weekCost >= prevCost ? "+" : ""}${Math.round((weekCost / prevCost - 1) * 100)}%` : "비교할 이전 기록 없음"} />
-        <Stat label="최근 14일" value={fmtUsd(all)} hint={`하루 평균 ${fmtUsd(all / 14)}`} />
+        {/* One card for the week: a separate 14-day card repeated the same number until there was an earlier week. */}
+        <Stat label="최근 7일" value={fmtUsd(weekCost)}
+          hint={prevCost ? `그 전 7일보다 ${weekCost >= prevCost ? "+" : ""}${Math.round((weekCost / prevCost - 1) * 100)}% · 14일 ${fmtUsd(all)}` : `하루 평균 ${fmtUsd(weekCost / WEEK)}`} />
+        <Stat label="지금 시간당" value={rated.length ? fmtRate(burning) : "—"} hint={rated.length ? `최근 30분 · 세션 ${rated.length}개 합계` : sessions.some(s => s.burn) ? "시작하고 5분 뒤부터 보여요" : "비용을 알리는 세션이 없어요"} />
         <Stat label="캐시 적중률" value={cache.t ? pct(cache.r / cache.t) : "—"} hint="최근 7일 입력 중 캐시에서 읽은 비율" />
         <GuardCard settings={settings} />
       </div>
 
       <div className="grid grid-cols-3 gap-3 max-xl:grid-cols-2 max-lg:grid-cols-1">
-        <DailyByProject projects={projects} fallback={week} />
+        <DailyByProject projects={projects} fallback={week} roles={roles} />
 
         <Panel title="모델별 사용량" note="최근 7일">
           {modelRows.length ? (
@@ -146,6 +151,8 @@ export function UsagePage() {
           </ul>
         </Panel>
       </div>
+
+      <TopSessions sessions={sessions} />
 
       <ProjectsPanel projects={projects} />
     </div>
@@ -218,49 +225,85 @@ function ProjectsPanel({ projects }: { projects: ProjectUsage[] }) {
 const PROJECT_COLORS = ["var(--role-impl)", "var(--role-review)", "var(--role-lead)", "var(--role-test)", "var(--role-design)", "var(--role-docs)"];
 
 /** Daily cost for the last 7 days, one stacked segment per project, so the bar height is the total. */
-function DailyByProject({ projects, fallback }: { projects: ProjectUsage[]; fallback: UsageDay[] }) {
+function DailyByProject({ projects, fallback, roles }: { projects: ProjectUsage[]; fallback: UsageDay[]; roles: Role[] }) {
   const list = projects.length ? [...projects].sort((a, b) => a.port - b.port) : [];
   const color = (i: number) => PROJECT_COLORS[i % PROJECT_COLORS.length];
+  const roleName = (id: string) => roles.find(r => r.id === id)?.name ?? id;
   const days = (list.length ? list[0].days : fallback).slice(-WEEK).map(d => d.day);
+  const sources = list.length ? list.map(p => ({ name: p.name, days: p.days })) : [{ name: "이 프로젝트", days: fallback }];
   const cols = days.map(day => {
-    const parts = list.length
-      ? list.map((p, i) => ({ name: p.name, color: color(i), cost: p.days.find(d => d.day === day)?.cost ?? 0 }))
-      : [{ name: "이 프로젝트", color: color(0), cost: fallback.find(d => d.day === day)?.cost ?? 0 }];
-    return { day, parts, total: parts.reduce((a, p) => a + p.cost, 0) };
+    const parts = sources.map((p, i) => ({ name: p.name, color: color(i), cost: p.days.find(d => d.day === day)?.cost ?? 0 }));
+    // The sessions behind the day, biggest first; days from older servers have no per-session record.
+    const recorded = sources.some(p => p.days.find(d => d.day === day)?.sessions);
+    const top = sources
+      .flatMap(p => Object.values(p.days.find(d => d.day === day)?.sessions ?? {}).map(e => ({ ...e, project: p.name })))
+      .sort((a, b) => b.cost - a.cost)
+      .slice(0, 3);
+    return { day, parts, top, recorded, total: parts.reduce((a, p) => a + p.cost, 0) };
   });
+  const { median: usual, ratio } = outliers(cols.map(c => c.total));
   const max = Math.max(...cols.map(c => c.total), 0.0001);
   const weekTotal = cols.reduce((a, c) => a + c.total, 0);
   return (
     <Panel title="일별 비용" note={`최근 7일 ${fmtUsd(weekTotal)} · 모든 프로젝트`}>
-      <div className="flex h-44 items-end gap-2">
-        {cols.map(c => (
-          <Tooltip key={c.day}>
-            <TooltipTrigger asChild>
-              <div className="group flex h-full flex-1 flex-col items-center justify-end" tabIndex={0} aria-label={`${c.day} 합계 ${fmtUsd(c.total)}`}>
-                <div className="flex w-full max-w-10 flex-col-reverse overflow-hidden rounded-t-md transition-[filter] group-hover:brightness-125 group-focus-visible:brightness-125"
-                  style={{ height: `${Math.max((c.total / max) * 100, 1.5)}%` }}>
-                  {c.parts.map(p => (
-                    <div key={p.name} style={{ height: c.total ? `${(p.cost / c.total) * 100}%` : "100%", background: c.total ? p.color : "var(--border)" }} />
-                  ))}
+      <div className="flex h-48 items-end gap-2 pt-6">
+        {cols.map((c, i) => {
+          const r = ratio[i];
+          const h = Math.max((c.total / max) * 100, 1.5);
+          return (
+            <Tooltip key={c.day}>
+              <TooltipTrigger asChild>
+                <div className="group relative flex h-full flex-1 cursor-default flex-col items-center justify-end" tabIndex={0}
+                  aria-label={`${c.day} 합계 ${fmtUsd(c.total)}${r ? `, 평소의 ${r}배` : ""}`}>
+                  {r != null && (
+                    <span className="num absolute flex items-center gap-0.5 text-[11px] font-semibold whitespace-nowrap" style={{ bottom: `calc(${h}% + 4px)` }}>
+                      <TriangleAlert aria-hidden className="size-3" style={{ color: "var(--warn)" }} strokeWidth={2.5} />
+                      {r}배
+                    </span>
+                  )}
+                  <div className="flex w-full max-w-10 flex-col-reverse overflow-hidden rounded-t-md transition-[filter] group-hover:brightness-125 group-focus-visible:brightness-125"
+                    style={{ height: `${h}%`, boxShadow: r != null ? "0 0 0 2px var(--card), 0 0 0 4px var(--warn)" : undefined }}>
+                    {c.parts.map(p => (
+                      <div key={p.name} style={{ height: c.total ? `${(p.cost / c.total) * 100}%` : "100%", background: c.total ? p.color : "var(--border)" }} />
+                    ))}
+                  </div>
                 </div>
-              </div>
-            </TooltipTrigger>
-            <TooltipContent>
-              <div className="num flex flex-col gap-0.5">
-                <span className="font-medium">{c.day} 합계 {fmtUsd(c.total)}</span>
-                {c.parts.filter(p => p.cost > 0).map(p => (
-                  <span key={p.name} className="flex items-center gap-1.5">
-                    <span className="size-2 rounded-sm" style={{ background: p.color }} />
-                    {p.name} {fmtUsd(p.cost)}
-                  </span>
-                ))}
-              </div>
-            </TooltipContent>
-          </Tooltip>
-        ))}
+              </TooltipTrigger>
+              <TooltipContent>
+                <div className="num flex flex-col gap-0.5">
+                  <span className="font-medium">{c.day} 합계 {fmtUsd(c.total)}</span>
+                  {r != null && usual != null && (
+                    <span className="flex items-center gap-1.5">
+                      <TriangleAlert aria-hidden className="size-3" style={{ color: "var(--warn)" }} strokeWidth={2.5} />
+                      평소(최근 7일 중앙값 {fmtUsd(usual)})의 {r}배예요
+                    </span>
+                  )}
+                  {list.length > 1 && c.parts.filter(p => p.cost > 0).map(p => (
+                    <span key={p.name} className="flex items-center gap-1.5">
+                      <span className="size-2 rounded-sm" style={{ background: p.color }} />
+                      {p.name} {fmtUsd(p.cost)}
+                    </span>
+                  ))}
+                  {c.top.length > 0 && <span className="mt-1 opacity-70">많이 쓴 세션</span>}
+                  {c.top.map(e => (
+                    <span key={e.project + e.name} className="flex items-center gap-1.5">
+                      <span className="size-2 rounded-full" style={{ background: roleColor(e.role) }} />
+                      {e.name}({roleName(e.role)}){list.length > 1 ? ` · ${e.project}` : ""} {fmtUsd(e.cost)}
+                    </span>
+                  ))}
+                  {r != null && !c.recorded && <span className="mt-1 opacity-70">이날은 세션별 기록이 없어요</span>}
+                </div>
+              </TooltipContent>
+            </Tooltip>
+          );
+        })}
       </div>
       <div className="mt-2 flex gap-2 border-t pt-2 text-xs text-muted-foreground">
-        {cols.map((c, i) => <span key={c.day} className="num flex-1 text-center">{i === cols.length - 1 ? "오늘" : c.day.slice(5).replace("-", "/")}</span>)}
+        {cols.map((c, i) => (
+          <span key={c.day} className={cn("num flex-1 text-center", ratio[i] != null && "font-semibold text-foreground")}>
+            {i === cols.length - 1 ? "오늘" : c.day.slice(5).replace("-", "/")}
+          </span>
+        ))}
       </div>
       {list.length > 1 && (
         <ul className="mt-3 flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground">
@@ -271,6 +314,71 @@ function DailyByProject({ projects, fallback }: { projects: ProjectUsage[]; fall
             </li>
           ))}
         </ul>
+      )}
+    </Panel>
+  );
+}
+
+/**
+ * Days that cost at least twice the usual day. "Usual" is the median of the days that spent
+ * anything, and needs three of them: idle days would drag the median to zero.
+ * Returns that median and, per day, the multiple (one decimal) or null.
+ */
+export function outliers(totals: number[]): { median: number | null; ratio: (number | null)[] } {
+  const spent = totals.filter(t => t > 0).sort((a, b) => a - b);
+  if (spent.length < 3) return { median: null, ratio: totals.map(() => null) };
+  const m = spent.length >> 1;
+  const median = spent.length % 2 ? spent[m] : (spent[m - 1] + spent[m]) / 2;
+  return { median, ratio: totals.map(t => (t >= 2 * median ? Math.round((t / median) * 10) / 10 : null)) };
+}
+
+/** The ten listed sessions that cost the most, with their rate now and any burn warning. */
+function TopSessions({ sessions }: { sessions: Session[] }) {
+  const rows = sessions.filter(s => s.cost != null).sort((a, b) => (b.cost ?? 0) - (a.cost ?? 0)).slice(0, 10);
+  const total = sessions.reduce((a, s) => a + (s.cost ?? 0), 0) || 1;
+  return (
+    <Panel title="세션별 비용 상위 10" note="시간당은 최근 30분 기준">
+      {rows.length ? (
+        <table className="w-full table-fixed text-sm">
+          <thead className="text-xs text-muted-foreground">
+            <tr className="border-b">
+              <th className="w-[40%] pb-2 text-left font-normal max-sm:w-[52%]">세션</th>
+              <th className="pb-2 text-left font-normal max-sm:hidden">모델</th>
+              <th className="pb-2 text-right font-normal">누적</th>
+              <th className="pb-2 text-right font-normal">시간당</th>
+            </tr>
+          </thead>
+          <tbody className="num">
+            {rows.map(s => {
+              const warn = s.burnWarn ? burnWarnText(s.burnWarn) : null;
+              return (
+                <tr key={s.id} className="border-b align-top last:border-0">
+                  <td className="py-2.5 pr-2">
+                    <div className="flex items-center gap-1.5 truncate">
+                      <span className="size-2 shrink-0 rounded-full" style={{ background: roleColor(s.role) }} />
+                      <span className="truncate font-medium">{s.name}</span>
+                      <span className="shrink-0 text-xs text-muted-foreground">{s.roleName}</span>
+                    </div>
+                    {warn && (
+                      <div className="mt-1 flex items-start gap-1 text-xs text-muted-foreground">
+                        <TriangleAlert aria-hidden className="mt-px size-3.5 shrink-0" style={{ color: "var(--warn)" }} strokeWidth={2.5} />
+                        <span>{[...warn.reasons, warn.advice].filter(Boolean).join(". ")}</span>
+                      </div>
+                    )}
+                    <Meter className="mt-1.5 h-1" value={(s.cost ?? 0) / total} color={roleColor(s.role)} />
+                  </td>
+                  <td className="truncate py-2.5 pr-2 font-sans text-muted-foreground max-sm:hidden" title={s.modelLabel}>{s.modelLabel}</td>
+                  <td className="py-2.5 text-right">{fmtUsd(s.cost)}</td>
+                  <td className="py-2.5 text-right">
+                    {s.burn?.perHour == null ? <span className="text-muted-foreground">{s.burn ? "재는 중" : "—"}</span> : fmtRate(s.burn.perHour)}
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      ) : (
+        <p className="py-6 text-center text-sm text-muted-foreground">비용을 알리는 세션이 없어요. Codex·Gemini 세션은 비용을 알리지 않아요.</p>
       )}
     </Panel>
   );

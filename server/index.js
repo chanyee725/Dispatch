@@ -5,6 +5,7 @@ import { mkdir, readdir, readFile, rm, writeFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 import { cancelLogin, login, loginWithKey, logout, providerStatus, publicStatus } from "./auth.js";
 import { branchGraph, currentBranch, diff, projectRoot } from "./git.js";
+import { Burn } from "./burn.js";
 import { SharedLimits } from "./limits.js";
 import { loadModels } from "./models.js";
 import { PERMS, ROLES } from "./roles.js";
@@ -49,6 +50,7 @@ function setEnabled(id, on) {
   store.save();
 }
 hub.isConnected = provider => !!providers[provider]?.connected;
+hub.burn = new Burn(store); // $/h per session and the burnWarn flag, on every session object
 
 /* ---------------- SSE ---------------- */
 const clients = new Set();
@@ -307,6 +309,8 @@ const server = http.createServer(async (req, res) => {
 });
 
 setInterval(() => hub.checkTeams(), 30000);
+// Burn rates are per 30 minutes of wall time; recompute them even when no session event arrives.
+setInterval(() => hub.refreshBurn(), 60000);
 // Another server may have written newer limits; the Hub broadcasts a "limits" event when it did.
 setInterval(() => limits.refresh().catch(() => {}), 5000);
 
