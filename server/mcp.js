@@ -19,7 +19,7 @@ async function api(method, path, body) {
 }
 
 const brief = s => ({
-  id: s.id, name: s.name, role: s.role, model: s.model, status: s.status,
+  id: s.id, name: s.name, role: s.role, model: s.model, status: s.status, state: s.state,
   last: s.last, turns: s.turns, cost: s.cost, branch: s.branch, parent: s.parent,
   pendingPermissions: (s.pending || []).length,
 });

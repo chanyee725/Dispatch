@@ -8,7 +8,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { ModelTag, StatusBadge, ThinkingLine } from "@/components/bits";
 import { DiffView } from "@/components/DiffView";
 import { turn } from "@/lib/turn";
-import { fmtK, fmtUsd, pct, roleColor } from "@/lib/format";
+import { fmtK, fmtUsd, pct, roleColor, stateOf } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import { api, loadTranscript, useApp } from "@/store";
 import type { Entry, Pending, Session } from "@/types";
@@ -254,7 +254,7 @@ export function SessionSheet({ id, onClose }: { id: string | null; onClose: () =
               <div className="flex items-center gap-2.5 pr-8">
                 <span className="h-5 w-1 rounded-full" style={{ background: roleColor(s.role) }} />
                 <SheetTitle className="truncate text-lg">{s.name}</SheetTitle>
-                <StatusBadge status={s.status} />
+                <StatusBadge state={stateOf(s)} />
               </div>
               <SheetDescription className="flex flex-wrap items-center gap-x-4 gap-y-1">
                 <ModelTag provider={s.provider} label={`${s.modelLabel}${s.effort ? ` ${s.effort}` : ""}`} />

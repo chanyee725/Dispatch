@@ -19,6 +19,12 @@ H=(-H 'content-type: application/json' -H 'x-dispatch: 1')
 
 A session object carries `id`, `name`, `role`, `provider`, `model`, `effort`, `perm`, `status` (`starting` · `running` · `waiting` · `idle` · `done` · `error`), `branch`, `cwd`, `parent`, `last` (its own latest answer, not messages sent to it), `stall` (watchdog warning or null), `interrupted` (cut off by a restart, resumed on start), `turns`, `usage`, `cost`, `ctx`, `ctxWindow`, `pending` (permission requests).
 
+Monitoring fields, decided on the server so every view agrees:
+
+- `state` — what the session needs from a person: `working` (a turn is running) · `waiting` (a permission prompt is open, or a session without a lead ended its turn asking the user something) · `stuck` (flagged by the per-session stall check) · `failed` (last turn ended in an error) · `resting` (turn finished, nothing asked) · `done`. A teammate's question goes to its lead, so it stays `resting`.
+- `stateSince` — epoch ms when the session entered its current `state`.
+- `attention` — `{ level: "bad" | "warn", reason, since }` for `failed`, `waiting` and `stuck`; `null` otherwise.
+
 When a session with a `parent` finishes a turn, the server sends its last answer to the parent as a message (`[<name>(<role>) 보고 · <branch>]` + the text; names are short random ones such as `Juno` or `Cal`, unique among listed sessions), so an idle lead wakes up without polling. A report that cannot be delivered yet (no parent, or a busy Codex lead) is retried until it lands.
 
 ## Create sessions

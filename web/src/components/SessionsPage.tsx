@@ -4,27 +4,29 @@ import { Button } from "@/components/ui/button";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Meter, ModelTag, Stat, StatusBadge, ThinkingLine } from "@/components/bits";
 import { turn } from "@/lib/turn";
-import { fmtK, fmtUsd, isOpen, pct, roleColor, totalTok } from "@/lib/format";
+import { fmtK, fmtUsd, isOpen, pct, roleColor, stateOf, totalTok } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import { ModelBreakdown } from "@/components/ModelBreakdown";
 import { TaskBoardButton } from "@/components/TaskBoard";
 import { useApp } from "@/store";
-import type { Session, Status } from "@/types";
+import type { Session, SessionState } from "@/types";
 
-const FILTERS: { id: "all" | Status; label: string }[] = [
+const FILTERS: { id: "all" | SessionState; label: string }[] = [
   { id: "all", label: "전체" },
-  { id: "running", label: "실행 중" },
-  { id: "waiting", label: "승인 대기" },
-  { id: "idle", label: "대기" },
+  { id: "working", label: "작업 중" },
+  { id: "waiting", label: "사람 기다림" },
+  { id: "stuck", label: "멈춤" },
+  { id: "failed", label: "실패" },
+  { id: "resting", label: "쉼" },
   { id: "done", label: "완료" },
-  { id: "error", label: "오류" },
 ];
 
 const sumCost = (ss: Session[]) => (ss.some(s => s.cost != null) ? ss.reduce((a, s) => a + (s.cost ?? 0), 0) : null);
 
 function SessionCard({ s, parent, onOpen }: { s: Session; parent?: Session; onOpen: () => void }) {
   const ctx = s.ctxWindow ? s.ctx / s.ctxWindow : 0;
-  const waiting = s.status === "waiting";
+  const state = stateOf(s);
+  const asking = s.pending.length > 0 || s.status === "waiting";
   const live = s.status === "running" || s.status === "starting";
   return (
     <button
@@ -32,13 +34,13 @@ function SessionCard({ s, parent, onOpen }: { s: Session; parent?: Session; onOp
       title={parent ? `${parent.name}이(가) 만든 세션` : undefined}
       className={cn(
         "group flex min-w-0 flex-col gap-2 rounded-lg border bg-card px-3 py-2.5 text-left transition-colors hover:border-foreground/20 focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none",
-        (waiting || s.stall) && "border-warn/60 bg-warn/5",
+        (state === "waiting" || state === "stuck" || s.stall) && "border-warn/60 bg-warn/5",
       )}
     >
       <div className="flex min-w-0 items-center gap-2">
         <span className="shrink-0 text-sm font-semibold">{s.name}</span>
         <ModelTag provider={s.provider} label={`${s.modelLabel}${s.effort ? ` ${s.effort}` : ""}`} className="min-w-0" />
-        <StatusBadge status={s.status} className="ml-auto" />
+        <StatusBadge state={state} className="ml-auto" />
       </div>
 
       {s.stall && (
@@ -52,7 +54,7 @@ function SessionCard({ s, parent, onOpen }: { s: Session; parent?: Session; onOp
         <ThinkingLine status={s.status} turnStartedAt={turn(s).at} tokens={turn(s).tokens} />
       ) : (
         <p className={cn("line-clamp-1 text-[13px] leading-5", s.error ? "text-bad" : "text-muted-foreground")}>
-          {waiting && <ShieldAlert className="mr-1 inline size-3.5 -translate-y-px text-warn" />}
+          {asking && <ShieldAlert className="mr-1 inline size-3.5 -translate-y-px text-warn" />}
           {s.error || s.last || "첫 응답을 기다리는 중이에요"}
         </p>
       )}
@@ -77,19 +79,18 @@ function SessionCard({ s, parent, onOpen }: { s: Session; parent?: Session; onOp
 export function SessionsPage({ onOpen, onCreate }: { onOpen: (id: string) => void; onCreate: () => void }) {
   const sessions = useApp(s => s.sessions);
   const roles = useApp(s => s.roles);
-  const [filter, setFilter] = useState<"all" | Status>("all");
+  const [filter, setFilter] = useState<"all" | SessionState>("all");
   const [breakdown, setBreakdown] = useState(false);
 
   const byId = useMemo(() => new Map(sessions.map(s => [s.id, s])), [sessions]);
   const counts = useMemo(() => {
     const c: Record<string, number> = { all: sessions.length };
-    for (const s of sessions) c[s.status] = (c[s.status] ?? 0) + 1;
-    c.running = (c.running ?? 0) + (c.starting ?? 0);
+    for (const s of sessions) { const st = stateOf(s); c[st] = (c[st] ?? 0) + 1; }
     return c;
   }, [sessions]);
   const list = useMemo(
     () => [...sessions]
-      .filter(s => filter === "all" || s.status === filter || (filter === "running" && s.status === "starting"))
+      .filter(s => filter === "all" || stateOf(s) === filter)
       .sort((a, b) => b.startedAt - a.startedAt),
     [sessions, filter],
   );
@@ -101,8 +102,8 @@ export function SessionsPage({ onOpen, onCreate }: { onOpen: (id: string) => voi
     <div className="mx-auto flex max-w-[1400px] flex-col gap-6 p-6 max-md:p-4">
       <section className="grid grid-cols-5 gap-3 max-xl:grid-cols-3 max-sm:grid-cols-2" aria-label="요약">
         <Stat strong label="열린 세션" value={open.length} hint={`전체 ${sessions.length}개`} />
-        <Stat label="실행 중" value={counts.running ?? 0} hint="응답을 만드는 중" />
-        <Stat label="승인 대기" value={counts.waiting ?? 0} hint={counts.waiting ? "확인이 필요해요" : "대기 중인 요청 없음"} />
+        <Stat label="작업 중" value={counts.working ?? 0} hint="응답을 만드는 중" />
+        <Stat label="사람 기다림" value={counts.waiting ?? 0} hint={counts.waiting ? "승인이나 답이 필요해요" : "기다리는 세션 없음"} />
         <Stat label="비용 (API 환산)" value={fmtUsd(sumCost(sessions) ?? 0)} hint="모델별로 보기" onClick={() => setBreakdown(true)} />
         <Stat label="토큰" value={fmtK(total)} hint="입력 + 캐시 + 출력" onClick={() => setBreakdown(true)} />
       </section>
