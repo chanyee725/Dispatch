@@ -30,9 +30,10 @@ ok() { printf '  ✓ %s\n' "$1"; }
 warn() { printf '  ! %s\n' "$1"; }
 
 step "1. Tools"
-if ! command -v node >/dev/null; then warn "Node.js 20+ is required: https://nodejs.org"; exit 1; fi
-node_major="$(node -p 'process.versions.node.split(".")[0]')"
-[ "$node_major" -ge 20 ] || { warn "Node.js 20+ is required (found $(node -v))"; exit 1; }
+if ! command -v node >/dev/null; then warn "Node.js 22.6+ is required: https://nodejs.org"; exit 1; fi
+# 22.6 is the first release that runs .ts files directly (npm test loads web/src helpers); Node 20 is EOL.
+node -e 'const [a, b] = process.versions.node.split(".").map(Number); process.exit(a > 22 || (a === 22 && b >= 6) ? 0 : 1)' \
+  || { warn "Node.js 22.6+ is required (found $(node -v))"; exit 1; }
 ok "node $(node -v)"
 command -v git >/dev/null && ok "$(git --version)" || warn "git not found: worktrees per session will be unavailable"
 command -v claude >/dev/null && ok "claude $(claude --version 2>/dev/null | head -1)" || warn "Claude Code not installed: https://docs.anthropic.com/claude-code"

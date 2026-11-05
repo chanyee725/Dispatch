@@ -30,7 +30,7 @@ Local web UI for running several role-based Claude Code, Codex and Gemini sessio
 - **사용량** also shows what the project is spending right now (**지금 시간당**, $/h over the last 30 minutes, falling back to 0 while sessions sit idle), the ten sessions that cost the most with a warning when one spends 3× the team's rate or has run 3 hours on a large context (for a lead: start a fresh one), and a marker on days that cost 2× the usual, naming the sessions behind them.
 - **사용량 → 한도 가까우면 막기** blocks new Claude sessions above the thresholds you set. When a threshold is reached, every lead's unfinished board tasks (and its last note and team) are saved as a **ticket**; after the reset the ticket is handed back to the lead automatically, or resume it yourself from the 작업 dialog.
 
-Requires Node.js 20+, git, and at least one of the `claude`, `codex` or `agy` (Antigravity, for Gemini) CLIs.
+Requires Node.js 22.6+ (Node 20 is end-of-life; `npm test` loads TypeScript files directly, which needs 22.6), git, and at least one of the `claude`, `codex` or `agy` (Antigravity, for Gemini) CLIs.
 
 ## Install as a Claude Code plugin
 
