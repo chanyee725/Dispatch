@@ -122,6 +122,9 @@ export class Hub extends EventEmitter {
 
   touch(s, patch = {}) {
     Object.assign(s, patch, { updatedAt: Date.now() });
+    // A removed session's process exits a moment after remove(); its late "done" must not reach the
+    // UI, which would add the session back until the page is reloaded.
+    if (this.get(s.id) !== s) return;
     // A finished turn ends its activity, so the next turn's clock starts fresh.
     if (patch.status && patch.status !== "running" && patch.status !== "starting") {
       const r = this.live.get(s.id);
@@ -161,6 +164,7 @@ export class Hub extends EventEmitter {
   // Patch without bumping updatedAt (watchdog flags must not look like activity).
   mark(s, patch) {
     Object.assign(s, patch);
+    if (this.get(s.id) !== s) return; // removed: see touch()
     this.store.save();
     this.emit("session", this.publicSession(s));
   }

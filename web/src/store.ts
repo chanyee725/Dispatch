@@ -83,6 +83,7 @@ export function connect() {
 
   on<Snapshot>("snapshot", snap => set({ ...snap, ready: true, online: true }));
   on<Session>("session", s => {
+    if (gone.has(s.id)) return;
     const i = state.sessions.findIndex(x => x.id === s.id);
     const sessions = i >= 0 ? state.sessions.map(x => (x.id === s.id ? s : x)) : [s, ...state.sessions];
     set({ sessions });
@@ -90,7 +91,9 @@ export function connect() {
   on<AppState["prefs"]>("prefs", prefs => set({ prefs }));
   on<BoardTask[]>("tasks", tasks => set({ tasks }));
   on<Ticket[]>("tickets", tickets => set({ tickets }));
-  on<{ id: string }>("removed", ({ id }) => set({ sessions: state.sessions.filter(s => s.id !== id) }));
+  // Ids removed in this page's lifetime: a late update for one of them must not bring it back.
+  const gone = new Set<string>();
+  on<{ id: string }>("removed", ({ id }) => { gone.add(id); set({ sessions: state.sessions.filter(s => s.id !== id) }); });
   on<{ id: string; entry: Entry }>("message", ({ id, entry }) => {
     const cur = state.transcripts[id];
     if (cur) set({ transcripts: { ...state.transcripts, [id]: [...cur, entry] } });
