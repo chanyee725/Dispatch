@@ -83,16 +83,38 @@ test("a limit window past its reset drops out", () => {
   assert.equal(run({ limits: lim({ five: 0.95, fiveReset: NOW + MIN }) }).length, 1);
 });
 
-test("the server's task.stuck decides lateness when present", () => {
-  const t = (o) => ({ id: "t", lead: null, title: "로그인", stage: "impl", owner: null, ...o });
-  // Past the estimate but under 1.5×: the server says not stuck yet.
-  assert.equal(run({ tasks: [t({ etaAt: NOW - MIN, stuck: null })] }).length, 0);
-  const [i] = run({ tasks: [t({ etaAt: NOW - 30 * MIN, stuck: { reason: "over-eta", since: NOW - 5 * MIN } })] });
-  assert.equal(i.kind, "late");
-  assert.equal(i.since, NOW - 30 * MIN);
-  // Older server without the field: etaAt < now.
+test("task.stuck over-eta: one late row with the server's sentence", () => {
+  const t = (o) => ({ id: "t", lead: null, title: "로그인", stage: "impl", owner: "Remy", ...o });
+  const over = { reason: "over-eta", label: "예상 20분의 1.5배를 넘겼어요", stage: "impl", etaMinutes: 20, sinceMs: NOW - 5 * MIN };
+  const items = run({ tasks: [t({ etaAt: NOW - 15 * MIN, stuck: over })] });
+  assert.equal(items.length, 1);
+  assert.deepEqual([items[0].kind, items[0].reason, items[0].since], ["late", "예상 20분의 1.5배를 넘겼어요 · Remy", NOW - 15 * MIN]);
+  // Past the estimate, not yet flagged (server leaves stuck unset or null): still late, plain wording.
+  assert.equal(run({ tasks: [t({ etaAt: NOW - MIN, stuck: null })] })[0].reason, "예상 시간을 넘겼어요 · Remy");
   assert.equal(run({ tasks: [t({ etaAt: NOW - MIN })] }).length, 1);
-  assert.equal(run({ tasks: [t({ etaAt: null, stuck: true })] })[0].since, null);
+  assert.equal(run({ tasks: [t({ etaAt: NOW + MIN })] }).length, 0);
+});
+
+test("task.stuck stage-mismatch: its own row, unless the owner session already shows", () => {
+  const mis = { reason: "stage-mismatch", label: "보드는 구현인데 15분 넘게 테스트 실행 중이에요", stage: "impl", activity: "테스트 실행", sinceMs: NOW - 15 * MIN };
+  const task = { id: "t", lead: "L", title: "로그인", stage: "impl", owner: "Remy", etaAt: NOW - MIN, stuck: mis };
+  const busy = ses({ id: "r", name: "Remy", state: "working", attention: null });
+  const items = run({ sessions: [busy], tasks: [task] });
+  assert.deepEqual(items.map(i => [i.kind, i.sessionId, i.since]), [["mismatch", "r", NOW - 15 * MIN]]);
+  assert.equal(items[0].reason, `${mis.label} · Remy`);
+  // Owner is flagged repeat-fail: the session row says it; the task adds no second row about the same loop.
+  const looping = ses({ id: "r", name: "Remy", state: "stuck", stuck: { reason: "repeat-fail", label: "테스트 3번 연속 실패", sinceMs: NOW - 4 * MIN },
+    attention: { level: "warn", reason: "테스트 3번 연속 실패", since: NOW - 4 * MIN } });
+  const both = run({ sessions: [looping], tasks: [{ ...task, etaAt: null, stuck: { ...mis, reason: "stage-mismatch" } }] });
+  assert.deepEqual(both.map(i => [i.kind, i.reason]), [["session", "테스트 3번 연속 실패"]]);
+});
+
+test("session.stuck reaches the strip once, through state + attention (or the fallback)", () => {
+  const stuck = { reason: "silent", label: "10분째 출력이 없어요", sinceMs: NOW - 12 * MIN };
+  const withAttention = run({ sessions: [ses({ id: "a", name: "Ari", state: "stuck", stuck, attention: { level: "warn", reason: stuck.label, since: stuck.sinceMs } })] });
+  assert.deepEqual(withAttention.map(i => [i.reason, i.since]), [[stuck.label, NOW - 12 * MIN]]);
+  const fallback = run({ sessions: [ses({ id: "a", name: "Ari", state: "stuck", stuck })] });
+  assert.deepEqual(fallback.map(i => [i.reason, i.since]), [[stuck.label, NOW - 12 * MIN]]);
 });
 
 test("elapsed", () => {

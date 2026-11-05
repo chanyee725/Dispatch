@@ -7,14 +7,24 @@ export interface MergeCheck { ok: boolean | null; commit: string | null; base: s
 export interface AttentionTask {
   id: string; lead: string | null; title: string; stage: string; owner: string | null;
   etaAt: number | null; mergeCheck?: MergeCheck | null;
-  /** Server's over-estimate flag (1.5× the estimate). When the field is present it decides lateness, not etaAt. */
-  stuck?: { reason?: string | null; since?: number | null } | boolean | null;
+  /** Server's flag (server/state.js taskStuck); absent or null while the task looks fine. */
+  stuck?: TaskStuck | null;
+}
+
+/** server/state.js taskStuck: past 1.5× the estimate, or the board stage disagrees with what the owner does. */
+export interface TaskStuck {
+  reason: "stage-mismatch" | "over-eta";
+  /** Korean sentence for people ("예상 20분의 1.5배를 넘겼어요"). */
+  label: string;
+  stage: string;
+  sinceMs: number | null;
+  activity?: string; count?: number; etaMinutes?: number;
 }
 
 /** Usage-limit guard thresholds (settings.guard): at or past them a limit row is urgent. */
 export interface LimitGuard { five: number; seven: number }
 
-export type AttentionKind = "session" | "late" | "limit" | "merge";
+export type AttentionKind = "session" | "late" | "mismatch" | "limit" | "merge";
 export interface AttentionItem {
   key: string;
   kind: AttentionKind;
@@ -44,7 +54,7 @@ function sessionAttention(s: Session, state: SessionState) {
   if (s.attention !== undefined) return s.attention;
   if (state === "failed") return { level: "bad" as const, reason: "오류로 멈췄어요", since: s.stateSince ?? s.updatedAt };
   if (state === "waiting") return { level: "warn" as const, reason: s.pending.length ? "권한 승인을 기다려요" : "사용자 답을 기다려요", since: s.stateSince ?? s.updatedAt };
-  if (state === "stuck") return { level: "warn" as const, reason: "멈춘 것 같아요", since: s.stateSince ?? s.updatedAt };
+  if (state === "stuck") return { level: "warn" as const, reason: s.stuck?.label || "멈춘 것 같아요", since: s.stuck?.sinceMs ?? s.stateSince ?? s.updatedAt };
   return null;
 }
 
@@ -82,10 +92,15 @@ export function attentionItems(
     if (t.mergeCheck?.ok === false) {
       out.push({ key: `m:${t.id}`, kind: "merge", level: "bad", who: t.title, reason: t.mergeCheck.reason || "병합을 확인하지 못했어요", since: t.mergeCheck.at, sessionId: t.lead ?? target });
     }
-    const late = t.stuck !== undefined ? !!t.stuck : t.etaAt != null && t.etaAt < now;
-    if (late) {
-      const since = t.etaAt ?? (typeof t.stuck === "object" ? t.stuck?.since ?? null : null);
-      out.push({ key: `t:${t.id}`, kind: "late", level: "warn", who: t.title, reason: t.owner ? `예상 시간을 넘겼어요 · ${t.owner}` : "예상 시간을 넘겼어요", since, sessionId: target });
+    // One row per task. A stage mismatch whose owner already has a row (its repeat-fail flag) adds nothing new.
+    const st = t.stuck;
+    const by = (x: string) => (t.owner ? `${x} · ${t.owner}` : x);
+    if (st?.reason === "stage-mismatch" && !(target && out.some(i => i.kind === "session" && i.sessionId === target))) {
+      out.push({ key: `t:${t.id}`, kind: "mismatch", level: "warn", who: t.title, reason: by(st.label), since: st.sinceMs ?? null, sessionId: target });
+    } else if (st?.reason === "over-eta" || (t.etaAt != null && t.etaAt < now)) {
+      // Lateness counts from the estimate either way; the server's sentence says how far past it is.
+      const reason = st?.reason === "over-eta" ? st.label : "예상 시간을 넘겼어요";
+      out.push({ key: `t:${t.id}`, kind: "late", level: "warn", who: t.title, reason: by(reason), since: t.etaAt ?? st?.sinceMs ?? null, sessionId: target });
     }
   }
 

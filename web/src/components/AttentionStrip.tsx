@@ -1,5 +1,5 @@
 import { useEffect, useId, useMemo, useState } from "react";
-import { ChevronRight, CircleCheck, Clock, Gauge, GitMerge, type LucideIcon } from "lucide-react";
+import { ChevronRight, CircleCheck, Clock, Gauge, GitMerge, TriangleAlert, type LucideIcon } from "lucide-react";
 import { Panel, StateMark } from "@/components/monitor";
 import { attentionItems, elapsed, type AttentionItem, type AttentionKind } from "@/lib/attention";
 import { fmtK, fmtUsd, isOpen, roleColor, stateOf, totalTok, until } from "@/lib/format";
@@ -19,6 +19,7 @@ function useNow(ms = 15_000) {
 // Non-session rows get their own shape + label, in the StatusBadge style, so they also read without colour.
 const KIND: Record<Exclude<AttentionKind, "session">, { Icon: LucideIcon; label: string }> = {
   late: { Icon: Clock, label: "지연" },
+  mismatch: { Icon: TriangleAlert, label: "단계 불일치" },
   merge: { Icon: GitMerge, label: "병합 안 됨" },
   limit: { Icon: Gauge, label: "한도" },
 };
@@ -43,7 +44,7 @@ function howLong(item: AttentionItem, now: number) {
   return e ? `${e}째` : "방금";
 }
 
-const ACTION: Record<AttentionKind, string> = { session: "열기", late: "세션 열기", merge: "관리자 열기", limit: "사용량 보기" };
+const ACTION: Record<AttentionKind, string> = { session: "열기", late: "세션 열기", mismatch: "세션 열기", merge: "관리자 열기", limit: "사용량 보기" };
 
 function Row({ item, now, onClick }: { item: AttentionItem; now: number; onClick?: () => void }) {
   const time = howLong(item, now);
