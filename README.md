@@ -11,6 +11,7 @@ Local web UI for running several role-based Claude Code, Codex and Gemini sessio
 - Sessions get short names (Juno, Cal, Sam …); the role shows beside the name and in every report.
 - Long-lived sessions stay cheap: after 5 turns for a lead and 10 for other roles, a session continues in a fresh CLI session with a handoff note (its last answer and, for a lead, its teammates), so the context does not keep growing. Change the counts on the **설정** page (`0` turns it off).
 - Teams are tuned for speed and tokens: the lead runs on Sonnet, each implementer takes one task, a review without must-fixes merges at once, and finished sessions are removed as the team goes. New worktrees get `node_modules` as hard links, so nobody waits on an install.
+- Sessions and board tasks that look stuck are flagged with a plain reason: the same test, build or lint command failing 3 times in a row ("e2e가 3번 연속 실패했어요"), 10 minutes with no output, a stage past 1.5× its eta, or the board saying 구현 while the owner keeps running tests. A command whose exit code hides the result (`npm test | tail`, `|| true`) isn't counted; the same command in another directory counts separately. Only a hash of the command and the counts are kept. Tune or turn off each check with the `stuck*` team settings (`POST /api/settings`, `0` = off).
 - Every session answers in a short, action-first style (the `i-have-adhd` rules when that Claude Code plugin is installed; turn it off on the 설정 page).
 - Works as a skill in both Claude Code and Codex.
 

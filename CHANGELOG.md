@@ -2,6 +2,19 @@
 
 Every release is tagged `vX.Y.Z` and published on [GitHub Releases](https://github.com/chanyee725/Dispatch/releases). The plugin version in `.claude-plugin/plugin.json` matches the tag.
 
+## 0.8.0 — 2026-11-05
+
+### Added
+
+- **Stuck detection per session and per task** (#5): a session is flagged when the same check command (test, build, lint, typecheck, e2e) fails 3 times in a row or a running turn is silent for 10 minutes; a board task when its stage runs past 1.5× its eta or the board says 계획/구현 while the owner is looping on tests. One event per flag, not per failure. Thresholds are the `stuckFails`, `stuckSilentMinutes`, `stuckEtaRatio` and `stuckMismatchMinutes` team settings (`0` = off). Only a hash of the command and the counts are stored.
+
+### Fixed
+
+- A check piped into a filter (`npm test 2>&1 | tail -20`) exited with the filter's 0 and counted as a pass, wiping the failure count. Commands whose exit code hides the result (a pipe without `pipefail`, or `||`) are now left uncounted.
+- The same check run in another directory (`cd web && npm test` vs `cd server && npm test`) shared one count; `cd` now stays in the command hash.
+- A repeat-fail flag stayed up after a different command of the same kind passed; it now clears.
+- `stuckMismatchMinutes: 0` left the "board says 구현 but tests keep failing" flag on; it now turns off both mismatch checks.
+
 ## 0.7.0 — 2026-11-05
 
 The first tagged release. It collects the 0.5.2 – 0.7.0 work, most of it found by running a real team for a day and reading where its time and tokens went.
