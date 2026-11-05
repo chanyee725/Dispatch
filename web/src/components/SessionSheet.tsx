@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type Ref } from "react";
 import { ChevronRight, GitBranch, Power, SendHorizontal, ShieldAlert, Square, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -6,6 +6,7 @@ import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import { ModelTag, StatusBadge, ThinkingLine } from "@/components/bits";
+import { AnswerCard } from "@/components/AnswerCard";
 import { DiffView } from "@/components/DiffView";
 import { turn } from "@/lib/turn";
 import { fmtK, fmtUsd, pct, roleColor, stateOf } from "@/lib/format";
@@ -208,8 +209,7 @@ function Info({ s }: { s: Session }) {
   );
 }
 
-function Composer({ s }: { s: Session }) {
-  const [text, setText] = useState("");
+function Composer({ s, text, setText, inputRef }: { s: Session; text: string; setText: (v: string) => void; inputRef: Ref<HTMLTextAreaElement> }) {
   const [busy, setBusy] = useState(false);
   const send = async () => {
     const v = text.trim();
@@ -223,6 +223,7 @@ function Composer({ s }: { s: Session }) {
   return (
     <div className="flex items-end gap-2 border-t p-4">
       <Textarea
+        ref={inputRef}
         value={text}
         onChange={e => setText(e.target.value)}
         onKeyDown={e => { if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) { e.preventDefault(); send(); } }}
@@ -239,9 +240,18 @@ function Composer({ s }: { s: Session }) {
 export function SessionSheet({ id, onClose }: { id: string | null; onClose: () => void }) {
   const s = useApp(st => st.sessions.find(x => x.id === id));
   const [tab, setTab] = useState("chat");
+  // The composer's draft lives here so the "답할 것" card can fill it.
+  const [draft, setDraft] = useState("");
+  const input = useRef<HTMLTextAreaElement>(null);
+  const pick = (text: string) => {
+    setTab("chat");
+    setDraft(text);
+    requestAnimationFrame(() => { const el = input.current; if (el) { el.focus(); el.setSelectionRange(text.length, text.length); } });
+  };
   useEffect(() => {
     if (!id) return;
     setTab("chat");
+    setDraft("");
     loadTranscript(id).catch((e: Error) => toast.error(e.message));
   }, [id]);
 
@@ -277,6 +287,7 @@ export function SessionSheet({ id, onClose }: { id: string | null; onClose: () =
                 )}
               </div>
             </SheetHeader>
+            <AnswerCard s={s} onPick={pick} />
             <Tabs value={tab} onValueChange={setTab} className="min-h-0 flex-1 gap-0">
               <TabsList className="mx-6 mt-3">
                 <TabsTrigger value="chat">대화</TabsTrigger>
@@ -287,7 +298,7 @@ export function SessionSheet({ id, onClose }: { id: string | null; onClose: () =
               <TabsContent value="diff" className="min-h-0"><DiffView s={s} /></TabsContent>
               <TabsContent value="info" className="min-h-0"><Info s={s} /></TabsContent>
             </Tabs>
-            {tab === "chat" && <Composer s={s} />}
+            {tab === "chat" && <Composer s={s} text={draft} setText={setDraft} inputRef={input} />}
           </>
         )}
       </SheetContent>
