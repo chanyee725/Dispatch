@@ -18,11 +18,13 @@ Local web UI for running several role-based Claude Code, Codex and Gemini sessio
 | | |
 |---|---|
 | ![Changes tab](docs/images/diff.png) **변경사항** — everything the session's branch changed since it left your branch (commits + uncommitted edits), per file with line numbers. | ![Usage](docs/images/usage.png) **사용량** — daily cost stacked by project, per-model and per-role totals, and every Dispatch project running on this machine. |
-| ![Per-model breakdown](docs/images/model-breakdown.png) Click **비용** or **토큰** for a per-model breakdown. | ![Dark theme](docs/images/sessions-dark.png) System / light / dark theme, shared by every project. |
+| ![Per-model breakdown](docs/images/model-breakdown.png) Click **비용** or **토큰** for a per-model breakdown. | ![Dark theme](docs/images/sessions-dark.png) System / light / dark / 모니터링 theme, shared by every project. |
 
 ### At a glance
 
 - **확인 필요** (top of 세션): one row per thing that needs you — a session waiting on your answer or a permission, a stuck or failed session, a task past its estimate or whose board stage disagrees with what its owner is doing, a task whose merge check failed, a Claude limit at 75 % or more (red once it reaches the usage-limit guard set in 설정). Each row says why and for how long, and opens the session (or 사용량). Empty, it folds to "지금 볼 것 없어요". Open sessions, cost and tokens sit in one small line under it; click cost or tokens for the per-model breakdown.
+- **상시 화면 (TV):** the top-bar **상시 화면** button (or `#tv` in the address bar) opens a dark, always-on view: a big state grid and the "확인 필요" area, no scrolling. Every state shows a shape, a colour and a label. `Esc` closes it.
+- **Session sheet:** runs of tool calls fold into one counted line; open it for the raw input and output.
 - **Top bar:** usage limits per provider — Claude 5-hour and weekly, GPT (Codex) windows, and Gemini's state (Gemini reports no percentage, so it shows OK until a quota error, then the reset time). Hover for reset times.
 - **프로젝트 선택:** switch between the Dispatch servers running on this machine (one per project).
 - **새 세션** starts sessions. **끝난 세션 정리** removes finished sessions in one click; the broom icon stops and removes every session of this project after a confirmation. Branches stay; a worktree goes with its session only when nothing uncommitted is left.
