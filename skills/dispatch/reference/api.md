@@ -48,7 +48,7 @@ Per item: `role` (required), `n` (copies, default 1), `model`, `effort` (one of 
 | `POST /api/sessions/<id>/permission` | `{ "requestId", "behavior": "allow" \| "deny", "always": false }` | Answers a pending Claude permission request from `session.pending`. |
 | `POST /api/sessions/<id>/interrupt` | — | Stops the current turn; the session stays open. |
 | `POST /api/sessions/<id>/kill` | — | Ends the session (`done`). |
-| `POST /api/sessions/<id>/remove` | — | Removes a session from the list. |
+| `POST /api/sessions/<id>/remove` | — | Removes a session from the list, with its tasks; its worktree too when nothing uncommitted is left (the branch stays). The lead does this through `stop_session` with `remove: true`. |
 
 ## Providers and settings
 

@@ -126,9 +126,12 @@ const LEAD_TOOLS = [
   },
   {
     name: "stop_session",
-    description: "세션을 종료한다.",
-    inputSchema: { type: "object", required: ["session_id"], properties: { session_id: { type: "string" } } },
-    run: async ({ session_id }) => { await api("POST", `/api/sessions/${session_id}/kill`); return { ok: true }; },
+    description: "세션을 종료한다. 다시 쓸 일이 없는 끝난 세션은 remove: true로 목록에서도 지운다(대화 기록도 지워진다). 결과를 아직 확인해야 하면 remove 없이 종료만 한다.",
+    inputSchema: { type: "object", required: ["session_id"], properties: { session_id: { type: "string" }, remove: { type: "boolean", description: "목록에서도 지움 (기본 false)" } } },
+    run: async ({ session_id, remove }) => {
+      await api("POST", `/api/sessions/${session_id}/${remove ? "remove" : "kill"}`);
+      return { ok: true, removed: !!remove };
+    },
   },
 ];
 

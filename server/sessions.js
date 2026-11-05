@@ -4,7 +4,7 @@ import { randomUUID } from "node:crypto";
 import { EventEmitter } from "node:events";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { prepareWorkdir } from "./git.js";
+import { dropWorktree, prepareWorkdir } from "./git.js";
 import { CHILD_PROMPT, NAMES, PERMS, SPAWN_PROMPT } from "./roles.js";
 import { replyStyle } from "./style.js";
 import { codexLimits, geminiResetFrom, isQuotaError } from "./limits.js";
@@ -391,6 +391,7 @@ export class Hub extends EventEmitter {
   }
 
   remove(id) {
+    const gone = this.get(id);
     this.kill(id);
     delete this.store.data.sessions[id];
     // Its board goes with it: a removed lead can no longer close its tasks.
@@ -400,6 +401,8 @@ export class Hub extends EventEmitter {
     rmSync(this.tfile(id), { force: true });
     this.store.save();
     this.emit("removed", { id });
+    // Its worktree goes too when nothing uncommitted is left in it; the branch stays.
+    if (gone?.worktree) setTimeout(() => dropWorktree(this.root, gone.cwd).catch(() => {}), 1500);
     this.emit("tasks", this.tasks);
     this.emit("tickets", this.tickets);
   }

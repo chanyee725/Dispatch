@@ -66,7 +66,19 @@ async function shareDeps(root, dir) {
   catch (e) { return `node_modules를 작업 폴더에 연결하지 못했어요: ${String(e.stderr || e.message).trim().slice(0, 160)}`; }
 }
 
-const NOISE = ["node_modules", ".next", ".next-prod", "dist", ".playwright-mcp"];
+/**
+ * Drops a removed session's worktree when nothing would be lost: no uncommitted or untracked
+ * files outside build noise. The branch and its commits stay. Worktrees of removed sessions
+ * otherwise piled up (37 GB across ~100 of them).
+ */
+export async function dropWorktree(root, dir) {
+  if (!dir || path.resolve(dir) === path.resolve(root) || !existsSync(dir)) return false;
+  const st = await out(git(dir, "status", "--porcelain"));
+  if (st.split("\n").filter(Boolean).map(l => l.slice(3)).some(f => keep(f.replace(/\/$/, "")))) return false;
+  try { await git(root, "worktree", "remove", "--force", dir); return true; } catch { return false; }
+}
+
+const NOISE = ["node_modules", ".next", ".next-prod", "dist", ".playwright-mcp", "test-results", "playwright-report"];
 const keep = f => !NOISE.some(n => f === n || f.startsWith(`${n}/`));
 const out = p => p.then(r => r.stdout, () => "");
 
