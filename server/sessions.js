@@ -10,6 +10,7 @@ import { CHILD_PROMPT, NAMES, PERMS, SPAWN_PROMPT } from "./roles.js";
 import { replyStyle } from "./style.js";
 import { effectiveRoles, teamSettings } from "./settings.js";
 import { codexLimits, geminiResetFrom, isQuotaError, SharedLimits } from "./limits.js";
+import { recordState, trimToWindow, WINDOW_MS } from "../shared/timeline.js";
 import { asksUser, attentionOf, checkKey, recordCheck, sessionState, sessionStuck, stuckSig, taskStuck } from "./state.js";
 
 const MCP_SCRIPT = path.join(path.dirname(fileURLToPath(import.meta.url)), "mcp.js");
@@ -129,8 +130,22 @@ export class Hub extends EventEmitter {
     // stateSince moves only on a change of state, so "사람 기다림 · 8분째" counts from the real start.
     const state = sessionState(s, pending.length);
     if (state !== s.state) { s.state = state; s.stateSince = Date.now(); }
-    return { ...s, pending, activity: busy ? r?.activity ?? null : null,
+    // Timeline history: `[at, state]` only, capped per session. Sessions from before it was kept start
+    // from their current state.
+    const h = (s.history ||= []);
+    const before = h.length && h[h.length - 1][1];
+    recordState(h, state, s.stateSince ?? Date.now());
+    if (h[h.length - 1][1] !== before) this.store.save();
+    const { history: _h, ...rest } = s;
+    return { ...rest, pending, activity: busy ? r?.activity ?? null : null,
       attention: attentionOf(s, state, pending.length, s.stateSince), ...this.burn?.fields(s, this.sessions) };
+  }
+
+  /** State history of every session over the timeline window, `{ now, windowMs, sessions: { id: [[at, state], …] } }`. */
+  timeline(now = Date.now(), windowMs = WINDOW_MS) {
+    const sessions = {};
+    for (const s of this.sessions) { this.publicSession(s); sessions[s.id] = trimToWindow(s.history || [], now, windowMs); }
+    return { now, windowMs, sessions };
   }
 
   /** Re-sends sessions whose burn rate has moved with time alone (idle sessions decay to 0 $/h). */

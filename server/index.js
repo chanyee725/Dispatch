@@ -243,6 +243,7 @@ const routes = [
   ["POST", /^\/api\/sessions\/clear$/, async () => ({ removed: hub.clearAll() })],
   ["POST", /^\/api\/sessions\/clear-done$/, async () => ({ removed: hub.clearDone() })],
   ["GET", /^\/api\/limits$/, async () => hub.providerLimits()],
+  ["GET", /^\/api\/timeline$/, async () => hub.timeline()],
   ["GET", /^\/api\/tasks$/, async () => ({ tasks: hub.tasks })],
   ["GET", /^\/api\/branches$/, async () => branchGraph(root, { active: hub.sessions.filter(x => x.status !== "done" && x.branch).map(x => x.branch) })],
   ["GET", /^\/api\/tickets$/, async () => ({ tickets: hub.tickets })],
