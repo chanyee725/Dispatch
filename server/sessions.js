@@ -128,6 +128,12 @@ export class Hub extends EventEmitter {
       attention: attentionOf(s, state, pending.length, s.stateSince), ...this.burn?.fields(s, this.sessions) };
   }
 
+  /** Re-sends sessions whose burn rate has moved with time alone (idle sessions decay to 0 $/h). */
+  refreshBurn() {
+    if (!this.burn) return;
+    for (const s of this.burn.due(this.sessions)) this.emit("session", this.publicSession(s));
+  }
+
   touch(s, patch = {}) {
     // A turn that ends by asking its reader something leaves the session waiting on a person, not resting.
     // Only on a real change of status: Codex/Gemini touch idle again when the process exits, after

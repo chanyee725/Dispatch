@@ -70,6 +70,7 @@ export class Burn {
     this.store = store;
     this.now = now;
     this.series = new Map(); // id → [{ t, cost }]
+    this.sent = new Map(); // id → last { burn, burnWarn } handed out, as JSON
   }
 
   /** Records a session's current cost; a rise is also added to today's bucket for that session. */
@@ -94,14 +95,31 @@ export class Burn {
     this.store.save();
   }
 
-  /** `{ burn, burnWarn }` for one session, judged against every listed session. */
-  fields(s, sessions) {
+  /** `{ burn, burnWarn }` for one session at the current time, judged against every listed session. */
+  compute(s, sessions) {
     this.observe(s);
     const now = this.now();
     const live = new Set(sessions.map(x => x.id));
     for (const id of this.series.keys()) if (!live.has(id)) this.series.delete(id);
+    for (const id of this.sent.keys()) if (!live.has(id)) this.sent.delete(id);
     const rates = sessions.map(x => rateOf(this.series.get(x.id), now)?.perHour).filter(r => r > 0);
     const burn = rateOf(this.series.get(s.id), now);
     return { burn, burnWarn: warnOf(s, burn?.perHour ?? null, median(rates), now) };
+  }
+
+  /** Same as compute, and remembers what was handed out so `due` can tell when time alone changed it. */
+  fields(s, sessions) {
+    const f = this.compute(s, sessions);
+    this.sent.set(s.id, JSON.stringify(f));
+    return f;
+  }
+
+  /**
+   * Sessions whose burn or burnWarn differs from what was last handed out. Claude's cost moves only
+   * when a turn ends, so an idle session sends no events; without a periodic check its rate would
+   * stay at the peak it had right after its last turn.
+   */
+  due(sessions) {
+    return sessions.filter(s => JSON.stringify(this.compute(s, sessions)) !== this.sent.get(s.id));
   }
 }

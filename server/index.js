@@ -309,6 +309,8 @@ const server = http.createServer(async (req, res) => {
 });
 
 setInterval(() => hub.checkTeams(), 30000);
+// Burn rates are per 30 minutes of wall time; recompute them even when no session event arrives.
+setInterval(() => hub.refreshBurn(), 60000);
 // Another server may have written newer limits; the Hub broadcasts a "limits" event when it did.
 setInterval(() => limits.refresh().catch(() => {}), 5000);
 

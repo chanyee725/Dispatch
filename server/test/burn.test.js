@@ -63,3 +63,37 @@ test("Burn: rates against the team and records each session's cost per day (numb
   assert.deepEqual(day.a, { name: "a", role: "lead", cost: 9 });
   assert.ok(!JSON.stringify(store.data).includes("secret"));
 });
+
+test("Burn.due: an idle session's rate falls to 0 with time alone and is re-sent", () => {
+  let t = Date.parse("2026-11-05T09:00:00");
+  const store = { data: { daily: {} }, save() {} };
+  const burn = new Burn(store, () => t);
+  const s = { id: "a", name: "a", role: "impl", cost: 0, ctx: 0, ctxWindow: 1, startedAt: t, status: "idle" };
+  burn.fields(s, [s]);
+  t += 10 * MIN;
+  s.cost = 2; // a turn ends: no further events while it sits idle
+  assert.equal(burn.fields(s, [s]).burn.perHour, 12);
+  assert.deepEqual(burn.due([s]), []); // nothing moved yet
+  t += 31 * MIN; // no event at all; the rise has left the 30-minute window
+  assert.deepEqual(burn.due([s]).map(x => x.id), ["a"]);
+  assert.equal(burn.fields(s, [s]).burn.perHour, 0);
+  assert.deepEqual(burn.due([s]), []);
+});
+
+test("Hub.refreshBurn: emits only the sessions whose rate moved with time", async () => {
+  const { Hub } = await import("../sessions.js");
+  let t = Date.parse("2026-11-05T09:00:00");
+  const s = { id: "a", name: "a", role: "impl", cost: 0, ctx: 0, ctxWindow: 1, startedAt: t, status: "idle" };
+  const store = { data: { daily: {}, sessions: { a: s }, settings: {} }, save() {} };
+  const hub = new Hub({ root: "/tmp", store, models: [], roles: [], port: 0 });
+  hub.burn = new Burn(store, () => t);
+  const sent = [];
+  hub.on("session", x => sent.push(x.burn?.perHour));
+  hub.publicSession(s);
+  t += 10 * MIN; s.cost = 2; hub.publicSession(s);
+  hub.refreshBurn();
+  assert.deepEqual(sent, []);
+  t += 31 * MIN;
+  hub.refreshBurn();
+  assert.deepEqual(sent, [0]);
+});
