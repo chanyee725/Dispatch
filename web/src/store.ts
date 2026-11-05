@@ -1,7 +1,7 @@
 import { useSyncExternalStore } from "react";
 import type { Entry, Limits, ProviderStatus, Provider, Session, Settings, Snapshot } from "./types";
 
-export type ThemeChoice = "system" | "light" | "dark";
+export type ThemeChoice = "system" | "light" | "dark" | "monitor";
 
 export type TaskStage = "plan" | "impl" | "review" | "test" | "merge" | "done" | "blocked";
 export interface Ticket {
@@ -13,10 +13,20 @@ export interface Ticket {
 export interface BoardTask {
   id: string; lead: string | null; title: string; stage: TaskStage; owner: string | null;
   createdAt: number; stageAt: number; updatedAt: number; etaAt: number | null; note: string;
+  /** Stage entries, oldest first: stage and time only. Missing on tasks saved before v0.8. */
+  stages?: { stage: TaskStage; at: number }[];
 }
 
 export interface BranchCommit { hash: string; short: string; parents: string[]; author: string; at: number; subject: string; merge: boolean; }
-export interface BranchTip { branch: string; hash: string; short: string; ahead: number; base: boolean; active?: boolean; }
+export interface BranchTip {
+  branch: string; hash: string; short: string; ahead: number; base: boolean; active?: boolean;
+  /** Commits on the base branch this one lacks. */
+  behind?: number;
+  /** Tip commit time (ms). */
+  lastAt?: number | null;
+  /** open: commits not on base yet · merged: its commits are on base · empty: nothing committed. */
+  state?: "open" | "merged" | "empty" | null;
+}
 export interface BranchGraph { base: string; commits: BranchCommit[]; tips: BranchTip[]; }
 
 export interface AppState extends Snapshot {
@@ -43,7 +53,7 @@ let state: AppState = {
 function readLocalTheme(): ThemeChoice {
   try {
     const v = localStorage.getItem("dispatch-theme");
-    return v === "light" || v === "dark" ? v : "system";
+    return v === "light" || v === "dark" || v === "monitor" ? v : "system";
   } catch {
     return "system";
   }

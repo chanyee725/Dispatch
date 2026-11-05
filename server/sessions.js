@@ -5,10 +5,11 @@ import { EventEmitter } from "node:events";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { dropWorktree, prepareWorkdir, verifyMerged } from "./git.js";
+import { enterStage } from "./tasks.js";
 import { CHILD_PROMPT, NAMES, PERMS, SPAWN_PROMPT } from "./roles.js";
 import { replyStyle } from "./style.js";
 import { effectiveRoles, teamSettings } from "./settings.js";
-import { codexLimits, geminiResetFrom, isQuotaError } from "./limits.js";
+import { codexLimits, geminiResetFrom, isQuotaError, SharedLimits } from "./limits.js";
 import { asksUser, attentionOf, checkKey, recordCheck, sessionState, sessionStuck, stuckSig, taskStuck } from "./state.js";
 
 const MCP_SCRIPT = path.join(path.dirname(fileURLToPath(import.meta.url)), "mcp.js");
@@ -69,14 +70,16 @@ export function activityOf(name = "", text = "") {
 }
 
 export class Hub extends EventEmitter {
-  constructor({ root, store, models, roles, port }) {
+  constructor({ root, store, models, roles, port, limits }) {
     super();
     this.root = root;
     this.store = store;
     this.models = models;
     this.roles = roles;
     this.port = port;
-    this.limits = store.data.limits || { five: null, seven: null, fiveReset: null, sevenReset: null, updatedAt: null };
+    // Claude limits and the Gemini quota are account-wide: shared by every server via ~/.dispatch/limits.json.
+    this.shared = limits || new SharedLimits();
+    this.shared.on("change", () => { this.emit("limits", this.currentLimits()); this.checkTickets(); });
     this.live = new Map(); // id -> { proc, transcript, perms, seenMsgIds }
     this.isConnected = () => true; // replaced by the server with the Dispatch-level connection check
 
@@ -90,6 +93,7 @@ export class Hub extends EventEmitter {
     }
   }
 
+  get limits() { return this.shared.claude; }
   get sessions() { return Object.values(this.store.data.sessions); }
   get(id) { return this.store.data.sessions[id]; }
   rt(id) {
@@ -126,7 +130,13 @@ export class Hub extends EventEmitter {
     const state = sessionState(s, pending.length);
     if (state !== s.state) { s.state = state; s.stateSince = Date.now(); }
     return { ...s, pending, activity: busy ? r?.activity ?? null : null,
-      attention: attentionOf(s, state, pending.length, s.stateSince) };
+      attention: attentionOf(s, state, pending.length, s.stateSince), ...this.burn?.fields(s, this.sessions) };
+  }
+
+  /** Re-sends sessions whose burn rate has moved with time alone (idle sessions decay to 0 $/h). */
+  refreshBurn() {
+    if (!this.burn) return;
+    for (const s of this.burn.due(this.sessions)) this.emit("session", this.publicSession(s));
   }
 
   touch(s, patch = {}) {
@@ -246,15 +256,15 @@ export class Hub extends EventEmitter {
   }
 
   setGeminiQuota(text) {
-    this.store.data.geminiQuota = { reached: true, reset: geminiResetFrom(text), at: Date.now() };
-    this.store.save();
-    this.emit("limits", this.currentLimits());
+    this.shared.setGemini({ reached: true, reset: geminiResetFrom(text) })
+      .catch(e => console.error("limits:", e.message))
+      .finally(() => this.emit("limits", this.currentLimits()));
   }
 
   /** Limits per provider for the top bar: Claude windows, Codex windows, Gemini reached/ok. */
   async providerLimits(now = Date.now()) {
     const c = this.currentLimits(now);
-    const g = this.store.data.geminiQuota;
+    const g = this.shared.gemini;
     const geminiReached = !!g?.reached && (!g.reset || g.reset > now);
     return {
       claude: { windows: [
@@ -297,7 +307,8 @@ export class Hub extends EventEmitter {
       if (input.stage === "done" && open.length) {
         throw Object.assign(new Error(`새 작업을 done으로 만들 수 없어요. 끝난 일은 기존 작업의 id로 닫으세요: ${open.map(x => `${x.title} (id ${x.id})`).join(", ")}`), { status: 400 });
       }
-      t = { id: randomUUID(), lead, title, stage: "plan", createdAt: Date.now(), stageAt: Date.now(), owner: null, etaAt: null, note: "" };
+      const now = Date.now();
+      t = { id: randomUUID(), lead, title, stage: "plan", createdAt: now, stageAt: now, stages: [{ stage: "plan", at: now }], owner: null, etaAt: null, note: "" };
       all[t.id] = t;
     }
     if (title) t.title = title;
@@ -312,7 +323,7 @@ export class Hub extends EventEmitter {
         t.mergeCheck = { ok: null, commit: null, base: null, reason: "커밋 없이 닫혀 병합을 확인하지 않았어요", at: Date.now() };
       }
     }
-    if (stage) { t.stage = stage; t.stageAt = Date.now(); }
+    if (stage) enterStage(t, stage);
     if (input.owner !== undefined) t.owner = input.owner ? String(input.owner).slice(0, 60) : null;
     if (input.eta_minutes !== undefined) {
       t.etaAt = input.eta_minutes == null ? null : Date.now() + Math.max(0, Number(input.eta_minutes)) * 60_000;
@@ -874,15 +885,14 @@ export class Hub extends EventEmitter {
         break;
       case "rate_limit_event": {
         const w = m.rate_limit_info?.unifiedWindows || {};
-        this.limits = {
-          five: w.five_hour?.utilization ?? this.limits.five, fiveReset: w.five_hour?.resetsAt ? w.five_hour.resetsAt * 1000 : this.limits.fiveReset,
-          seven: w.seven_day?.utilization ?? this.limits.seven, sevenReset: w.seven_day?.resetsAt ? w.seven_day.resetsAt * 1000 : this.limits.sevenReset,
-          updatedAt: Date.now(),
-        };
-        this.store.data.limits = this.limits;
-        this.store.save();
-        this.emit("limits", this.limits);
-        this.checkTickets();
+        const l = this.limits;
+        this.shared.setClaude({
+          five: w.five_hour?.utilization ?? l.five, fiveReset: w.five_hour?.resetsAt ? w.five_hour.resetsAt * 1000 : l.fiveReset,
+          seven: w.seven_day?.utilization ?? l.seven, sevenReset: w.seven_day?.resetsAt ? w.seven_day.resetsAt * 1000 : l.sevenReset,
+        }).catch(e => console.error("limits:", e.message)).finally(() => {
+          this.emit("limits", this.limits);
+          this.checkTickets();
+        });
         break;
       }
       case "result": {

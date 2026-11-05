@@ -1,4 +1,4 @@
-import type { SessionState, Status, Usage } from "@/types";
+import type { BurnWarn, SessionState, Status, Usage } from "@/types";
 
 export const fmtK = (n: number) => (n >= 1e6 ? (n / 1e6).toFixed(2) + "M" : n >= 1e3 ? (n / 1e3).toFixed(1) + "k" : String(n));
 export const fmtUsd = (n: number | null | undefined) => (n == null ? "—" : "$" + n.toFixed(n < 10 ? 3 : 2));
@@ -51,3 +51,15 @@ const ROLE_VARS = ["lead", "impl", "review", "test", "design", "docs"];
 export const roleColor = (id: string) => (ROLE_VARS.includes(id) ? `var(--role-${id})` : "var(--muted-foreground)");
 
 export const LEVEL_COLOR = { ok: "var(--ok)", warn: "var(--warn)", bad: "var(--bad)", none: "var(--muted-foreground)" };
+
+/** "$2.10/h"-style rate; "—" when there is no rate. */
+export const fmtRate = (n: number | null | undefined) => (n == null ? "—" : `${fmtUsd(n)}/h`);
+
+/** The burnWarn codes as sentences: the reasons, then the advice (when there is one). */
+export function burnWarnText(w: BurnWarn): { reasons: string[]; advice: string | null } {
+  const reasons = w.reasons.map(r =>
+    r === "spike" ? `시간당 비용이 팀 중앙값(${fmtRate(w.medianPerHour)})의 ${w.ratio}배예요`
+      : `컨텍스트 ${pct(w.ctxShare)}로 ${w.hours}시간째 이어지고 있어요`);
+  const advice = w.advice === "swapLead" ? "새 관리자 세션으로 교대하는 게 좋아요" : null;
+  return { reasons, advice };
+}
