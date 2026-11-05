@@ -21,6 +21,14 @@ export const TEAM_DEFAULTS = () => ({
   dropWorktrees: true,
   /** Default model per role id, overriding the built-in preset. */
   roleModels: {},
+  /** Stuck detection: the same check command failing this many times in a row (0 = off). */
+  stuckFails: 3,
+  /** A running session with no output or tool event for this many minutes (0 = off). */
+  stuckSilentMinutes: 10,
+  /** A task stage running past this multiple of its eta (0 = off). */
+  stuckEtaRatio: 1.5,
+  /** Board says plan/impl while the owner has been running tests this many minutes (0 = off). */
+  stuckMismatchMinutes: 10,
 });
 
 export function teamSettings(store) {
@@ -33,6 +41,12 @@ const int = (v, min, max) => {
   return n;
 };
 
+const ratio = (v, min, max) => {
+  const n = Math.round(Number(v) * 10) / 10;
+  if (!Number.isFinite(n) || (n !== 0 && (n < min || n > max))) throw Object.assign(new Error(`0 또는 ${min}~${max} 사이 숫자를 넣어 주세요`), { status: 400 });
+  return n;
+};
+
 /** Validates a partial update from the UI; unknown keys are ignored. */
 export function patchTeam(store, patch, { roles, models }) {
   const cur = store.data.settings.team || {};
@@ -40,6 +54,10 @@ export function patchTeam(store, patch, { roles, models }) {
   if ("rotateLead" in patch) next.rotateLead = int(patch.rotateLead, 0, 100);
   if ("rotateOthers" in patch) next.rotateOthers = int(patch.rotateOthers, 0, 100);
   if ("maxChildren" in patch) next.maxChildren = int(patch.maxChildren, 1, 16);
+  if ("stuckFails" in patch) next.stuckFails = int(patch.stuckFails, 0, 20);
+  if ("stuckSilentMinutes" in patch) next.stuckSilentMinutes = int(patch.stuckSilentMinutes, 0, 240);
+  if ("stuckMismatchMinutes" in patch) next.stuckMismatchMinutes = int(patch.stuckMismatchMinutes, 0, 240);
+  if ("stuckEtaRatio" in patch) next.stuckEtaRatio = ratio(patch.stuckEtaRatio, 1, 10);
   for (const k of ["replyStyle", "shareDeps", "dropWorktrees"]) if (k in patch) next[k] = patch[k] === true;
   if (patch.roleModels && typeof patch.roleModels === "object") {
     const rm = { ...(cur.roleModels || {}) };
