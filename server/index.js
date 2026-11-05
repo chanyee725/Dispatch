@@ -190,6 +190,13 @@ async function body(req) {
   return raw ? JSON.parse(raw) : {};
 }
 
+/** Message text must say something: an empty send used to wake a session with a blank turn. */
+const required = text => {
+  const t = String(text ?? "").trim();
+  if (!t) throw Object.assign(new Error("text가 비어 있어요"), { status: 400 });
+  return t;
+};
+
 const routes = [
   ["GET", /^\/api\/state$/, async () => snapshot()],
   ["GET", /^\/api\/usage$/, async () => usage()],
@@ -216,7 +223,7 @@ const routes = [
     if (!s) throw Object.assign(new Error("세션이 없어요"), { status: 404 });
     return diff(s.cwd, root);
   }],
-  ["POST", /^\/api\/sessions\/([\w-]+)\/message$/, async ([id], b) => { hub.send(id, String(b.text || "")); return { ok: true }; }],
+  ["POST", /^\/api\/sessions\/([\w-]+)\/message$/, async ([id], b) => { hub.send(id, required(b?.text)); return { ok: true }; }],
   ["POST", /^\/api\/sessions\/([\w-]+)\/interrupt$/, async ([id]) => { hub.interrupt(id); return { ok: true }; }],
   ["POST", /^\/api\/sessions\/([\w-]+)\/kill$/, async ([id]) => { hub.kill(id); return { ok: true }; }],
   ["POST", /^\/api\/sessions\/([\w-]+)\/remove$/, async ([id]) => { hub.remove(id); return { ok: true }; }],
@@ -234,7 +241,7 @@ const routes = [
     return isNew && t.lead ? { ...t, open: hub.openTasks(t.lead, t.id) } : t;
   }],
   ["POST", /^\/api\/tasks\/([\w-]+)\/remove$/, async ([id]) => { hub.removeTask(id); return { ok: true }; }],
-  ["POST", /^\/api\/sessions\/([\w-]+)\/to-lead$/, async ([id], b) => { hub.messageLead(id, String(b.text || "")); return { ok: true }; }],
+  ["POST", /^\/api\/sessions\/([\w-]+)\/to-lead$/, async ([id], b) => { hub.messageLead(id, required(b?.text)); return { ok: true }; }],
   ["POST", /^\/api\/sessions\/([\w-]+)\/parent$/, async ([id], b) => { hub.setParent(id, b.parent ? String(b.parent) : null); return { ok: true }; }],
   ["POST", /^\/api\/sessions\/([\w-]+)\/perm$/, async ([id], b) => { hub.setPerm(id, String(b.perm || "")); return { ok: true }; }],
   ["POST", /^\/api\/sessions\/([\w-]+)\/permission$/, async ([id], b) => {

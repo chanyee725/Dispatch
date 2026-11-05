@@ -155,7 +155,18 @@ async function handle(msg) {
       const tool = TOOLS.find(t => t.name === params?.name);
       if (!tool) return fail(id, -32602, `unknown tool ${params?.name}`);
       try {
-        const out = await tool.run(params.arguments || {});
+        const args = params.arguments || {};
+        // A misnamed argument (e.g. `message` for `text`) used to reach the server as "" and report ok.
+        const props = tool.inputSchema.properties || {};
+        const missing = (tool.inputSchema.required || []).filter(k => args[k] == null || String(args[k]).trim() === "");
+        const unknown = Object.keys(args).filter(k => !(k in props));
+        if (missing.length) { // extra harmless fields alone pass; they are only named to explain the miss
+          throw new Error([
+            missing.length && `필수 인자 ${missing.join(", ")}이(가) 비어 있어요`,
+            unknown.length && `모르는 인자 ${unknown.join(", ")}`,
+          ].filter(Boolean).join(". ") + `. 받는 인자: ${Object.keys(props).join(", ")}. 아무것도 보내지 않았으니 고쳐서 다시 호출하세요.`);
+        }
+        const out = await tool.run(args);
         return reply(id, { content: [{ type: "text", text: JSON.stringify(out, null, 2) }] });
       } catch (e) {
         return reply(id, { content: [{ type: "text", text: `오류: ${e.message}` }], isError: true });
