@@ -41,6 +41,10 @@ export interface AttentionItem {
   resetAt?: number | null;
   /** Session to open from the row; limit rows go to the usage page instead. */
   sessionId?: string | null;
+  /** The server's stuck flag stands behind the row (session state "stuck", task stuck), not a client guess. */
+  flagged?: boolean;
+  /** Limit rows: rounded percent used, the same number the row shows. */
+  used?: number;
 }
 
 export const LIMIT_WARN = 0.75;
@@ -79,7 +83,7 @@ export function attentionItems(
     const state = stateOf(s);
     const a = ACTIVE.includes(state) ? sessionAttention(s, state) : null;
     if (a) {
-      out.push({ key: `s:${s.id}`, kind: "session", level: a.level, state, who: s.name, role: s.role, reason: a.reason, since: a.since, sessionId: s.id });
+      out.push({ key: `s:${s.id}`, kind: "session", level: a.level, state, who: s.name, role: s.role, reason: a.reason, since: a.since, sessionId: s.id, flagged: state === "stuck" });
     } else if (s.stall && state !== "done") {
       // Watchdog flag on an otherwise quiet session (no lead hears it, or the team idles).
       out.push({ key: `s:${s.id}`, kind: "session", level: "warn", state: "stuck", who: s.name, role: s.role, reason: s.stall.reason, since: s.stall.since, sessionId: s.id });
@@ -99,11 +103,11 @@ export function attentionItems(
     const by = (x: string) => (t.owner ? `${x} · ${t.owner}` : x);
     const folded = owner?.stuck?.reason === "repeat-fail" && out.some(i => i.kind === "session" && i.sessionId === owner.id);
     if (st?.reason === "stage-mismatch" && !folded) {
-      out.push({ key: `t:${t.id}`, kind: "mismatch", level: "warn", who: t.title, reason: by(st.label), since: st.sinceMs ?? null, sessionId: target });
+      out.push({ key: `t:${t.id}`, kind: "mismatch", level: "warn", who: t.title, reason: by(st.label), since: st.sinceMs ?? null, sessionId: target, flagged: true });
     } else if (st?.reason === "over-eta" || (t.etaAt != null && t.etaAt < now)) {
       // Lateness counts from the estimate either way; the server's sentence says how far past it is.
       const reason = st?.reason === "over-eta" ? st.label : "예상 시간을 넘겼어요";
-      out.push({ key: `t:${t.id}`, kind: "late", level: "warn", who: t.title, reason: by(reason), since: t.etaAt ?? st?.sinceMs ?? null, sessionId: target });
+      out.push({ key: `t:${t.id}`, kind: "late", level: "warn", who: t.title, reason: by(reason), since: t.etaAt ?? st?.sinceMs ?? null, sessionId: target, flagged: st?.reason === "over-eta" });
     }
   }
 
@@ -121,7 +125,7 @@ export function attentionItems(
       if (used < Math.min(pct(LIMIT_WARN), urgent)) continue;
       out.push({
         key: `l:${w.id}`, kind: "limit", level: used >= urgent ? "bad" : "warn", who: w.label,
-        reason: `${used}% 썼어요`, since: null, resetAt: w.reset,
+        reason: `${used}% 썼어요`, since: null, resetAt: w.reset, used,
       });
     }
   }
