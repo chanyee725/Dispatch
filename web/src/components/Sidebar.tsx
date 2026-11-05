@@ -1,4 +1,4 @@
-import { BarChart3, GitBranch, LayoutGrid, Monitor, Moon, PlugZap, Settings as SettingsIcon, Sun } from "lucide-react";
+import { Activity, BarChart3, GitBranch, LayoutGrid, Monitor, Moon, PlugZap, Settings as SettingsIcon, Sun } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { isOpen } from "@/lib/format";
@@ -103,6 +103,7 @@ const THEMES: { id: ThemeChoice; label: string; icon: typeof Sun }[] = [
   { id: "system", label: "시스템", icon: Monitor },
   { id: "light", label: "라이트", icon: Sun },
   { id: "dark", label: "다크", icon: Moon },
+  { id: "monitor", label: "모니터링", icon: Activity },
 ];
 
 function ThemeSwitch() {

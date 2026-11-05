@@ -1,7 +1,7 @@
 import { useSyncExternalStore } from "react";
 import type { Entry, Limits, ProviderStatus, Provider, Session, Settings, Snapshot } from "./types";
 
-export type ThemeChoice = "system" | "light" | "dark";
+export type ThemeChoice = "system" | "light" | "dark" | "monitor";
 
 export type TaskStage = "plan" | "impl" | "review" | "test" | "merge" | "done" | "blocked";
 export interface Ticket {
@@ -43,7 +43,7 @@ let state: AppState = {
 function readLocalTheme(): ThemeChoice {
   try {
     const v = localStorage.getItem("dispatch-theme");
-    return v === "light" || v === "dark" ? v : "system";
+    return v === "light" || v === "dark" || v === "monitor" ? v : "system";
   } catch {
     return "system";
   }

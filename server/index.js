@@ -128,7 +128,7 @@ async function projects() {
 // One file for all Dispatch servers on this machine, so switching projects (another port, another
 // browser origin) keeps the same theme. Only UI preferences live here.
 const PREFS = path.join(os.homedir(), ".dispatch", "prefs.json");
-const THEMES = ["system", "light", "dark"];
+const THEMES = ["system", "light", "dark", "monitor"];
 async function readPrefs() {
   const p = JSON.parse(await readFile(PREFS, "utf8").catch(() => "{}"));
   return { theme: THEMES.includes(p.theme) ? p.theme : "system" };
