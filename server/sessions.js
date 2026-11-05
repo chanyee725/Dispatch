@@ -9,7 +9,7 @@ import { CHILD_PROMPT, NAMES, PERMS, SPAWN_PROMPT } from "./roles.js";
 import { replyStyle } from "./style.js";
 import { effectiveRoles, teamSettings } from "./settings.js";
 import { codexLimits, geminiResetFrom, isQuotaError } from "./limits.js";
-import { asksUser, attentionOf, sessionState } from "./state.js";
+import { asksUser, attentionOf, checkKey, recordCheck, sessionState, sessionStuck, stuckSig, taskStuck } from "./state.js";
 
 const MCP_SCRIPT = path.join(path.dirname(fileURLToPath(import.meta.url)), "mcp.js");
 const MAX_TRANSCRIPT = 400;
@@ -96,7 +96,11 @@ export class Hub extends EventEmitter {
     let r = this.live.get(id);
     if (!r) {
       const transcript = this.readTranscript(id);
-      this.live.set(id, r = { proc: null, transcript, written: transcript.length, perms: new Map(), seenMsgIds: new Set(), pendingReport: null });
+      this.live.set(id, r = { proc: null, transcript, written: transcript.length, perms: new Map(), seenMsgIds: new Set(), pendingReport: null,
+        fails: new Map(), checks: new Map(), lastEventAt: Date.now() });
+      // A repeat-fail flag survives a restart: seed its counter so the next failure continues the count.
+      const st = this.get(id)?.stuck;
+      if (st?.reason === "repeat-fail" && st.key) r.fails.set(st.key, { count: st.count, firstAt: st.sinceMs, lastAt: st.sinceMs, kind: st.kind ?? null });
     }
     return r;
   }
@@ -132,6 +136,7 @@ export class Hub extends EventEmitter {
     if (patch.status && patch.status !== s.status && !("asksUser" in patch)) {
       patch.asksUser = patch.status === "idle" && asksUser(this.live.get(s.id)?.lastText);
     }
+    const prev = s.status;
     Object.assign(s, patch, { updatedAt: Date.now() });
     // A removed session's process exits a moment after remove(); its late "done" must not reach the
     // UI, which would add the session back until the page is reloaded.
@@ -141,6 +146,8 @@ export class Hub extends EventEmitter {
       const r = this.live.get(s.id);
       if (r) r.activity = null;
     }
+    if (patch.status === "running" && patch.status !== prev) { const r = this.live.get(s.id); if (r) r.lastEventAt = Date.now(); }
+    if (s.stuck && patch.status) this.refreshStuck(s, Date.now(), false);
     this.store.save();
     this.emit("session", this.publicSession(s));
   }
@@ -148,6 +155,8 @@ export class Hub extends EventEmitter {
   push(s, entry) {
     const r = this.rt(s.id);
     entry.at = Date.now();
+    r.lastEventAt = entry.at;
+    if (s.stuck?.reason === "silent") this.refreshStuck(s, entry.at);
     if (entry.kind === "tool") {
       r.lastTool = entry.name + (entry.text ? ` ${clip(entry.text, 80)}` : "");
       // What the session is doing right now, for the board ("e2e 실행 · 4분째"). The clock keeps
@@ -178,6 +187,54 @@ export class Hub extends EventEmitter {
     if (this.get(s.id) !== s) return; // removed: see touch()
     this.store.save();
     this.emit("session", this.publicSession(s));
+  }
+
+  /* ---------------- Stuck detection ---------------- */
+
+  /** A check command (test, build, …) finished: count consecutive failures per normalised-command hash. */
+  noteCheck(s, check, ok, now = Date.now()) {
+    if (!check?.key) return;
+    recordCheck(this.rt(s.id).fails, check.key, ok, now, check.kind);
+    this.refreshStuck(s, now);
+  }
+
+  /**
+   * Recomputes s.stuck. Emits only when the flag's identity changes (reason, command hash, …), so a
+   * fourth failure of a loop already reported updates the count in place without a second event.
+   */
+  refreshStuck(s, now = Date.now(), emit = true) {
+    const r = this.live.get(s.id);
+    // Without a runtime (after a restart, before the session runs again) only a repeat-fail flag stays.
+    const next = r ? sessionStuck(s, r, now, this.team())
+      : isOpenStatus(s.status) && s.stuck?.reason === "repeat-fail" ? s.stuck : null;
+    if (stuckSig(next) !== stuckSig(s.stuck)) {
+      if (emit) this.mark(s, { stuck: next }); else s.stuck = next;
+    } else if (next) Object.assign(s.stuck, next);
+  }
+
+  /** The session a task's owner names ("Juno" or "Juno(구현자)"), preferring an open one under the task's lead. */
+  ownerSession(t) {
+    const name = t.owner && String(t.owner).split(/[\s(·,/]/)[0];
+    if (!name) return null;
+    const hits = this.sessions.filter(x => x.name === name);
+    return hits.find(x => x.parent === t.lead && isOpenStatus(x.status)) || hits.find(x => isOpenStatus(x.status)) || hits[0] || null;
+  }
+
+  taskStuckOf(t, now = Date.now()) {
+    const owner = this.ownerSession(t);
+    const busy = owner && (owner.status === "running" || owner.status === "starting");
+    return taskStuck(t, owner, busy ? this.live.get(owner.id)?.activity : null, now, this.team());
+  }
+
+  /** Re-checks every open task's flag; one "tasks" event when any flag's identity changed. */
+  checkTaskStuck(now = Date.now()) {
+    let changed = false;
+    for (const t of Object.values(this.store.data.tasks || {})) {
+      const next = this.taskStuckOf(t, now);
+      if (stuckSig(next) !== stuckSig(t.stuck)) { t.stuck = next; changed = true; }
+      else if (next) Object.assign(t.stuck, next);
+    }
+    if (changed) { this.store.save(); this.emit("tasks", this.tasks); }
   }
 
   // A window whose reset time has passed is empty until Claude reports again; stale gauges must not block.
@@ -257,10 +314,14 @@ export class Hub extends EventEmitter {
     }
     if (stage) { t.stage = stage; t.stageAt = Date.now(); }
     if (input.owner !== undefined) t.owner = input.owner ? String(input.owner).slice(0, 60) : null;
-    if (input.eta_minutes !== undefined) t.etaAt = input.eta_minutes == null ? null : Date.now() + Math.max(0, Number(input.eta_minutes)) * 60_000;
+    if (input.eta_minutes !== undefined) {
+      t.etaAt = input.eta_minutes == null ? null : Date.now() + Math.max(0, Number(input.eta_minutes)) * 60_000;
+      t.etaSetAt = t.etaAt ? Date.now() : null;
+    }
     if (t.stage === "done") t.etaAt = null;
     if (input.note !== undefined) t.note = String(input.note || "").slice(0, 200);
     t.updatedAt = Date.now();
+    t.stuck = this.taskStuckOf(t);
     this.store.save();
     this.emit("tasks", this.tasks);
     return t;
@@ -666,7 +727,9 @@ export class Hub extends EventEmitter {
         }
       }
       if ((s.stall?.reason ?? null) !== (stall?.reason ?? null)) this.mark(s, { stall });
+      this.refreshStuck(s, now);
     }
+    this.checkTaskStuck(now);
   }
 
   // A child's turn ended: hand its last answer to the lead, so a lead that went idle wakes up instead of
@@ -781,7 +844,11 @@ export class Hub extends EventEmitter {
         }
         for (const c of msg.content || []) {
           if (c.type === "text" && c.text.trim()) { this.push(s, { kind: "assistant", text: c.text }); s.last = clip(c.text, 400); r.lastText = c.text; }
-          else if (c.type === "tool_use") this.push(s, { kind: "tool", name: c.name, text: clip(JSON.stringify(c.input), 600) });
+          else if (c.type === "tool_use") {
+            this.push(s, { kind: "tool", name: c.name, text: clip(JSON.stringify(c.input), 600) });
+            const key = c.name === "Bash" && checkKey(c.input?.command);
+            if (key && c.id) r.checks.set(c.id, { key, kind: activityOf("Bash", c.input.command) });
+          }
         }
         this.touch(s, { status: r.perms.size ? "waiting" : "running" });
         break;
@@ -791,6 +858,8 @@ export class Hub extends EventEmitter {
           if (c.type === "tool_result") {
             const text = Array.isArray(c.content) ? c.content.map(x => x.text || "").join("") : c.content;
             this.push(s, { kind: "tool_result", text: clip(text, 1500), error: !!c.is_error });
+            const check = r.checks.get(c.tool_use_id);
+            if (check) { r.checks.delete(c.tool_use_id); this.noteCheck(s, check, !c.is_error); }
           }
         }
         break;
@@ -866,6 +935,8 @@ export class Hub extends EventEmitter {
         else if (it.type === "command_execution") {
           this.push(s, { kind: "tool", name: "shell", text: clip(it.command, 600) });
           if (it.aggregated_output) this.push(s, { kind: "tool_result", text: clip(it.aggregated_output, 1500), error: it.exit_code !== 0 });
+          const key = typeof it.exit_code === "number" && checkKey(it.command);
+          if (key) this.noteCheck(s, { key, kind: activityOf("shell", it.command) }, it.exit_code === 0);
         } else if (it.type === "file_change") this.push(s, { kind: "tool", name: "edit", text: clip((it.changes || []).map(c => `${c.kind} ${c.path}`).join("\n"), 600) });
         else if (it.type === "mcp_tool_call") this.push(s, { kind: "tool", name: `${it.server}.${it.tool}`, text: clip(JSON.stringify(it.arguments), 600) });
         else if (it.type === "error") this.push(s, { kind: "system", text: clip(it.message, 400) });
