@@ -59,36 +59,60 @@ export function attentionOf(s, state, pending = 0, since = null) {
 // Commands worth counting: checks, where "same command fails again" means a loop, not exploration.
 const CHECK = /\b(playwright|vitest|jest|pytest|mocha|tsc|eslint|typecheck)\b|\b(npm|pnpm|yarn|bun)\s+(run\s+)?(test|build|lint|typecheck|e2e)\b|\bnode\s+--test\b|\b(cargo|go)\s+(test|build)\b|\bmake\s+(test|check|build)\b|\b(vite|next)\s+build\b|\b(gradlew?|mvn)\b/;
 
+const unwrap = cmd => {
+  const t = String(cmd ?? "").trim();
+  const wrapped = t.match(/^(?:\S*\/)?(?:ba|z)?sh\s+-l?c\s+(['"])([\s\S]*)\1$/);
+  return wrapped ? wrapped[2] : t;
+};
+
 /**
- * One command line reduced to what decides "the same command": shell wrappers, `cd` steps, env
- * assignments, redirections and output filters (`| tail`) are dropped, whitespace collapsed.
+ * True when the exit code doesn't say whether the check passed: a pipe (`npm test | tail`) reports
+ * the last stage's code unless `set -o pipefail` is on, and `npm test || true` always exits 0.
+ * Quoted text (`grep "a|b"`) doesn't count.
+ */
+export function exitUnclear(cmd) {
+  const t = unwrap(cmd).replace(/'[^']*'|"(?:\\.|[^"\\])*"/g, "''");
+  if (t.includes("||")) return true;
+  return /\|/.test(t) && !/\bset\s+(-\w+\s+)*-o\s+pipefail\b|\bset\s+-\w*o\s+pipefail\b/.test(t);
+}
+
+/**
+ * One command line reduced to what decides "the same command": shell wrappers, env assignments,
+ * redirections and output filters (`| tail`) are dropped, whitespace collapsed. `cd` steps stay, so
+ * the same command in another directory is another command.
  */
 export function normalizeCommand(cmd) {
-  let t = String(cmd ?? "").trim();
-  const wrapped = t.match(/^(?:\S*\/)?(?:ba|z)?sh\s+-l?c\s+(['"])([\s\S]*)\1$/);
-  if (wrapped) t = wrapped[2];
-  return t.split(/\s*(?:&&|\|\||;)\s*/)
+  return unwrap(cmd).split(/\s*(?:&&|\|\||;)\s*/)
     .map(seg => seg.split(/\s*\|\s*/)[0]
       .replace(/\s*\d?>>?\s*(&\d|\/dev\/null|\S+)/g, "")
       .replace(/^(\w+=\S*\s+)+/, "")
       .replace(/\s+/g, " ").trim())
-    .filter(seg => seg && !/^(cd|pushd|export|set|source|\.)\b/.test(seg))
+    .filter(seg => seg && !/^(export|set|source|\.)\b/.test(seg))
     .join(" && ");
 }
 
-/** A short hash identifying a check command, or null when the command is not a check. */
+/**
+ * A short hash identifying a check command, or null when the command is not a check or its result
+ * can't be judged from the exit code (a pipe without pipefail) — then the counter is left alone.
+ */
 export function checkKey(cmd) {
+  if (exitUnclear(cmd)) return null;
   const n = normalizeCommand(cmd);
   if (!n || !CHECK.test(n)) return null;
   return createHash("sha256").update(n).digest("hex").slice(0, 12);
 }
 
 /**
- * Counts consecutive failures per check key in `fails` (a Map). A pass clears that key.
+ * Counts consecutive failures per check key in `fails` (a Map). A pass clears that key and every
+ * failing key of the same kind (a passing `npm test -- a.spec` means the test loop moved on).
  * Returns the key's record after the update, or null after a pass.
  */
 export function recordCheck(fails, key, ok, now, kind = null) {
-  if (ok) { fails.delete(key); return null; }
+  if (ok) {
+    fails.delete(key);
+    if (kind) for (const [k, f] of fails) if (f.kind === kind) fails.delete(k);
+    return null;
+  }
   const f = fails.get(key) || { count: 0, firstAt: now, kind };
   f.count += 1;
   f.lastAt = now;
@@ -130,12 +154,12 @@ export function taskStuck(t, owner, activity, now, cfg) {
   if (!t || t.stage === "done") return null;
   const early = t.stage === "plan" || t.stage === "impl";
   const ko = STAGE_KO[t.stage] || t.stage;
-  if (early && owner?.stuck?.reason === "repeat-fail" && TEST_KINDS.has(owner.stuck.kind)) {
+  const mismatchMs = cfg.stuckMismatchMinutes * 60_000;
+  if (early && mismatchMs > 0 && owner?.stuck?.reason === "repeat-fail" && TEST_KINDS.has(owner.stuck.kind)) {
     const what = owner.stuck.kind === "e2e 실행" ? "e2e" : "테스트";
     return { reason: "stage-mismatch", label: `보드는 ${ko}인데 실제로는 ${what} 실패가 반복돼요`,
       stage: t.stage, activity: owner.stuck.kind, count: owner.stuck.count, sinceMs: owner.stuck.sinceMs };
   }
-  const mismatchMs = cfg.stuckMismatchMinutes * 60_000;
   if (early && mismatchMs > 0 && activity && TEST_KINDS.has(activity.label) && now - activity.since >= mismatchMs) {
     return { reason: "stage-mismatch", label: `보드는 ${ko}인데 ${cfg.stuckMismatchMinutes}분 넘게 ${activity.label} 중이에요`,
       stage: t.stage, activity: activity.label, sinceMs: activity.since };

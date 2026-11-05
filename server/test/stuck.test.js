@@ -5,26 +5,38 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { Hub } from "../sessions.js";
 import { TEAM_DEFAULTS, patchTeam } from "../settings.js";
-import { checkKey, normalizeCommand, recordCheck, sessionStuck, stuckSig, taskStuck } from "../state.js";
+import { checkKey, exitUnclear, normalizeCommand, recordCheck, sessionStuck, stuckSig, taskStuck } from "../state.js";
 
 const cfg = TEAM_DEFAULTS();
 const MIN = 60_000;
 
-test("normalizeCommand drops cd, env, redirections and output filters", () => {
-  const want = "npx playwright test e2e/a.spec.ts";
+test("normalizeCommand keeps cd, drops env, redirections and output filters", () => {
+  const want = "cd web && npx playwright test e2e/a.spec.ts";
   assert.equal(normalizeCommand("cd web && npx playwright test e2e/a.spec.ts 2>&1 | tail -20"), want);
-  assert.equal(normalizeCommand("bash -lc 'cd /x && CI=1 npx playwright test e2e/a.spec.ts'"), want);
-  assert.equal(normalizeCommand("  npx   playwright test  e2e/a.spec.ts > /dev/null"), want);
+  assert.equal(normalizeCommand("bash -lc 'cd web && CI=1 npx playwright test e2e/a.spec.ts'"), want);
+  assert.equal(normalizeCommand("  npx   playwright test  e2e/a.spec.ts > /dev/null"), "npx playwright test e2e/a.spec.ts");
 });
 
-test("checkKey: only checks get a key; same command, same key; text is not kept", () => {
-  const k = checkKey("cd web && npm test 2>&1 | tail -5");
+test("checkKey: only checks get a key; same command, same key; another cwd, another key", () => {
+  const k = checkKey("npm test 2>&1 > /tmp/out");
   assert.match(k, /^[0-9a-f]{12}$/);
-  assert.equal(checkKey("npm test"), k);
+  assert.equal(checkKey("npm   test"), k);
+  assert.notEqual(checkKey("cd web && npm test"), k);
+  assert.notEqual(checkKey("cd web && npm test"), checkKey("cd server && npm test"));
   assert.notEqual(checkKey("npm run build"), k);
   assert.equal(checkKey("ls -la"), null);
   assert.equal(checkKey("git status"), null);
   assert.equal(checkKey(""), null);
+});
+
+test("checkKey: a pipe or || hides the exit code, so the command can't be judged", () => {
+  for (const c of ["npm test 2>&1 | tail -20", "bash -lc 'cd web && npm test | tee out'", "npm test |& tail", "npm test || true"]) {
+    assert.equal(exitUnclear(c), true, c);
+    assert.equal(checkKey(c), null, c);
+  }
+  assert.equal(exitUnclear("set -o pipefail; npm test | tail -5"), false);
+  assert.equal(checkKey("set -o pipefail; npm test | tail -5"), checkKey("npm test"));
+  assert.equal(exitUnclear(`grep "a|b" x && npm test`), false);
 });
 
 test("recordCheck counts consecutive failures per key; a pass resets", () => {
@@ -37,6 +49,15 @@ test("recordCheck counts consecutive failures per key; a pass resets", () => {
   assert.equal(recordCheck(fails, "a", true, 4), null);
   assert.equal(fails.has("a"), false);
   assert.equal(fails.get("b").count, 1);
+});
+
+test("recordCheck: a pass clears every failing key of the same kind", () => {
+  const fails = new Map();
+  for (let i = 0; i < 3; i++) recordCheck(fails, "suite", false, i, "단위 테스트");
+  recordCheck(fails, "build", false, 5, "빌드");
+  recordCheck(fails, "one-spec", true, 6, "단위 테스트");
+  assert.equal(fails.has("suite"), false);
+  assert.equal(fails.get("build").count, 1);
 });
 
 test("sessionStuck: repeat-fail at the threshold, silent after N quiet minutes", () => {
@@ -72,6 +93,7 @@ test("taskStuck: board says 구현 while the owner loops on e2e", () => {
   assert.equal(st.label, "보드는 구현인데 실제로는 e2e 실패가 반복돼요");
   assert.equal(st.count, 4);
   assert.equal(taskStuck({ stage: "test" }, owner, null, 10, cfg), null);
+  assert.equal(taskStuck({ stage: "impl" }, owner, null, 10, { ...cfg, stuckMismatchMinutes: 0 }), null, "0 turns both mismatch paths off");
   // A long test run during 구현, no failures needed.
   const act = { label: "단위 테스트", since: 0 };
   assert.equal(taskStuck({ stage: "plan" }, null, act, 9 * MIN, cfg), null);
@@ -149,6 +171,38 @@ test("Codex: exit codes drive the same counter", () => {
   assert.equal(s.stuck.reason, "repeat-fail");
   assert.equal(s.stuck.label, "테스트가 3번 연속 실패했어요");
   run(0);
+  assert.equal(s.stuck, null);
+});
+
+test("a piped check leaves the count alone instead of passing it", () => {
+  const s = session({ provider: "codex" });
+  const { hub } = fakeHub([s]);
+  const run = (command, code) => hub.onCodex(s, { type: "item.completed", item: { type: "command_execution", command, aggregated_output: "x", exit_code: code } });
+  run("npm test", 1); run("npm test", 1);
+  run("npm test 2>&1 | tail -20", 0); // tail's 0, not npm's
+  run("npm test", 1);
+  assert.equal(s.stuck?.reason, "repeat-fail");
+  assert.equal(s.stuck.count, 3);
+  // Claude: the Bash tool result of a piped command is ignored too.
+  const c = session({ id: "b" });
+  const h2 = fakeHub([c]).hub;
+  const bash = (i, command, ok) => {
+    h2.onClaude(c, { type: "assistant", message: { content: [{ type: "tool_use", id: `p${i}`, name: "Bash", input: { command } }] } });
+    h2.onClaude(c, { type: "user", message: { content: [{ type: "tool_result", tool_use_id: `p${i}`, content: "", is_error: !ok }] } });
+  };
+  bash(1, "npm test", false); bash(2, "npm test", false);
+  bash(3, "npm test | tail -5", true);
+  bash(4, "npm test", false);
+  assert.equal(c.stuck?.count, 3);
+});
+
+test("a pass of the same kind under another command clears the flag", () => {
+  const s = session({ provider: "codex" });
+  const { hub } = fakeHub([s]);
+  const run = (command, code) => hub.onCodex(s, { type: "item.completed", item: { type: "command_execution", command, aggregated_output: "x", exit_code: code } });
+  run("npm test", 1); run("npm test", 1); run("npm test", 1);
+  assert.equal(s.stuck.reason, "repeat-fail");
+  run("npx vitest run src/a.test.ts", 0);
   assert.equal(s.stuck, null);
 });
 
