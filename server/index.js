@@ -5,6 +5,7 @@ import { mkdir, readdir, readFile, rm, writeFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 import { cancelLogin, login, loginWithKey, logout, providerStatus, publicStatus } from "./auth.js";
 import { branchGraph, currentBranch, diff, projectRoot } from "./git.js";
+import { Burn } from "./burn.js";
 import { SharedLimits } from "./limits.js";
 import { loadModels } from "./models.js";
 import { PERMS, ROLES } from "./roles.js";
@@ -49,6 +50,7 @@ function setEnabled(id, on) {
   store.save();
 }
 hub.isConnected = provider => !!providers[provider]?.connected;
+hub.burn = new Burn(store); // $/h per session and the burnWarn flag, on every session object
 
 /* ---------------- SSE ---------------- */
 const clients = new Set();

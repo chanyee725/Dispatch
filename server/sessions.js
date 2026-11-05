@@ -125,7 +125,7 @@ export class Hub extends EventEmitter {
     const state = sessionState(s, pending.length);
     if (state !== s.state) { s.state = state; s.stateSince = Date.now(); }
     return { ...s, pending, activity: busy ? r?.activity ?? null : null,
-      attention: attentionOf(s, state, pending.length, s.stateSince) };
+      attention: attentionOf(s, state, pending.length, s.stateSince), ...this.burn?.fields(s, this.sessions) };
   }
 
   touch(s, patch = {}) {
