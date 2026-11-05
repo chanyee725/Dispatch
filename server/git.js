@@ -96,3 +96,47 @@ export async function diff(cwd, root = cwd) {
   const p = patch.length > LIMIT ? patch.slice(0, LIMIT) + "\n… (잘림)" : patch;
   return { files: changed.size + untracked.length, add, del, untracked, patch: p, commits, base: baseName, merged };
 }
+
+/**
+ * Commit graph of the project's main branch plus every dispatch/* branch, for the UI to draw who
+ * branched off what and what merged back. Returns commits newest-first with parent links, the
+ * branch tips, and which branch each session HEAD sits on (by matching session.branch).
+ */
+export async function branchGraph(root, { base = "develop", limit = 80, active = [] } = {}) {
+  const activeSet = new Set(active);
+  const sh = async (...a) => { try { return (await git(root, ...a)).stdout; } catch { return ""; } };
+  // Pick the base branch: prefer develop, else main/master, else current.
+  const branches = (await sh("for-each-ref", "--format=%(refname:short)", "refs/heads")).split("\n").map(s => s.trim()).filter(Boolean);
+  const mainB = [base, "main", "master"].find(b => branches.includes(b)) ?? (await currentBranch(root)) ?? "HEAD";
+  // Which dispatch/* branches are worth showing: a live session's branch, or work not yet merged.
+  const dispatchB = branches.filter(b => b.startsWith("dispatch/"));
+  // Only branches a live session is on (what the team is working on right now). If none are
+  // active, fall back to the few most-ahead so the graph is not empty.
+  const keep = [];
+  for (const b of dispatchB) {
+    const ahead = +((await sh("rev-list", "--count", `${mainB}..${b}`)).trim() || 0);
+    keep.push({ b, ahead, active: activeSet.has(b) });
+  }
+  let chosen = keep.filter(k => k.active);
+  if (!chosen.length) chosen = keep.filter(k => k.ahead > 0).sort((x, y) => y.ahead - x.ahead).slice(0, 8);
+  const refs = [mainB, ...chosen.map(k => k.b)];
+  if (!refs.length) return { base: mainB, commits: [], tips: [] };
+
+  // Graph commits reachable from these refs (bounded).
+  const log = await sh("log", "--date-order", `--max-count=${limit}`, "--pretty=%H%x1f%h%x1f%P%x1f%an%x1f%ct%x1f%s", ...refs);
+  const commits = log.split("\n").filter(Boolean).map(line => {
+    const [hash, short, parents, author, ct, subject] = line.split("\x1f");
+    return { hash, short, parents: parents ? parents.split(" ") : [], author, at: +ct * 1000, subject, merge: (parents ? parents.split(" ").length : 0) > 1 };
+  });
+  const inGraph = new Set(commits.map(c => c.hash));
+  for (const c of commits) c.parents = c.parents.filter(p => inGraph.has(p)); // trim parents outside the window
+
+  // Branch tips: name → tip hash, and how far ahead of base.
+  const aheadOf = new Map(keep.map(k => [k.b, k.ahead]));
+  const tips = [];
+  for (const b of refs) {
+    const tip = (await sh("rev-parse", b)).trim();
+    tips.push({ branch: b, hash: tip, short: tip.slice(0, 7), ahead: b === mainB ? 0 : (aheadOf.get(b) ?? 0), base: b === mainB, active: activeSet.has(b) });
+  }
+  return { base: mainB, commits, tips };
+}

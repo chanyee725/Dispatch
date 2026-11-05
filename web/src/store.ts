@@ -15,6 +15,10 @@ export interface BoardTask {
   createdAt: number; stageAt: number; updatedAt: number; etaAt: number | null; note: string;
 }
 
+export interface BranchCommit { hash: string; short: string; parents: string[]; author: string; at: number; subject: string; merge: boolean; }
+export interface BranchTip { branch: string; hash: string; short: string; ahead: number; base: boolean; active?: boolean; }
+export interface BranchGraph { base: string; commits: BranchCommit[]; tips: BranchTip[]; }
+
 export interface AppState extends Snapshot {
   /** UI preferences shared by every project's server (~/.dispatch/prefs.json). */
   prefs: { theme: ThemeChoice };

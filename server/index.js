@@ -4,7 +4,7 @@ import path from "node:path";
 import { mkdir, readdir, readFile, rm, writeFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 import { cancelLogin, login, loginWithKey, logout, providerStatus, publicStatus } from "./auth.js";
-import { currentBranch, diff, projectRoot } from "./git.js";
+import { branchGraph, currentBranch, diff, projectRoot } from "./git.js";
 import { loadModels } from "./models.js";
 import { PERMS, ROLES } from "./roles.js";
 import { Hub } from "./sessions.js";
@@ -223,6 +223,7 @@ const routes = [
   ["POST", /^\/api\/sessions\/clear$/, async () => ({ removed: hub.clearAll() })],
   ["GET", /^\/api\/limits$/, async () => hub.providerLimits()],
   ["GET", /^\/api\/tasks$/, async () => ({ tasks: hub.tasks })],
+  ["GET", /^\/api\/branches$/, async () => branchGraph(root, { active: hub.sessions.filter(x => x.status !== "done" && x.branch).map(x => x.branch) })],
   ["GET", /^\/api\/tickets$/, async () => ({ tickets: hub.tickets })],
   ["POST", /^\/api\/tickets\/([\w-]+)\/resume$/, async ([id]) => ({ ok: hub.resumeTicket(id) })],
   ["POST", /^\/api\/tickets\/([\w-]+)\/close$/, async ([id]) => { hub.closeTicket(id); return { ok: true }; }],
