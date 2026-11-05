@@ -8,7 +8,7 @@ import { dropWorktree, prepareWorkdir, verifyMerged } from "./git.js";
 import { CHILD_PROMPT, NAMES, PERMS, SPAWN_PROMPT } from "./roles.js";
 import { replyStyle } from "./style.js";
 import { effectiveRoles, teamSettings } from "./settings.js";
-import { codexLimits, geminiResetFrom, isQuotaError } from "./limits.js";
+import { codexLimits, geminiResetFrom, isQuotaError, SharedLimits } from "./limits.js";
 import { asksUser, attentionOf, sessionState } from "./state.js";
 
 const MCP_SCRIPT = path.join(path.dirname(fileURLToPath(import.meta.url)), "mcp.js");
@@ -69,14 +69,16 @@ export function activityOf(name = "", text = "") {
 }
 
 export class Hub extends EventEmitter {
-  constructor({ root, store, models, roles, port }) {
+  constructor({ root, store, models, roles, port, limits }) {
     super();
     this.root = root;
     this.store = store;
     this.models = models;
     this.roles = roles;
     this.port = port;
-    this.limits = store.data.limits || { five: null, seven: null, fiveReset: null, sevenReset: null, updatedAt: null };
+    // Claude limits and the Gemini quota are account-wide: shared by every server via ~/.dispatch/limits.json.
+    this.shared = limits || new SharedLimits();
+    this.shared.on("change", () => { this.emit("limits", this.currentLimits()); this.checkTickets(); });
     this.live = new Map(); // id -> { proc, transcript, perms, seenMsgIds }
     this.isConnected = () => true; // replaced by the server with the Dispatch-level connection check
 
@@ -90,6 +92,7 @@ export class Hub extends EventEmitter {
     }
   }
 
+  get limits() { return this.shared.claude; }
   get sessions() { return Object.values(this.store.data.sessions); }
   get(id) { return this.store.data.sessions[id]; }
   rt(id) {
@@ -189,15 +192,15 @@ export class Hub extends EventEmitter {
   }
 
   setGeminiQuota(text) {
-    this.store.data.geminiQuota = { reached: true, reset: geminiResetFrom(text), at: Date.now() };
-    this.store.save();
-    this.emit("limits", this.currentLimits());
+    this.shared.setGemini({ reached: true, reset: geminiResetFrom(text) })
+      .catch(e => console.error("limits:", e.message))
+      .finally(() => this.emit("limits", this.currentLimits()));
   }
 
   /** Limits per provider for the top bar: Claude windows, Codex windows, Gemini reached/ok. */
   async providerLimits(now = Date.now()) {
     const c = this.currentLimits(now);
-    const g = this.store.data.geminiQuota;
+    const g = this.shared.gemini;
     const geminiReached = !!g?.reached && (!g.reset || g.reset > now);
     return {
       claude: { windows: [
@@ -805,15 +808,14 @@ export class Hub extends EventEmitter {
         break;
       case "rate_limit_event": {
         const w = m.rate_limit_info?.unifiedWindows || {};
-        this.limits = {
-          five: w.five_hour?.utilization ?? this.limits.five, fiveReset: w.five_hour?.resetsAt ? w.five_hour.resetsAt * 1000 : this.limits.fiveReset,
-          seven: w.seven_day?.utilization ?? this.limits.seven, sevenReset: w.seven_day?.resetsAt ? w.seven_day.resetsAt * 1000 : this.limits.sevenReset,
-          updatedAt: Date.now(),
-        };
-        this.store.data.limits = this.limits;
-        this.store.save();
-        this.emit("limits", this.limits);
-        this.checkTickets();
+        const l = this.limits;
+        this.shared.setClaude({
+          five: w.five_hour?.utilization ?? l.five, fiveReset: w.five_hour?.resetsAt ? w.five_hour.resetsAt * 1000 : l.fiveReset,
+          seven: w.seven_day?.utilization ?? l.seven, sevenReset: w.seven_day?.resetsAt ? w.seven_day.resetsAt * 1000 : l.sevenReset,
+        }).catch(e => console.error("limits:", e.message)).finally(() => {
+          this.emit("limits", this.limits);
+          this.checkTickets();
+        });
         break;
       }
       case "result": {
