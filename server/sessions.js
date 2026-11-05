@@ -610,7 +610,11 @@ export class Hub extends EventEmitter {
   }
 
   systemPrompt(s) {
-    return [s.prompt, s.canSpawn ? SPAWN_PROMPT : CHILD_PROMPT, replyStyle()].filter(Boolean).join("\n\n");
+    // A lead works in its own worktree; without the project folder spelled out it merged into its own branch.
+    const where = s.canSpawn && s.worktree
+      ? `\n\n[병합 위치] 너의 작업 폴더는 ${s.cwd} (브랜치 ${s.branch})이고 통합 브랜치가 아니다. 병합은 프로젝트 폴더 ${this.root}에서 한다: git -C ${this.root} merge --no-ff <브랜치> (또는 --ff-only). 병합 뒤 git -C ${this.root} log --oneline -1 로 통합 브랜치 HEAD를 확인하고 보고에 적는다.`
+      : "";
+    return [s.prompt, (s.canSpawn ? SPAWN_PROMPT : CHILD_PROMPT) + where, replyStyle()].filter(Boolean).join("\n\n");
   }
 
   start(s, prompt) {
