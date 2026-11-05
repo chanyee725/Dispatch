@@ -4,7 +4,7 @@ import { randomUUID } from "node:crypto";
 import { EventEmitter } from "node:events";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { dropWorktree, prepareWorkdir } from "./git.js";
+import { dropWorktree, prepareWorkdir, verifyMerged } from "./git.js";
 import { CHILD_PROMPT, NAMES, PERMS, SPAWN_PROMPT } from "./roles.js";
 import { replyStyle } from "./style.js";
 import { effectiveRoles, teamSettings } from "./settings.js";
@@ -211,8 +211,12 @@ export class Hub extends EventEmitter {
       .sort((a, b) => a.createdAt - b.createdAt);
   }
 
-  /** Creates or updates a task (matched by id, else by lead + title). */
-  setTask(lead, input) {
+  /**
+   * Creates or updates a task (matched by id, else by lead + title). Closing one as done with a
+   * `commit` (hash or branch) first checks the commit is on the integration branch; if not, the
+   * task stays open and `mergeCheck` says why. Closing without a commit (abandoned work) skips it.
+   */
+  async setTask(lead, input) {
     const STAGES = ["plan", "impl", "review", "test", "merge", "done", "blocked"];
     const all = (this.store.data.tasks ||= {});
     const title = String(input.title || "").trim().slice(0, 120);
@@ -228,7 +232,18 @@ export class Hub extends EventEmitter {
       all[t.id] = t;
     }
     if (title) t.title = title;
-    if (input.stage && STAGES.includes(input.stage) && input.stage !== t.stage) { t.stage = input.stage; t.stageAt = Date.now(); }
+    if (input.commit !== undefined) t.commit = input.commit ? String(input.commit).trim().slice(0, 80) || null : null;
+    let stage = input.stage && STAGES.includes(input.stage) && input.stage !== t.stage ? input.stage : null;
+    if (stage === "done") {
+      if (t.commit) {
+        const check = await verifyMerged(this.root, t.commit);
+        t.mergeCheck = { ...check, at: Date.now() };
+        if (!check.ok) stage = null; // stays open; the attention strip shows mergeCheck
+      } else {
+        t.mergeCheck = { ok: null, commit: null, base: null, reason: "커밋 없이 닫혀 병합을 확인하지 않았어요", at: Date.now() };
+      }
+    }
+    if (stage) { t.stage = stage; t.stageAt = Date.now(); }
     if (input.owner !== undefined) t.owner = input.owner ? String(input.owner).slice(0, 60) : null;
     if (input.eta_minutes !== undefined) t.etaAt = input.eta_minutes == null ? null : Date.now() + Math.max(0, Number(input.eta_minutes)) * 60_000;
     if (t.stage === "done") t.etaAt = null;
@@ -256,8 +271,9 @@ export class Hub extends EventEmitter {
     const open = this.tasks.filter(t => t.lead === lead && t.stage !== "done");
     if (!open.length) return "";
     const left = t => !t.etaAt ? "예상 없음" : t.etaAt < now ? `${Math.round((now - t.etaAt) / 60000)}분 지연` : `${Math.round((t.etaAt - now) / 60000)}분 남음`;
-    const lines = open.map(t => `- ${t.title} (id ${t.id}, ${t.stage}, ${t.owner || "담당 없음"}, ${left(t)})`);
-    return `\n\n[작업 보드] 이 보고로 바뀐 것을 같은 턴에 set_task(id)로 갱신한다(stage·owner·eta_minutes). 병합했거나 그만둔 일은 이 id로 done. 새 제목으로 다시 만들지 않는다:\n${lines.join("\n")}`;
+    const failed = t => (t.mergeCheck?.ok === false ? `, 닫기 보류: ${t.mergeCheck.reason}` : "");
+    const lines = open.map(t => `- ${t.title} (id ${t.id}, ${t.stage}, ${t.owner || "담당 없음"}, ${left(t)}${failed(t)})`);
+    return `\n\n[작업 보드] 이 보고로 바뀐 것을 같은 턴에 set_task(id)로 갱신한다(stage·owner·eta_minutes). 병합한 일은 이 id와 commit(브랜치나 커밋)으로 done, 그만둔 일은 commit 없이 done. 새 제목으로 다시 만들지 않는다:\n${lines.join("\n")}`;
   }
 
   /** A random name no listed session uses yet; once all are taken, the name gets the session number. */

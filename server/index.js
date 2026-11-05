@@ -242,7 +242,7 @@ const routes = [
   ["POST", /^\/api\/tickets\/([\w-]+)\/close$/, async ([id]) => { hub.closeTicket(id); return { ok: true }; }],
   ["POST", /^\/api\/tasks$/, async (_, b) => {
     const isNew = !b?.id;
-    const t = hub.setTask(b?.lead || null, b || {});
+    const t = await hub.setTask(b?.lead || null, b || {});
     // Creating by title: show the lead what is already open so a renamed copy of the same work stands out.
     return isNew && t.lead ? { ...t, open: hub.openTasks(t.lead, t.id) } : t;
   }],
