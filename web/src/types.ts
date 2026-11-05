@@ -53,6 +53,21 @@ export interface Session {
   stateSince?: number;
   /** Why a person should look (failed, waiting, stuck); null otherwise. */
   attention?: Attention | null;
+  /** $/h over the last 30 minutes (perHour null while under 5 minutes); null when the provider reports no cost. */
+  burn?: { perHour: number | null; windowMin: number } | null;
+  /** Why this session's spending needs a look; null otherwise. */
+  burnWarn?: BurnWarn | null;
+}
+
+export interface BurnWarn {
+  reasons: ("spike" | "longLived")[];
+  /** spike: × the team median $/h */
+  ratio?: number;
+  medianPerHour?: number;
+  /** longLived: context share and whole hours since start */
+  ctxShare?: number;
+  hours?: number;
+  advice: "swapLead" | null;
 }
 
 export interface Entry {
@@ -136,6 +151,8 @@ export interface UsageDay {
   cost: number;
   models: Record<string, Usage & { cost: number }>;
   roles: Record<string, number>;
+  /** Cost per session that day; missing on days recorded by older servers. */
+  sessions?: Record<string, { name: string; role: string; cost: number }>;
 }
 
 export interface Diff { files: number; add: number; del: number; untracked: string[]; patch: string }

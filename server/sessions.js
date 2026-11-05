@@ -5,6 +5,7 @@ import { EventEmitter } from "node:events";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { dropWorktree, prepareWorkdir, verifyMerged } from "./git.js";
+import { enterStage } from "./tasks.js";
 import { CHILD_PROMPT, NAMES, PERMS, SPAWN_PROMPT } from "./roles.js";
 import { replyStyle } from "./style.js";
 import { effectiveRoles, teamSettings } from "./settings.js";
@@ -125,7 +126,13 @@ export class Hub extends EventEmitter {
     const state = sessionState(s, pending.length);
     if (state !== s.state) { s.state = state; s.stateSince = Date.now(); }
     return { ...s, pending, activity: busy ? r?.activity ?? null : null,
-      attention: attentionOf(s, state, pending.length, s.stateSince) };
+      attention: attentionOf(s, state, pending.length, s.stateSince), ...this.burn?.fields(s, this.sessions) };
+  }
+
+  /** Re-sends sessions whose burn rate has moved with time alone (idle sessions decay to 0 $/h). */
+  refreshBurn() {
+    if (!this.burn) return;
+    for (const s of this.burn.due(this.sessions)) this.emit("session", this.publicSession(s));
   }
 
   touch(s, patch = {}) {
@@ -243,7 +250,8 @@ export class Hub extends EventEmitter {
       if (input.stage === "done" && open.length) {
         throw Object.assign(new Error(`새 작업을 done으로 만들 수 없어요. 끝난 일은 기존 작업의 id로 닫으세요: ${open.map(x => `${x.title} (id ${x.id})`).join(", ")}`), { status: 400 });
       }
-      t = { id: randomUUID(), lead, title, stage: "plan", createdAt: Date.now(), stageAt: Date.now(), owner: null, etaAt: null, note: "" };
+      const now = Date.now();
+      t = { id: randomUUID(), lead, title, stage: "plan", createdAt: now, stageAt: now, stages: [{ stage: "plan", at: now }], owner: null, etaAt: null, note: "" };
       all[t.id] = t;
     }
     if (title) t.title = title;
@@ -258,7 +266,7 @@ export class Hub extends EventEmitter {
         t.mergeCheck = { ok: null, commit: null, base: null, reason: "커밋 없이 닫혀 병합을 확인하지 않았어요", at: Date.now() };
       }
     }
-    if (stage) { t.stage = stage; t.stageAt = Date.now(); }
+    if (stage) enterStage(t, stage);
     if (input.owner !== undefined) t.owner = input.owner ? String(input.owner).slice(0, 60) : null;
     if (input.eta_minutes !== undefined) t.etaAt = input.eta_minutes == null ? null : Date.now() + Math.max(0, Number(input.eta_minutes)) * 60_000;
     if (t.stage === "done") t.etaAt = null;

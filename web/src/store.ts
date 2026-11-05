@@ -13,10 +13,20 @@ export interface Ticket {
 export interface BoardTask {
   id: string; lead: string | null; title: string; stage: TaskStage; owner: string | null;
   createdAt: number; stageAt: number; updatedAt: number; etaAt: number | null; note: string;
+  /** Stage entries, oldest first: stage and time only. Missing on tasks saved before v0.8. */
+  stages?: { stage: TaskStage; at: number }[];
 }
 
 export interface BranchCommit { hash: string; short: string; parents: string[]; author: string; at: number; subject: string; merge: boolean; }
-export interface BranchTip { branch: string; hash: string; short: string; ahead: number; base: boolean; active?: boolean; }
+export interface BranchTip {
+  branch: string; hash: string; short: string; ahead: number; base: boolean; active?: boolean;
+  /** Commits on the base branch this one lacks. */
+  behind?: number;
+  /** Tip commit time (ms). */
+  lastAt?: number | null;
+  /** open: commits not on base yet · merged: its commits are on base · empty: nothing committed. */
+  state?: "open" | "merged" | "empty" | null;
+}
 export interface BranchGraph { base: string; commits: BranchCommit[]; tips: BranchTip[]; }
 
 export interface AppState extends Snapshot {

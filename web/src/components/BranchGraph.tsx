@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { CornerDownRight, GitMerge } from "lucide-react";
+import { ChevronRight, CircleDashed, CornerDownRight, GitBranch, GitMerge } from "lucide-react";
 import { ago } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import { api, useApp, type BranchGraph as Graph, type BranchTip } from "@/store";
@@ -51,8 +51,12 @@ export function BranchesPage({ onOpen }: { onOpen: (id: string) => void }) {
   }, [sessions]);
 
   const { rows, laneOf } = useMemo(() => (g ? layout(g) : { rows: [], laneOf: new Map<string, number>() }), [g]);
-  const commitAt = useMemo(() => new Map((g?.commits ?? []).map(c => [c.hash, c.at])), [g]);
   const active = (g?.tips ?? []).filter(t => t.active);
+  // Work branches, open work first, then the most recently touched.
+  const rowsTips = useMemo(() => (g?.tips ?? []).filter(t => !t.base).sort((x, y) =>
+    Number(x.state === "merged") - Number(y.state === "merged") || (y.lastAt ?? 0) - (x.lastAt ?? 0)), [g]);
+  const [showGraph, setShowGraph] = useState(() => localStorage.getItem("dispatch-branch-graph") === "1");
+  useEffect(() => { localStorage.setItem("dispatch-branch-graph", showGraph ? "1" : "0"); }, [showGraph]);
 
   return (
     <div className="mx-auto flex max-w-[1100px] flex-col gap-5 p-6 max-md:p-4">
@@ -63,36 +67,82 @@ export function BranchesPage({ onOpen }: { onOpen: (id: string) => void }) {
         </p>
       </header>
 
-      {active.length > 0 && (
-        <ul className="grid grid-cols-2 gap-2 max-sm:grid-cols-1 lg:grid-cols-3">
-          {active.map(t => {
-            const color = LANE_COLORS[(laneOf.get(t.hash) ?? 0) % LANE_COLORS.length];
-            const who = sess.name.get(t.branch);
-            const sid = sess.id.get(t.branch);
-            const when = commitAt.get(t.hash);
-            const card = (
-              <div className="flex items-center gap-3 rounded-lg border bg-card py-2.5 pr-3 pl-0 transition-colors hover:border-foreground/20">
-                <span className="h-9 w-1 shrink-0 rounded-full" style={{ background: color }} />
-                <div className="min-w-0 flex-1">
-                  <div className="truncate text-sm font-medium">{who ?? t.branch.replace("dispatch/", "")}</div>
-                  <div className="truncate font-mono text-xs text-muted-foreground">
-                    {t.branch.replace("dispatch/", "")}{t.ahead ? ` · +${t.ahead}` : ""}{when ? ` · ${ago(when)}` : ""}
-                  </div>
+      {g && (rowsTips.length
+        ? <BranchTable tips={rowsTips} base={g.base} laneOf={laneOf} sess={sess} onOpen={onOpen} />
+        : <p className="rounded-lg border border-dashed py-12 text-center text-sm text-muted-foreground">열린 브랜치가 없어요. 세션이 작업을 시작하면 여기 보여요.</p>)}
+
+      {g && g.commits.length > 0 && (
+        <section className="flex flex-col gap-2">
+          <button
+            onClick={() => setShowGraph(v => !v)}
+            aria-expanded={showGraph}
+            className="flex cursor-pointer items-center gap-1.5 self-start rounded-md px-1.5 py-1 text-sm text-muted-foreground hover:bg-accent hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
+          >
+            <ChevronRight className={cn("size-4 transition-transform", showGraph && "rotate-90")} />
+            {showGraph ? "그래프 접기" : "그래프 펼치기"}
+            <span className="num text-xs">커밋 {g.commits.length}개</span>
+          </button>
+          {showGraph && <GraphBody rows={rows} tips={g.tips} sess={sess} onOpen={onOpen} />}
+        </section>
+      )}
+    </div>
+  );
+}
+
+const STATE_OF = {
+  merged: { label: "병합됨", Icon: GitMerge, cls: "text-ok" },
+  open: { label: "안 됨", Icon: GitBranch, cls: "text-foreground" },
+  empty: { label: "커밋 없음", Icon: CircleDashed, cls: "text-muted-foreground" },
+} as const;
+
+/** One line per work branch: "develop 대비 +3 / −12 · 마지막 커밋 8분 전 · 병합됨". */
+function BranchTable({ tips, base, laneOf, sess, onOpen }: { tips: BranchTip[]; base: string; laneOf: Map<string, number>; sess: SessionMap; onOpen: (id: string) => void }) {
+  return (
+    <div className="overflow-hidden rounded-xl border bg-card">
+      <div className="grid grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)_minmax(0,1fr)_7rem] gap-x-4 border-b px-4 py-2 text-xs text-muted-foreground max-md:hidden">
+        <span>세션 · 브랜치</span>
+        <span>{base} 대비</span>
+        <span>마지막 커밋</span>
+        <span>병합</span>
+      </div>
+      <ul className="divide-y">
+        {tips.map(t => {
+          const who = sess.name.get(t.branch);
+          const sid = sess.id.get(t.branch);
+          const color = LANE_COLORS[(laneOf.get(t.hash) ?? 0) % LANE_COLORS.length];
+          const st = STATE_OF[t.state ?? "open"];
+          const name = t.branch.replace("dispatch/", "");
+          const line = (
+            <div className="grid grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)_minmax(0,1fr)_7rem] items-center gap-x-4 gap-y-1 px-4 py-2.5 max-md:grid-cols-[minmax(0,1fr)_auto] max-md:px-3">
+              <div className="flex min-w-0 items-center gap-2.5 max-md:col-span-2">
+                <span className="h-8 w-1 shrink-0 rounded-full" style={{ background: color }} aria-hidden />
+                <div className="min-w-0">
+                  <div className="truncate text-sm font-medium">{who ?? name}</div>
+                  <div className="truncate font-mono text-xs text-muted-foreground">{t.branch}</div>
                 </div>
               </div>
-            );
-            return (
-              <li key={t.branch}>
-                {sid ? <button onClick={() => onOpen(sid)} className="w-full text-left focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none" title="세션 열기">{card}</button> : card}
-              </li>
-            );
-          })}
-        </ul>
-      )}
-
-      {g && (g.commits.length
-        ? <GraphBody rows={rows} tips={g.tips} sess={sess} onOpen={onOpen} />
-        : <p className="rounded-lg border border-dashed py-12 text-center text-sm text-muted-foreground">열린 브랜치가 없어요. 세션이 작업을 시작하면 여기 그려져요.</p>)}
+              <span className="num text-sm max-md:pl-3.5 max-md:text-xs" title={`${base}에 없는 커밋 ${t.ahead}개 · ${base}에만 있는 커밋 ${t.behind ?? 0}개`}>
+                <span className="md:hidden text-muted-foreground">{base} 대비 </span>
+                <span className={cn(t.ahead ? "text-foreground" : "text-muted-foreground")}>+{t.ahead}</span>
+                <span className="text-muted-foreground"> / −{t.behind ?? 0}</span>
+                <span className="md:hidden text-muted-foreground"> · {t.lastAt ? `마지막 커밋 ${ago(t.lastAt)}` : "커밋 없음"}</span>
+              </span>
+              <span className="num text-sm text-muted-foreground max-md:hidden">{t.lastAt ? ago(t.lastAt) : "—"}</span>
+              <span className={cn("flex items-center gap-1.5 text-sm max-md:justify-self-end max-md:text-xs", st.cls)}>
+                <st.Icon className="size-3.5 shrink-0" aria-hidden />
+                {st.label}
+              </span>
+            </div>
+          );
+          return (
+            <li key={t.branch}>
+              {sid
+                ? <button onClick={() => onOpen(sid)} title="세션 열기" className="w-full cursor-pointer text-left transition-colors hover:bg-accent/50 focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none focus-visible:ring-inset">{line}</button>
+                : line}
+            </li>
+          );
+        })}
+      </ul>
     </div>
   );
 }

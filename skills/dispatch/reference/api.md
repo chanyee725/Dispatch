@@ -13,7 +13,7 @@ H=(-H 'content-type: application/json' -H 'x-dispatch: 1')
 | `GET /api/state` | `project`, `roles`, `perms`, `models`, `providers`, `limits`, `settings`, `sessions`. `limits` (Claude windows) is shared by every server on this machine. |
 | `GET /api/sessions/<id>/messages` | `{ session, messages }` — the last 400 transcript entries, kept across server restarts (kinds: `user`, `assistant`, `tool`, `tool_result`, `perm`, `error`, `system`) |
 | `GET /api/sessions/<id>/diff` | `{ files, add, del, untracked, patch }` for the session's worktree |
-| `GET /api/usage` | `{ days }` — last 14 days of cost and tokens per model and role |
+| `GET /api/usage` | `{ days }` — last 14 days of cost and tokens per model and role. `days[].sessions` maps a session id to `{ name, role, cost }` spent that day (Claude sessions; days recorded before this field existed omit it) |
 | `GET /api/projects` | `{ projects: [{ port, name, path, current }] }` — Dispatch servers running on this machine, one per project. Each server registers itself in `~/.dispatch/servers/<port>.json`; older servers on ports 4317–4330 are found by probing. The UI's project selector switches by opening the chosen port. |
 | `GET /api/events` | Server-sent events: `snapshot`, `session`, `message`, `limits`, `providers`, `settings`, `removed`. `limits` also fires when another Dispatch server on this machine wrote newer limits to `~/.dispatch/limits.json`. |
 
@@ -22,8 +22,11 @@ A session object carries `id`, `name`, `role`, `provider`, `model`, `effort`, `p
 Monitoring fields, decided on the server so every view agrees:
 
 - `state` — what the session needs from a person: `working` (a turn is running) · `waiting` (a permission prompt is open, or a session without a lead ended its turn asking the user something) · `stuck` (flagged by the per-session stall check) · `failed` (last turn ended in an error) · `resting` (turn finished, nothing asked) · `done`. A teammate's question goes to its lead, so it stays `resting`.
+- `asksUser` — true when the last turn ended by asking its reader something (checked on the final answer's last lines). With no `parent` this is what makes `state` `waiting`; the web UI then pins the question as a '답할 것' card in the session sheet, read from the transcript in the browser — the question text itself is not stored.
 - `stateSince` — epoch ms when the session entered its current `state`.
 - `attention` — `{ level: "bad" | "warn", reason, since }` for `failed`, `waiting` and `stuck`; `null` otherwise.
+- `burn` — `{ perHour, windowMin }`: dollars per hour over the last 30 minutes (`windowMin` is the span actually measured, shorter for a young session or after a server restart). `perHour` is `null` for the first 5 minutes; `burn` is `null` for sessions that report no cost (Codex, Gemini). The server recomputes it every minute and sends a `session` event when it changed, so an idle session decays to 0 without any activity of its own.
+- `burnWarn` — `null`, or `{ reasons, advice, … }` when spending needs a look. `reasons` holds `spike` (≥ 3× the median $/h of the project's sessions, and at least $1/h; adds `ratio`, `medianPerHour`) and/or `longLived` (context ≥ 60 % and running ≥ 3 hours; adds `ctxShare`, `hours`). `advice` is `swapLead` for a lead session — start a fresh lead and hand over — and `null` otherwise.
 
 When a session with a `parent` finishes a turn, the server sends its last answer to the parent as a message (`[<name>(<role>) 보고 · <branch>]` + the text; names are short random ones such as `Juno` or `Cal`, unique among listed sessions), so an idle lead wakes up without polling. A report that cannot be delivered yet (no parent, or a busy Codex lead) is retried until it lands.
 
@@ -61,9 +64,10 @@ Per item: `role` (required), `n` (copies, default 1), `model`, `effort` (one of 
 
 | Request | Body | Effect |
 |---|---|---|
-| `GET /api/tasks` | — | `{ tasks }`: each lead's board — `id`, `lead`, `title`, `stage` (`plan` · `impl` · `review` · `test` · `merge` · `done` · `blocked`), `owner`, `etaAt`, `note`, `commit`, `mergeCheck`. Done tasks drop off after six hours. |
+| `GET /api/tasks` | — | `{ tasks }`: each lead's board — `id`, `lead`, `title`, `stage` (`plan` · `impl` · `review` · `test` · `merge` · `done` · `blocked`), `owner`, `createdAt`, `stageAt`, `stages` (`[{ stage, at }]`, oldest first: each stage the task entered and when — stage and time only, last 40), `etaAt`, `note`, `commit`, `mergeCheck`. Done tasks drop off after six hours. |
 | `POST /api/tasks` | `{ "id"?, "lead", "title", "stage"?, "owner"?, "eta_minutes"?, "note"?, "commit"? }` | Creates a task (by `title`) or updates one (by `id`). What the lead's `set_task` tool calls. A new task returns `open`, the lead's other open tasks. `commit` is a branch name or commit hash; `""` clears it. Moving a task with a `commit` to `done` first runs `git merge-base --is-ancestor <commit> <integration branch>` in the project folder (integration branch: `develop`, else `main`/`master`, else the current branch). If that fails the stage stays as it was and `mergeCheck` is `{ ok: false, commit, base, reason, at }`; on success it is `{ ok: true, … }`. Closing without a commit (abandoned work) skips the check: `mergeCheck.ok` is `null`. |
 | `POST /api/tasks/<id>/remove` | — | Deletes a task. |
+| `GET /api/branches` | — | `{ base, commits, tips }` for the 브랜치 page. `base` is the integration branch (`develop`, else `main`/`master`). `commits` (newest first, at most 80): `hash`, `short`, `parents`, `author`, `at`, `subject`, `merge`. `tips`, one per shown branch (live sessions' `dispatch/*` branches, else the eight most ahead, plus `base`): `branch`, `hash`, `short`, `base`, `active`, `ahead` / `behind` (commits only on the branch / only on `base`), `lastAt` (tip commit time), `state` (`open` · `merged` — on `base` after commits of its own · `empty` — nothing committed; `null` for `base`). |
 
 ## Providers and settings
 
