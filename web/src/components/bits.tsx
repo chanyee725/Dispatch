@@ -1,8 +1,8 @@
 import { useEffect, useState } from "react";
-import { ChevronRight } from "lucide-react";
+import { ChevronRight, Circle, CircleAlert, CircleCheck, CircleX, LoaderCircle, TriangleAlert, type LucideIcon } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { LEVEL_COLOR, STATUS, level } from "@/lib/format";
-import type { Status } from "@/types";
+import { LEVEL_COLOR, STATE, level } from "@/lib/format";
+import type { SessionState, Status } from "@/types";
 
 // Provider tag: Claude orange, GPT (Codex) black, Gemini blue. Keyed by string so a provider the
 // server adds later still renders (in a neutral tone) without a type change here.
@@ -70,15 +70,24 @@ export function ThinkingLine({
   );
 }
 
-export function StatusBadge({ status, className }: { status: Status; className?: string }) {
-  const s = STATUS[status] ?? STATUS.idle;
-  const live = status === "running" || status === "starting";
+// Shape per state, so a badge reads without colour (shape + colour + label). States that need a person
+// are solid shapes with a knocked-out mark; quiet ones are outlines.
+const STATE_ICON: Record<SessionState, { Icon: LucideIcon; solid?: boolean }> = {
+  working: { Icon: LoaderCircle },
+  waiting: { Icon: CircleAlert, solid: true },
+  stuck: { Icon: TriangleAlert, solid: true },
+  failed: { Icon: CircleX, solid: true },
+  resting: { Icon: Circle },
+  done: { Icon: CircleCheck },
+};
+
+export function StatusBadge({ state, className }: { state: SessionState; className?: string }) {
+  const s = STATE[state] ?? STATE.resting;
+  const { Icon, solid } = STATE_ICON[state] ?? STATE_ICON.resting;
   return (
-    <span className={cn("inline-flex shrink-0 items-center gap-1.5 rounded-full border px-2 py-0.5 text-xs font-medium text-foreground/80", className)}>
-      <span className="relative flex size-1.5">
-        {live && <span className="absolute inline-flex size-full animate-ping rounded-full opacity-60" style={{ background: s.color }} />}
-        <span className="relative inline-flex size-1.5 rounded-full" style={{ background: s.color }} />
-      </span>
+    <span className={cn("inline-flex shrink-0 items-center gap-1 rounded-full border py-0.5 pr-2 pl-1.5 text-xs font-medium text-foreground/80", className)}>
+      <Icon aria-hidden className="size-3.5 shrink-0" strokeWidth={solid ? 2.5 : 2}
+        style={solid ? { fill: s.color, color: "var(--card)" } : { color: s.color }} />
       {s.label}
     </span>
   );

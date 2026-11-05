@@ -1,4 +1,4 @@
-import type { Status, Usage } from "@/types";
+import type { SessionState, Status, Usage } from "@/types";
 
 export const fmtK = (n: number) => (n >= 1e6 ? (n / 1e6).toFixed(2) + "M" : n >= 1e3 ? (n / 1e3).toFixed(1) + "k" : String(n));
 export const fmtUsd = (n: number | null | undefined) => (n == null ? "—" : "$" + n.toFixed(n < 10 ? 3 : 2));
@@ -23,14 +23,22 @@ export function ago(t: number) {
   return `${m}분 전`;
 }
 
-export const STATUS: Record<Status, { label: string; color: string }> = {
-  starting: { label: "시작 중", color: "var(--idle)" },
-  running: { label: "실행 중", color: "var(--ok)" },
-  waiting: { label: "승인 대기", color: "var(--warn)" },
-  idle: { label: "대기", color: "var(--idle)" },
-  done: { label: "완료", color: "var(--muted-foreground)" },
-  error: { label: "오류", color: "var(--bad)" },
+// Labels and colours for the server-decided states. The shape (icon) is chosen in StatusBadge, so a
+// badge never relies on colour alone.
+export const STATE: Record<SessionState, { label: string; color: string }> = {
+  working: { label: "작업 중", color: "var(--ok)" },
+  waiting: { label: "사람 기다림", color: "var(--warn)" },
+  stuck: { label: "멈춤", color: "var(--warn)" },
+  failed: { label: "실패", color: "var(--bad)" },
+  resting: { label: "쉼", color: "var(--idle)" },
+  done: { label: "완료", color: "var(--idle)" },
 };
+
+const FROM_STATUS: Record<Status, SessionState> = {
+  starting: "working", running: "working", waiting: "waiting", idle: "resting", done: "done", error: "failed",
+};
+/** The session's state, falling back to its raw status when the server is older than the state model. */
+export const stateOf = (s: { status: Status; state?: SessionState }): SessionState => s.state ?? FROM_STATUS[s.status] ?? "resting";
 
 export const PERM_LABEL: Record<string, string> = {
   manual: "매번 승인",

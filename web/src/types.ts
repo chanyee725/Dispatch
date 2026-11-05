@@ -1,5 +1,8 @@
 export type Provider = "claude" | "openai" | "gemini";
 export type Status = "starting" | "running" | "waiting" | "idle" | "done" | "error";
+/** Monitoring state decided by the server: what the session needs from a person. */
+export type SessionState = "working" | "waiting" | "stuck" | "failed" | "resting" | "done";
+export interface Attention { level: "bad" | "warn"; reason: string; since: number | null }
 
 export interface Usage { input: number; output: number; cacheRead: number; cacheWrite: number }
 
@@ -44,6 +47,12 @@ export interface Session {
   /** What a running session is doing right now ("e2e 실행"), and since when; null when idle. */
   activity?: { label: string; since: number } | null;
   pending: Pending[];
+  /** Server-decided state; older servers omit it (see stateOf). */
+  state?: SessionState;
+  /** When the session entered its current state. */
+  stateSince?: number;
+  /** Why a person should look (failed, waiting, stuck); null otherwise. */
+  attention?: Attention | null;
 }
 
 export interface Entry {
