@@ -5,15 +5,7 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } f
 import { cn } from "@/lib/utils";
 import { api, useApp, type BoardTask, type TaskStage, type Ticket } from "@/store";
 import type { Session } from "@/types";
-
-const STEPS: { id: TaskStage; label: string }[] = [
-  { id: "plan", label: "계획" },
-  { id: "impl", label: "구현" },
-  { id: "review", label: "리뷰" },
-  { id: "test", label: "테스트" },
-  { id: "merge", label: "병합" },
-];
-const stepIndex = (s: TaskStage) => STEPS.findIndex(x => x.id === s);
+import { STEPS, lastStep, stepIndex, stepStates, type StepState } from "@/lib/steps";
 
 const mins = (ms: number) => Math.max(0, Math.round(ms / 60_000));
 const fmtMin = (m: number) => (m >= 60 ? `${Math.floor(m / 60)}시간 ${m % 60}분` : `${m}분`);
@@ -35,40 +27,30 @@ function stageTimes(t: BoardTask, now: number) {
   return out;
 }
 
-/** The stage a blocked task was in before it got stuck. */
-function lastStep(t: BoardTask) {
-  if (t.stage !== "blocked") return t.stage;
-  return [...(t.stages ?? [])].reverse().find(e => e.stage !== "blocked")?.stage ?? "plan";
-}
+const STEP_CLASS: Record<StepState, string> = {
+  done: "bg-ok",
+  current: "bg-[var(--role-impl)]",
+  blocked: "bg-warn",
+  skipped: "border border-dashed border-muted-foreground/40",
+  todo: "bg-muted",
+};
 
-/** Five cells, one per stage; each fills in proportion to the time spent there (a mini Gantt). */
+/** Five cells, one per stage, filled by progress; the time spent in each stage is in the tooltip. */
 function Stepper({ t, now }: { t: BoardTask; now: number }) {
   const stage = t.stage;
   const at = stepIndex(lastStep(t));
   const times = stageTimes(t, now);
-  const longest = Math.max(1, ...STEPS.map(s => times[s.id] ?? 0));
-  // Tasks saved before stage history: fill every reached cell, as before.
   const known = (t.stages?.length ?? 0) > 0;
-  const seen = new Set((t.stages ?? []).map(e => e.stage));
+  const states = stepStates(t);
   return (
     <ol className="flex items-center gap-1" aria-label={`단계: ${stage === "blocked" ? "막힘" : STEPS[at]?.label ?? stage}`}>
       {STEPS.map((s, i) => {
-        const ms = times[s.id] ?? 0;
-        const m = mins(ms);
-        const reached = known ? seen.has(s.id) || i === at : stage === "done" || i <= at;
-        return (
-          <li key={s.id} title={reached ? (known ? `${s.label} ${m < 1 ? "1분 미만" : fmtMin(m)}` : s.label) : `${s.label} ${stage !== "done" && i > at ? "아직" : "거치지 않음"}`} className="h-1.5 w-6 overflow-hidden rounded-full bg-muted">
-            {reached && (
-              <span
-                className={cn(
-                  "block h-full rounded-full",
-                  stage === "done" || i < at ? "bg-ok" : stage === "blocked" ? "bg-warn" : "bg-[var(--role-impl)]",
-                )}
-                style={{ width: known ? `${Math.max(12, Math.round((ms / longest) * 100))}%` : "100%" }}
-              />
-            )}
-          </li>
-        );
+        const state = states[i];
+        const m = mins(times[s.id] ?? 0);
+        const time = known ? ` ${m < 1 ? "1분 미만" : fmtMin(m)}` : "";
+        const title =
+          state === "skipped" ? `${s.label} 거치지 않음` : state === "todo" ? `${s.label} 아직` : `${s.label}${time}`;
+        return <li key={s.id} title={title} data-state={state} className={cn("h-1.5 w-6 rounded-full", STEP_CLASS[state])} />;
       })}
     </ol>
   );

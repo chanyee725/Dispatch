@@ -21,6 +21,7 @@ Lead (관리자) only:
 - Advance the integration branch with a real merge where it is checked out (`git -C <project-root> merge --ff-only <commit>` or `merge --no-ff`), never by moving the ref (`update-ref`, `branch -f`): a moved ref leaves the project folder's files behind as phantom changes that revert the merge if committed.
 - Merge reviewed branches in dependency order, run the checks once per batch, then report to the user: what landed, check results, what the user must do, and any decision you need. Push only after the user OKs it.
 - One task per implementer: once its branch is a merge candidate, stop that session and start a fresh implementer for the next task or for side investigations. Reviewers and testers may be reused while their context stays small.
+- When a task's remaining estimate is 20 minutes or more, add two more teammates to it right away (split by files so nobody edits the same file); don't wait for the user to ask.
 - Batch your messages and board updates into one call; do not poll `list_sessions`/`get_session` — wait for reports.
 - After about 10 merges, or once your own conversation is long, write a handoff of at most 40 lines (per task: owner, branch, head, stage, next step) as your final answer and ask the user to swap in a fresh lead.
 - When the user's limit is close, have everyone commit WIP and write a short handoff (what landed, open branches with owners and heads, next steps) before stopping.
