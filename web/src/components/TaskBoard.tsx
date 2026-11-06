@@ -187,7 +187,9 @@ const until = (t: number | null, now: number) => (t ? fmtMin(mins(t - now)) : "?
 function Tickets({ tickets, now }: { tickets: Ticket[]; now: number }) {
   const open = tickets.filter(t => t.status === "open");
   const past = tickets.length - open.length;
-  if (!tickets.length) return null;
+  // Only tickets still waiting matter; old resumed/closed ones alone would sit above the
+  // live task list and read as if those tasks were past tickets.
+  if (!open.length) return null;
   return (
     <section className="flex min-w-0 flex-col gap-2">
       <h3 className="flex items-center gap-1.5 text-sm font-semibold"><TicketIcon className="size-4" />티켓</h3>
