@@ -119,8 +119,11 @@ export interface ProviderStatus {
 export interface Limits {
   five: number | null;
   seven: number | null;
+  /** Fable's own weekly window; null until a Fable turn reports it. */
+  fable?: number | null;
   fiveReset: number | null;
   sevenReset: number | null;
+  fableReset?: number | null;
   updatedAt: number | null;
 }
 

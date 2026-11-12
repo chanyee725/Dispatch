@@ -76,7 +76,9 @@ export const isQuotaError = text => /RESOURCE_EXHAUSTED|quota reached|code 429/i
 // numbers and reset times go in it — no account, email or token.
 
 export const LIMITS_FILE = path.join(os.homedir(), ".dispatch", "limits.json");
-const EMPTY_CLAUDE = () => ({ five: null, seven: null, fiveReset: null, sevenReset: null, updatedAt: null });
+// fable: the weekly window the CLI reports as seven_day_overage_included (models with their own weekly
+// bucket, Fable today). Only Fable turns carry it, so it keeps its last value between them.
+const EMPTY_CLAUDE = () => ({ five: null, seven: null, fable: null, fiveReset: null, sevenReset: null, fableReset: null, updatedAt: null });
 const num = v => (typeof v === "number" && Number.isFinite(v) ? v : null);
 
 /** Keeps the known number fields only; anything else in the input is dropped. */

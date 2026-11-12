@@ -267,6 +267,7 @@ export class Hub extends EventEmitter {
     const l = { ...this.limits };
     if (l.fiveReset && l.fiveReset <= now) l.five = 0;
     if (l.sevenReset && l.sevenReset <= now) l.seven = 0;
+    if (l.fableReset && l.fableReset <= now) l.fable = 0;
     return l;
   }
 
@@ -286,6 +287,8 @@ export class Hub extends EventEmitter {
         { label: "5시간", used: c.five, reset: c.fiveReset },
         { label: "주간", used: c.seven, reset: c.sevenReset },
       ] },
+      // Shown on its own once a Fable turn has reported it; null until then.
+      fable: c.fable == null ? null : { windows: [{ label: "Fable 주간", used: c.fable, reset: c.fableReset }] },
       openai: await codexLimits(),
       gemini: { reached: geminiReached, reset: geminiReached ? g.reset ?? null : null },
     };
@@ -900,10 +903,12 @@ export class Hub extends EventEmitter {
         break;
       case "rate_limit_event": {
         const w = m.rate_limit_info?.unifiedWindows || {};
+        const fableWin = w.seven_day_overage_included;
         const l = this.limits;
         this.shared.setClaude({
           five: w.five_hour?.utilization ?? l.five, fiveReset: w.five_hour?.resetsAt ? w.five_hour.resetsAt * 1000 : l.fiveReset,
           seven: w.seven_day?.utilization ?? l.seven, sevenReset: w.seven_day?.resetsAt ? w.seven_day.resetsAt * 1000 : l.sevenReset,
+          fable: fableWin?.utilization ?? l.fable, fableReset: fableWin?.resetsAt ? fableWin.resetsAt * 1000 : l.fableReset,
         }).catch(e => console.error("limits:", e.message)).finally(() => {
           this.emit("limits", this.limits);
           this.checkTickets();
