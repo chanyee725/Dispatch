@@ -130,6 +130,8 @@ export interface Limits {
 export interface TeamSettings {
   rotateLead: number;
   rotateOthers: number;
+  /** Context guard in percent of the window (0 = off). */
+  ctxHandoff?: number;
   maxChildren: number;
   replyStyle: boolean;
   shareDeps: boolean;

@@ -21,6 +21,7 @@ async function api(method, path, body) {
 const brief = s => ({
   id: s.id, name: s.name, role: s.role, model: s.model, status: s.status, state: s.state,
   last: s.last, turns: s.turns, cost: s.cost, branch: s.branch, parent: s.parent,
+  ctxPct: s.ctxWindow > 0 ? Math.round((100 * (s.ctx || 0)) / s.ctxWindow) : null,
   pendingPermissions: (s.pending || []).length,
 });
 

@@ -21,6 +21,13 @@ export const TEAM_DEFAULTS = () => ({
   dropWorktrees: true,
   /** Default model per role id, overriding the built-in preset. */
   roleModels: {},
+  /**
+   * Context guard, in percent of the model's context window (0 = off). A Claude session that crosses it
+   * mid-turn is told once to commit and wrap up; any session over it continues in a fresh CLI session at
+   * its next message, whatever its turn count. Turn-count rotation alone missed a session that grew
+   * inside one long turn while its lead kept sending follow-ups.
+   */
+  ctxHandoff: envNum("DISPATCH_CTX_HANDOFF", 70),
   /** Stuck detection: the same check command failing this many times in a row (0 = off). */
   stuckFails: 3,
   /** A running session with no output or tool event for this many minutes (0 = off). */
@@ -53,6 +60,11 @@ export function patchTeam(store, patch, { roles, models }) {
   const next = { ...cur };
   if ("rotateLead" in patch) next.rotateLead = int(patch.rotateLead, 0, 100);
   if ("rotateOthers" in patch) next.rotateOthers = int(patch.rotateOthers, 0, 100);
+  if ("ctxHandoff" in patch) {
+    const n = int(patch.ctxHandoff, 0, 95);
+    if (n !== 0 && n < 30) throw Object.assign(new Error("0 또는 30~95 사이 숫자를 넣어 주세요"), { status: 400 });
+    next.ctxHandoff = n;
+  }
   if ("maxChildren" in patch) next.maxChildren = int(patch.maxChildren, 1, 16);
   if ("stuckFails" in patch) next.stuckFails = int(patch.stuckFails, 0, 20);
   if ("stuckSilentMinutes" in patch) next.stuckSilentMinutes = int(patch.stuckSilentMinutes, 0, 240);
