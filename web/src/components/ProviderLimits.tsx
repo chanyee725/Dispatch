@@ -66,9 +66,9 @@ export function ProviderLimits() {
           <Bars windows={l.claude.windows} />
         </Group>
       )}
-      {on("claude") && l.fable && (
-        <Group id="fable" tip={<span className="whitespace-pre">{`${resets(l.fable.windows)}\nFable 모델만 따로 세는 주간 한도예요`}</span>}>
-          <Bars windows={l.fable.windows} />
+      {on("claude") && (
+        <Group id="fable" tip={<span className="whitespace-pre">{l.fable ? `${resets(l.fable.windows)}\nFable 모델만 따로 세는 주간 한도예요` : "Fable 모델만 따로 세는 주간 한도예요.\nFable 세션을 한 번 실행하면 표시돼요"}</span>}>
+          {l.fable ? <Bars windows={l.fable.windows} /> : <span className="text-[11px] text-muted-foreground">—</span>}
         </Group>
       )}
       {on("openai") && (
