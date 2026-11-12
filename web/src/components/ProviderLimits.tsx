@@ -8,12 +8,13 @@ import { api, useApp } from "@/store";
 type Window = { label: string; used: number | null; reset: number | null };
 type Limits = {
   claude: { windows: Window[] };
+  fable?: { windows: Window[] } | null;
   openai: { windows: Window[]; plan: string | null } | null;
   gemini: { reached: boolean; reset: number | null };
 };
 
-const DOT: Record<string, string> = { claude: "bg-[#d97757]", openai: "bg-neutral-950 ring-1 ring-foreground/25", gemini: "bg-[#1a73e8]" };
-const NAME: Record<string, string> = { claude: "Claude", openai: "GPT", gemini: "Gemini" };
+const DOT: Record<string, string> = { claude: "bg-[#d97757]", fable: "bg-[#d97757] ring-1 ring-[#d97757]/40 ring-offset-1 ring-offset-background", openai: "bg-neutral-950 ring-1 ring-foreground/25", gemini: "bg-[#1a73e8]" };
+const NAME: Record<string, string> = { claude: "Claude", fable: "Fable", openai: "GPT", gemini: "Gemini" };
 
 function Group({ id, children, tip }: { id: string; children: React.ReactNode; tip: React.ReactNode }) {
   return (
@@ -63,6 +64,11 @@ export function ProviderLimits() {
       {on("claude") && (
         <Group id="claude" tip={<span className="whitespace-pre">{l.claude.windows.some(w => w.used != null) ? resets(l.claude.windows) : "Claude 세션을 한 번 실행하면 표시돼요"}</span>}>
           <Bars windows={l.claude.windows} />
+        </Group>
+      )}
+      {on("claude") && l.fable && (
+        <Group id="fable" tip={<span className="whitespace-pre">{`${resets(l.fable.windows)}\nFable 모델만 따로 세는 주간 한도예요`}</span>}>
+          <Bars windows={l.fable.windows} />
         </Group>
       )}
       {on("openai") && (

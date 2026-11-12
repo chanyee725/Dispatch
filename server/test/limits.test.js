@@ -23,7 +23,7 @@ test("mergeLimits: newest updatedAt wins per section", () => {
 
 test("mergeLimits: keeps numbers only, drops anything else", () => {
   const m = mergeLimits({ claude: { ...claude(0.3, 1), email: "x@y", token: "t" }, gemini: { reached: true, at: 1, account: "x" } }, null);
-  assert.deepEqual(Object.keys(m.claude).sort(), ["five", "fiveReset", "seven", "sevenReset", "updatedAt"]);
+  assert.deepEqual(Object.keys(m.claude).sort(), ["fable", "fableReset", "five", "fiveReset", "seven", "sevenReset", "updatedAt"]);
   assert.deepEqual(Object.keys(m.gemini).sort(), ["at", "reached", "reset"]);
 });
 
@@ -124,4 +124,34 @@ test("SharedLimits: a stale lock is taken over, and refresh repairs a file that 
   await writeFile(file, JSON.stringify({ claude: claude(0.9, 1000), gemini: null })); // older value won on disk
   assert.equal(await a.refresh(), false);
   assert.equal(JSON.parse(await readFile(file, "utf8")).claude.updatedAt, 3000);
+});
+
+test("Hub: Fable's weekly window shows on its own and keeps its value across other models' turns", async t => {
+  const { Hub } = await import("../sessions.js");
+  const file = await tmpFile(t);
+  const shared = new SharedLimits(file);
+  await shared.load();
+  const store = { data: { sessions: {}, settings: { guard: { enabled: true, five: 0.9, seven: 0.85 } } }, save() {} };
+  const hub = new Hub({ root: path.dirname(file), store, models: [], roles: [], port: 0, limits: shared });
+  const s = { id: "s1", model: "claude-fable-5-2" };
+  const next = () => new Promise(r => hub.once("limits", r));
+  const event = windows => ({ type: "rate_limit_event", rate_limit_info: { unifiedWindows: windows } });
+  const win = (utilization, resetsAt) => ({ utilization, resetsAt, status: "allowed" });
+  const far = Math.floor(Date.now() / 1000) + 3600;
+
+  assert.equal((await hub.providerLimits()).fable, null);  // no Fable turn yet
+
+  let done = next();
+  hub.onClaude(s, event({ five_hour: win(0.14, far), seven_day: win(0.06, far), seven_day_overage_included: win(0.04, far) }));
+  await done;
+  let l = await hub.providerLimits();
+  assert.deepEqual(l.claude.windows.map(w => w.used), [0.14, 0.06]);
+  assert.deepEqual(l.fable, { windows: [{ label: "Fable 주간", used: 0.04, reset: far * 1000 }] });
+
+  done = next();
+  hub.onClaude({ id: "s2", model: "claude-haiku-5-5" }, event({ five_hour: win(0.2, far), seven_day: win(0.07, far) }));
+  await done;
+  l = await hub.providerLimits();
+  assert.equal(l.claude.windows[0].used, 0.2);
+  assert.equal(l.fable.windows[0].used, 0.04);
 });

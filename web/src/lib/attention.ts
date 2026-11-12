@@ -113,15 +113,16 @@ export function attentionItems(
 
   if (limits) {
     const windows = [
-      { id: "five" as const, label: "Claude 5시간 한도", value: limits.five, reset: limits.fiveReset },
-      { id: "seven" as const, label: "Claude 주간 한도", value: limits.seven, reset: limits.sevenReset },
+      { id: "five", guard: "five" as const, label: "Claude 5시간 한도", value: limits.five, reset: limits.fiveReset },
+      { id: "seven", guard: "seven" as const, label: "Claude 주간 한도", value: limits.seven, reset: limits.sevenReset },
+      { id: "fable", guard: "seven" as const, label: "Fable 주간 한도", value: limits.fable ?? null, reset: limits.fableReset ?? null },
     ];
     for (const w of windows) {
       // A window past its reset time is stale until the next poll; it has already started over.
       if (w.value == null || (w.reset && w.reset <= now)) continue;
       // One rounded number decides the colour and is what the row shows, so "90%" is never amber.
       const used = pct(w.value);
-      const urgent = pct((guard ?? DEFAULT_GUARD)[w.id]);
+      const urgent = pct((guard ?? DEFAULT_GUARD)[w.guard]);
       if (used < Math.min(pct(LIMIT_WARN), urgent)) continue;
       out.push({
         key: `l:${w.id}`, kind: "limit", level: used >= urgent ? "bad" : "warn", who: w.label,

@@ -2,6 +2,12 @@
 
 Every release is tagged `vX.Y.Z` and published on [GitHub Releases](https://github.com/chanyee725/Dispatch/releases). The plugin version in `.claude-plugin/plugin.json` matches the tag.
 
+## 0.12.0 — 2026-11-12
+
+### Added
+
+- Top bar: **Fable** shows its own weekly limit next to Claude's 5-hour and weekly bars. The CLI reports it as `seven_day_overage_included` on Fable turns only, so it appears after the first Fable turn and keeps its last value between them. It is saved with the other Claude numbers in `~/.dispatch/limits.json`, and 확인 필요 shows a "Fable 주간 한도" row at 75 % or more (red at the weekly guard). `GET /api/limits` gains `fable: { windows } | null`.
+
 ## 0.11.0 — 2026-11-05
 
 ### Added

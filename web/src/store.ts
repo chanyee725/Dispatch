@@ -45,7 +45,7 @@ let state: AppState = {
   ready: false, online: false, transcripts: {}, prefs: { theme: readLocalTheme() }, tasks: [], tickets: [],
   project: { name: "", path: "", branch: null }, roles: [], perms: [], models: [],
   providers: {} as Record<Provider, ProviderStatus>,
-  limits: { five: null, seven: null, fiveReset: null, sevenReset: null, updatedAt: null },
+  limits: { five: null, seven: null, fable: null, fiveReset: null, sevenReset: null, fableReset: null, updatedAt: null },
   settings: { guard: { enabled: true, five: 0.9, seven: 0.85 }, team: { rotateLead: 5, rotateOthers: 10, maxChildren: 8, replyStyle: true, shareDeps: true, dropWorktrees: true, roleModels: {} } },
   sessions: [],
 };
