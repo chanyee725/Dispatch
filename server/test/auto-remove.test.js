@@ -242,3 +242,30 @@ test("dropWorktree strict (auto-remove) keeps ignored files and failed status; t
   assert.equal(await dropWorktree(root, broken, { strict: true }), false, "failed status counts as dirty");
   assert.ok(existsSync(broken));
 });
+
+test("auto-remove keeps a worktree with a commit made on a detached HEAD and tells the lead why", async () => {
+  mock.timers.reset();
+  const root = mkdtempSync(join(tmpdir(), "dispatch-ar-detached-"));
+  const git = (...a) => execFileSync("git", ["-C", root, ...a], { stdio: "pipe" });
+  git("init", "-q"); git("-c", "user.email=t@t", "-c", "user.name=t", "commit", "-q", "--allow-empty", "-m", "init");
+  const wt = join(root, "wt-det");
+  git("worktree", "add", "-q", "-b", "b-det", wt);
+  const g = (...a) => execFileSync("git", ["-C", wt, ...a], { stdio: "pipe" });
+  g("switch", "-q", "--detach");
+  writeFileSync(join(wt, "work.txt"), "w");
+  g("add", "."); g("-c", "user.email=t@t", "-c", "user.name=t", "commit", "-q", "-m", "detached work");
+  const sha = g("rev-parse", "--short", "HEAD").toString().trim();
+
+  assert.equal(await dropWorktree(root, wt, { strict: true }), false);
+  assert.ok(existsSync(wt), "strict removal keeps it");
+
+  const { hub, store, lead, leadProc, kid } = makeHub({}, root);
+  hub.dropDelayMs = 0;
+  lead.status = "running";
+  Object.assign(kid, { worktree: true, cwd: wt, branch: "b-det" });
+  assert.equal(await hub.autoRemove("K"), true);
+  assert.equal(store.data.sessions.K, undefined);
+  assert.ok(existsSync(wt));
+  assert.match(said(leadProc), new RegExp(`분리된 HEAD라 worktree를 남겼어요 \\(커밋 ${sha}\\)`));
+  assert.equal(await dropWorktree(root, wt), true, "manual removal is unchanged");
+});

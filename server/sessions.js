@@ -640,7 +640,7 @@ export class Hub extends EventEmitter {
   }
 
   /** `strict`: the worktree check also keeps ignored files and treats a failed git status as dirty (auto-remove). */
-  remove(id, { strict = false } = {}) {
+  remove(id, { strict = false, info = {} } = {}) {
     const gone = this.get(id);
     this.kill(id);
     delete this.store.data.sessions[id];
@@ -653,7 +653,7 @@ export class Hub extends EventEmitter {
     this.emit("removed", { id });
     // Its worktree goes too when nothing uncommitted is left in it; the branch stays.
     const dropped = gone?.worktree && this.team().dropWorktrees
-      ? new Promise(res => setTimeout(() => dropWorktree(this.root, gone.cwd, { strict }).then(res, () => res(false)), this.dropDelayMs))
+      ? new Promise(res => setTimeout(() => dropWorktree(this.root, gone.cwd, { strict, info }).then(res, () => res(false)), this.dropDelayMs))
       : Promise.resolve(null);
     this.emit("tasks", this.tasks);
     this.emit("tickets", this.tickets);
@@ -702,10 +702,14 @@ export class Hub extends EventEmitter {
     // Work since the report (a queued message started another turn, events with status still idle) keeps it.
     const r = this.live.get(id);
     if (r?.armedEvents !== undefined && (r.events ?? 0) !== r.armedEvents) return false;
-    const dropped = this.remove(id, { strict: true });
+    const info = {};
+    const dropped = this.remove(id, { strict: true, info });
     const kept = worktree && (await dropped) === false && existsSync(cwd);
+    const why = info.detached ? ` 분리된 HEAD라 worktree를 남겼어요${info.sha ? ` (커밋 ${info.sha})` : ""}. 작업 폴더는 ${cwd}예요.`
+      : info.unknown ? ` git 상태를 확인하지 못해 작업 폴더 ${cwd}는 남겼어요.`
+      : ` 커밋 안 된 변경이나 git이 무시하는 파일이 있거나 상태를 확인하지 못해 작업 폴더 ${cwd}는 남겼어요.`;
     this.notifyLead(parent, `[Dispatch] ${who} 세션을 정리했어요${branch ? `(브랜치 ${branch})` : ""}.`
-      + (kept ? ` 커밋 안 된 변경이나 git이 무시하는 파일이 있거나 상태를 확인하지 못해 작업 폴더 ${cwd}는 남겼어요.` : ""));
+      + (kept ? why : ""));
     return true;
   }
 

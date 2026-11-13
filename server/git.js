@@ -71,16 +71,30 @@ async function shareDeps(root, dir) {
  * files outside build noise. The branch and its commits stay. Worktrees of removed sessions
  * otherwise piled up (37 GB across ~100 of them).
  */
-export async function dropWorktree(root, dir, { strict = false } = {}) {
+export async function dropWorktree(root, dir, { strict = false, info = {} } = {}) {
   if (!dir || path.resolve(dir) === path.resolve(root) || !existsSync(dir)) return false;
   let st;
   if (strict) {
     // Removal nobody clicked (auto-remove): a failed status counts as dirty, and ignored files
     // (.env, local data, …) count too unless they are known build noise.
     try { st = (await git(dir, "status", "--porcelain", "--ignored")).stdout; } catch { return false; }
+    // Commits made on a detached HEAD live only in this worktree's own reflog, which `worktree remove`
+    // deletes with it. Keep it when HEAD is detached or on no branch; a failed check keeps it too.
+    if (await detachedOrOrphan(dir, info)) return false;
   } else st = await out(git(dir, "status", "--porcelain"));
   if (st.split("\n").filter(Boolean).map(l => l.slice(3)).some(f => keep(f.replace(/\/$/, "")))) return false;
   try { await git(root, "worktree", "remove", "--force", dir); return true; } catch { return false; }
+}
+
+async function detachedOrOrphan(dir, info) {
+  try {
+    const sha = (await git(dir, "rev-parse", "--short", "HEAD")).stdout.trim();
+    if (sha) info.sha = sha;
+    try { await git(dir, "symbolic-ref", "-q", "HEAD"); } catch { info.detached = true; return true; }
+    const on = (await git(dir, "branch", "--contains", "HEAD", "--format=%(refname:short)")).stdout.trim();
+    if (!on) { info.detached = true; return true; }
+    return false;
+  } catch { info.unknown = true; return true; }
 }
 
 const NOISE = ["node_modules", ".next", ".next-prod", "dist", ".playwright-mcp", "test-results", "playwright-report"];
