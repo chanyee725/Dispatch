@@ -4,9 +4,11 @@
 // server whether this session is past the length guard (`longRun`) and, once per session, adds a note to the
 // model's context telling it to wrap up and hand over. The server already says this through the lead; the hook
 // is the backstop for a session that kept working through that message. Any failure exits 0 silently.
-import { existsSync, writeFileSync } from "node:fs";
+import { existsSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+
+export const CHECK_EVERY_MS = 120_000;
 
 export function noteFor(s) {
   const m = s.longRun?.mtok ?? "?";
@@ -20,6 +22,10 @@ export async function run(env = process.env, fetchFn = globalThis.fetch, markDir
   if (!url || !id || !/^[\w-]{1,80}$/.test(id) || !/^http:\/\/127\.0\.0\.1:\d+$/.test(url)) return null;
   const mark = join(markDir, `dispatch-long-${id}`);
   if (existsSync(mark)) return null;
+  // Ask the server at most every two minutes per session: tool calls come fast and the state route is not free.
+  const seen = join(markDir, `dispatch-long-seen-${id}`);
+  try { if (Date.now() - statSync(seen).mtimeMs < CHECK_EVERY_MS) return null; } catch { /* first check */ }
+  writeFileSync(seen, "");
   const res = await fetchFn(`${url}/api/state`, { signal: AbortSignal.timeout(2000) });
   if (!res.ok) return null;
   const s = (await res.json()).sessions?.find(x => x.id === id);

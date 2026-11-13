@@ -486,11 +486,15 @@ export class Hub extends EventEmitter {
     if (!s) throw new Error("세션이 없어요");
     if (!force && this.paused) throw new Error("사용량 한도로 일시정지 중이에요. 남은 작업은 티켓으로 저장됐고, 초기화되면 이어서 진행해요.");
     const r = this.rt(id);
-    if (r.longPending) { text = `${text}\n\n${r.longPending}`; r.longPending = null; }
+    // A pending length-guard note is attached here and cleared only on a path that delivers the message.
+    const pend = s.longPending;
+    if (pend) text = `${text}\n\n${pend}`;
+    const sent = () => { if (pend && s.longPending === pend) s.longPending = null; };
     this.push(s, { kind: "user", text });
-    if (this.shouldRotate(s)) return this.rotate(s, text);
+    if (this.shouldRotate(s)) { sent(); return this.rotate(s, text); }
     if (s.provider === "claude" && r.proc) {
       r.proc.stdin.write(JSON.stringify({ type: "user", message: { role: "user", content: text } }) + "\n");
+      sent();
       this.touch(s, { status: "running" });
     } else if (s.provider === "openai" && r.proc) {
       throw new Error("Codex는 응답이 끝난 뒤에 다음 메시지를 보낼 수 있어요");
@@ -538,24 +542,25 @@ export class Hub extends EventEmitter {
   checkLong(s, now = Date.now()) {
     if (!longOver(s, this.team())) return;
     const mtok = Math.round(mtokens(s));
-    if (!s.longRun) this.mark(s, { longRun: { mtok, sinceMs: now } });
+    if (!s.longRun) this.mark(s, { longRun: { mtok, sinceMs: now, noticed: false } });
     else s.longRun.mtok = mtok;
-    const r = this.live.get(s.id);
-    if (!r || r.longNoticed) return;
-    r.longNoticed = true;
-    const parent = s.parent && this.get(s.parent);
-    if (parent && parent.status !== "done") {
-      const text = `[Dispatch] ${s.name}(${s.roleName ?? s.role}) 세션이 누적 ${mtok}M 토큰을 넘었다. 지금 맡은 단계가 끝나면 stop_session(remove: true)으로 정리하고, 남은 일은 브랜치·커밋·다음 할 일만 적어 새 팀원에게 맡겨라. 이 세션에 새 일을 이어 붙이지 마라.`;
-      this.push(s, { kind: "info", text: `누적 ${mtok}M 토큰: 관리자에게 새 팀원으로 바꾸라고 알렸어요` });
-      try { this.send(parent.id, text); } catch { r.longNoticed = false; /* retried at the next usage update */ }
+    // `noticed` is saved with the session, so a server restart does not repeat the notice.
+    if (s.longRun.noticed) return;
+    s.longRun.noticed = true;
+    this.store.save();
+    if (s.parent) {
+      // Rides on the teammate's next report: no extra turn for the lead, nothing to retry when it is busy.
+      s.longNote = `[Dispatch] ${s.name}(${s.roleName ?? s.role}) 세션이 누적 ${mtok}M 토큰을 넘었다. 지금 맡은 단계가 끝나면 stop_session(remove: true)으로 정리하고, 남은 일은 브랜치·커밋·다음 할 일만 적어 새 팀원에게 맡겨라. 이 세션에 새 일을 이어 붙이지 마라.`;
+      this.push(s, { kind: "info", text: `누적 ${mtok}M 토큰: 다음 보고에 새 팀원으로 바꾸라는 안내를 붙여요` });
       return;
     }
     const text = `[Dispatch] 이 세션이 누적 ${mtok}M 토큰을 넘었다. 새 일을 시작하지 마라. 남은 일을 40줄 이내로 인계(작업마다 담당·브랜치·커밋·단계·다음 할 일)해 답하고, 새 ${s.canSpawn ? "관리자" : "세션"}로 바꿔 달라고 요청하며 이 턴을 끝내라.`;
     this.push(s, { kind: "info", text: `누적 ${mtok}M 토큰: 인계하고 새 세션으로 바꾸라고 알렸어요` });
-    if (s.provider === "claude" && r.proc && s.status === "running") {
+    const r = this.live.get(s.id);
+    if (s.provider === "claude" && r?.proc && s.status === "running") {
       r.proc.stdin.write(JSON.stringify({ type: "user", message: { role: "user", content: text } }) + "\n");
     } else {
-      r.longPending = text; // rides on the next message, so an idle session is not woken just for this
+      s.longPending = text; // goes out with the next delivered message, so an idle session is not woken for it
     }
   }
 
@@ -827,6 +832,8 @@ export class Hub extends EventEmitter {
     const r = this.live.get(s.id);
     if (!r?.lastText) return;
     r.pendingReport = `[${s.name}(${s.roleName}) 보고${s.branch ? ` · ${s.branch}` : ""}]\n${clip(r.lastText, 2500)}`;
+    // The length-guard note (checkLong) travels with the report instead of waking the lead on its own.
+    if (s.longNote) { r.pendingReport += `\n\n${s.longNote}`; s.longNote = null; }
     r.lastText = null;
     this.deliverReport(s);
   }
