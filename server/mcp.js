@@ -22,6 +22,9 @@ const brief = s => ({
   id: s.id, name: s.name, role: s.role, model: s.model, status: s.status, state: s.state,
   last: s.last, turns: s.turns, cost: s.cost, branch: s.branch, parent: s.parent,
   ctxPct: s.ctxWindow > 0 ? Math.round((100 * (s.ctx || 0)) / s.ctxWindow) : null,
+  // Total tokens processed, in millions; past the length guard (`long: true`) replace the session.
+  mtok: Math.round((((s.usage?.input || 0) + (s.usage?.cacheRead || 0) + (s.usage?.cacheWrite || 0) + (s.usage?.output || 0)) / 1e5)) / 10,
+  long: !!s.longRun,
   pendingPermissions: (s.pending || []).length,
 });
 

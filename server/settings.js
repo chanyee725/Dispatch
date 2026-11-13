@@ -28,6 +28,13 @@ export const TEAM_DEFAULTS = () => ({
    * inside one long turn while its lead kept sending follow-ups.
    */
   ctxHandoff: envNum("DISPATCH_CTX_HANDOFF", 70),
+  /**
+   * Session length guard, in millions of tokens the session has processed in total (input + cache read +
+   * cache write + output; 0 = off). Turn rotation keeps each call's context small, but a session that runs
+   * for hundreds of turns still re-reads its work every call: one lead reached 29M tokens. Past this budget a
+   * teammate's lead is told once to replace it with a fresh teammate, and a lead is told to hand over.
+   */
+  handoffMTokens: envNum("DISPATCH_HANDOFF_MTOKENS", 15),
   /** Stuck detection: the same check command failing this many times in a row (0 = off). */
   stuckFails: 3,
   /** A running session with no output or tool event for this many minutes (0 = off). */
@@ -64,6 +71,11 @@ export function patchTeam(store, patch, { roles, models }) {
     const n = int(patch.ctxHandoff, 0, 95);
     if (n !== 0 && n < 30) throw Object.assign(new Error("0 또는 30~95 사이 숫자를 넣어 주세요"), { status: 400 });
     next.ctxHandoff = n;
+  }
+  if ("handoffMTokens" in patch) {
+    const n = int(patch.handoffMTokens, 0, 500);
+    if (n !== 0 && n < 2) throw Object.assign(new Error("0 또는 2~500 사이 숫자를 넣어 주세요"), { status: 400 });
+    next.handoffMTokens = n;
   }
   if ("maxChildren" in patch) next.maxChildren = int(patch.maxChildren, 1, 16);
   if ("stuckFails" in patch) next.stuckFails = int(patch.stuckFails, 0, 20);

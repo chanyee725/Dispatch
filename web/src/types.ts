@@ -132,6 +132,8 @@ export interface TeamSettings {
   rotateOthers: number;
   /** Context guard in percent of the window (0 = off). */
   ctxHandoff?: number;
+  /** Session length guard in millions of tokens processed (0 = off). */
+  handoffMTokens?: number;
   maxChildren: number;
   replyStyle: boolean;
   shareDeps: boolean;

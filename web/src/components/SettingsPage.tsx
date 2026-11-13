@@ -116,6 +116,9 @@ export function SettingsPage() {
         <Row label="컨텍스트 넘김 기준" hint="이 비율을 넘으면 하던 일을 커밋하고 마무리하라고 알리고, 다음 지시부터 새 세션으로 이어 가요. 턴이 하나로 길어져도 적용돼요. 0이면 꺼요.">
           <NumberField value={team.ctxHandoff ?? 70} min={0} max={95} unit="%" label="컨텍스트 넘김 기준 퍼센트" onSave={n => save({ team: { ctxHandoff: n } })} />
         </Row>
+        <Row label="오래 쓴 세션 교체 기준" hint="세션이 처리한 토큰이 이만큼 넘으면 새 세션으로 바꾸라고 알려요. 팀원이면 관리자에게, 관리자면 그 세션에 인계하라고 해요. 0이면 꺼요.">
+          <NumberField value={team.handoffMTokens ?? 15} min={0} max={500} unit="M 토큰" label="오래 쓴 세션 교체 기준 (백만 토큰)" onSave={n => save({ team: { handoffMTokens: n } })} />
+        </Row>
         <Row label="관리자 한 명이 둘 수 있는 팀원" hint="동시에 열려 있는 팀원 수의 상한이에요.">
           <NumberField value={team.maxChildren} min={1} max={16} unit="명" label="관리자당 최대 팀원 수" onSave={n => save({ team: { maxChildren: n } })} />
         </Row>

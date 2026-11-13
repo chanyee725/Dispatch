@@ -1,0 +1,12 @@
+{
+  "description": "Dispatch session length guard: inside a Dispatch session that has run too long, remind it to hand over (issue #29).",
+  "hooks": {
+    "PostToolUse": [
+      {
+        "hooks": [
+          { "type": "command", "command": "node \"${CLAUDE_PLUGIN_ROOT}/hooks/long-session.mjs\"", "timeout": 5 }
+        ]
+      }
+    ]
+  }
+}
