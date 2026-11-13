@@ -91,7 +91,8 @@ export function cleanGemini(g) {
   if (!g || typeof g !== "object" || num(g.at) == null) return null;
   return { reached: g.reached === true, reset: num(g.reset), at: g.at };
 }
-const newer = (a, b) => (a ?? -Infinity) > (b ?? -Infinity);
+/** Ties go to b (the incoming side), so a later write in the same millisecond is not dropped. */
+const newer = (b, a) => (b ?? -Infinity) >= (a ?? -Infinity);
 
 /** Per section, the side with the newer timestamp wins. */
 export function mergeLimits(a, b) {
@@ -180,7 +181,7 @@ export class SharedLimits extends EventEmitter {
     const unlock = await this.lock();
     try {
       const { data } = await this.read();
-      this.data = mergeLimits(this.data, data);
+      this.data = mergeLimits(data, this.data); // ours is incoming: wins a same-ms tie with disk
       const tmp = `${this.file}.${process.pid}.${randomBytes(4).toString("hex")}.tmp`;
       try {
         await writeFile(tmp, JSON.stringify(this.data, null, 2));

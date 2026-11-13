@@ -11,6 +11,22 @@ Every release is tagged `vX.Y.Z` and published on [GitHub Releases](https://gith
 - Team settings `autoRemoveDone` and `autoRemoveGraceSec` (`POST /api/settings`).
 - The lead's prompt and the team rules assume the cleanup: to reuse a teammate, send its next instruction in the turn its report arrives. The server cannot know whether a lead still plans follow-ups for a teammate, so that part stays a rule.
 
+## 0.16.0 — 2026-11-13
+
+### Added
+
+- **modern-web-guidance for web work** (#35). When the `modern-web-guidance` Claude Code plugin (`modern-web-guidance@googlechrome`) is installed, implementer, designer and reviewer sessions get a `[Modern Web Guidance]` prompt section: for HTML, CSS and client-side JS, run the `modern-web-guidance:modern-web-guidance` skill (Codex and Gemini sessions: `npx -y modern-web-guidance@latest`), search → retrieve → check the code against the guide, and end the report or PR with a `### Modern Web Guidance` section. The lead is told to put that in web briefs and to ask for the section before merging. Project rules (CLAUDE.md / AGENTS.md) win over the guides; search queries stay generic, with no project, file or people names. Server, test and build work doesn't use it, and tester and docs sessions get nothing. Codex and Gemini sessions only try `npx` with network access and skip it at once on failure (no retry, approval request or sandbox loosening), noting "가이드 조회 불가(네트워크 없음)" in the section, which the lead counts as filled. Without the plugin nothing is added. The team rules (`skills/dispatch-team/reference/rules.md`) say the same.
+
+### Changed
+
+- The `installed_plugins.json` lookup used for the `i-have-adhd` reply style moved to `server/plugins.js` (`pluginDir`) and is shared by both features.
+
+## 0.15.2 — 2026-11-13
+
+### Fixed
+
+- **Usage limits: a second update in the same millisecond is no longer dropped** (#43). The merge used a strict `>` on the timestamp, so two `setClaude`/`setGemini` calls with the same timestamp kept the first value. A tie now goes to the incoming value, and a write keeps its own value over the file's on a tie. An older value still never overwrites a newer one.
+
 ## 0.15.1 — 2026-11-13
 
 ### Fixed

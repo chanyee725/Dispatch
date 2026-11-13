@@ -155,3 +155,15 @@ test("Hub: Fable's weekly window shows on its own and keeps its value across oth
   assert.equal(l.claude.windows[0].used, 0.2);
   assert.equal(l.fable.windows[0].used, 0.04);
 });
+
+test("SharedLimits: a later write in the same millisecond wins", async t => {
+  const file = await tmpFile(t);
+  const a = new SharedLimits(file);
+  await a.load();
+  await a.setClaude(claude(0.4, 5000));
+  await a.setClaude(claude(0.7, 5000));
+  assert.equal(a.claude.five, 0.7);
+  assert.equal(JSON.parse(await readFile(file, "utf8")).claude.five, 0.7);
+  assert.equal(mergeLimits({ claude: claude(0.1, 9) }, { claude: claude(0.2, 9) }).claude.five, 0.2);
+  assert.equal(mergeLimits({ claude: claude(0.1, 9) }, { claude: claude(0.2, 8) }).claude.five, 0.1);
+});
