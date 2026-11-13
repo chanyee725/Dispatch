@@ -34,7 +34,7 @@ You, the session that talks to the user, never implement, fix or investigate cod
 - A different stream (another area or repo, or the current lead's context is heavy or it shows `longRun`) gets a **new** lead, not more work on an existing one.
 - Small review should-fixes go back to the owning lead; do not patch them yourself.
 
-The plugin's `hooks/main-delegates.mjs` reminds you once per session when you edit a file in a project with a live Dispatch server. It never blocks the edit.
+The plugin's `hooks/main-delegates.mjs` reminds you when you edit a file or run a Bash command that writes one in a project with a live Dispatch server, and again every 30 minutes. It never blocks the edit.
 
 ## Permission mode for the whole team
 
