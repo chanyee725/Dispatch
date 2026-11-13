@@ -2,6 +2,12 @@
 
 Every release is tagged `vX.Y.Z` and published on [GitHub Releases](https://github.com/chanyee725/Dispatch/releases). The plugin version in `.claude-plugin/plugin.json` matches the tag.
 
+## 0.18.0 — 2026-11-13
+
+### Added
+
+- **Fable 5.2 model** (`claude-fable-5-2`). Same context window and effort levels as Fable 5.1; sessions on it are no longer rejected as an unknown model.
+
 ## 0.17.1 — 2026-11-13
 
 ### Fixed

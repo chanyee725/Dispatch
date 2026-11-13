@@ -17,6 +17,7 @@ const CLAUDE_MODELS = [
   { id: "claude-sonnet-5-5", label: "Sonnet 5.5" },
   { id: "claude-haiku-5-5", label: "Haiku 5.5" },
   { id: "claude-fable-5-1", label: "Fable 5.1" },
+  { id: "claude-fable-5-2", label: "Fable 5.2" },
 ].map(m => ({ ...m, provider: "claude", efforts: CLAUDE_EFFORTS, defaultEffort: null, contextWindow: 200000 }));
 
 // Codex publishes its catalog through `codex debug models`; only "list" models are user-selectable.
