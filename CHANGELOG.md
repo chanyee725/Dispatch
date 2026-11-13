@@ -2,6 +2,12 @@
 
 Every release is tagged `vX.Y.Z` and published on [GitHub Releases](https://github.com/chanyee725/Dispatch/releases). The plugin version in `.claude-plugin/plugin.json` matches the tag.
 
+## 0.15.1 — 2026-11-13
+
+### Fixed
+
+- **main-delegates hook covers Bash and repeats** (#33). It now also runs on `Bash`, and speaks only when the command looks like a file write: a `>`/`>>` redirect (not `2>&1`, `>/dev/null` and the like), `sed -i`, `perl -i`, `tee`, `cp`/`mv`/`rm`/`mkdir`/`touch`…, `find -delete`, a mutating `git` subcommand (`add`, `commit`, `apply`, `checkout`, `reset`, `stash`…), or a python/node one-liner that writes a file. Read-only commands (`ls`, `cat`, `grep`, `git status/log/diff`…) stay silent. Instead of once per session it repeats the note when 30 minutes have passed since the last one. The marker's mtime holds that time; it stores no command text.
+
 ## 0.15.0 — 2026-11-13
 
 ### Added
