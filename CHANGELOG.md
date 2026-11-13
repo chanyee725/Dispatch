@@ -2,6 +2,14 @@
 
 Every release is tagged `vX.Y.Z` and published on [GitHub Releases](https://github.com/chanyee725/Dispatch/releases). The plugin version in `.claude-plugin/plugin.json` matches the tag.
 
+## 0.17.0 — 2026-11-13
+
+### Added
+
+- **Finished teammates are removed automatically** (설정 → 끝난 팀원 자동 정리, on by default; #39). Leads' rules alone missed `stop_session(remove: true)`, so finished teammates piled up holding worktrees and team slots. Now, once a teammate (any session with a lead; never a lead) has ended its turn, its report has reached the lead, and it waits on no permission request or question, the server stops and removes it after a grace period (설정 → 자동 정리 유예 시간, default 120 s, 10–3600). A message to it, a new turn or a permission request in that time cancels the timer. The lead is told `[Dispatch] <이름>(<역할>) 세션을 정리했어요(브랜치 …)` mid-turn when it is running, otherwise with its next message, so it is not woken for it. Worktrees follow 세션을 지우면 작업 폴더도 지우기: one with uncommitted changes stays and the notice says so. The branch always stays. A teammate that stopped with an error is never removed; its lead is told at once. The timer lives in memory only (after a restart nothing is armed until the next report).
+- Team settings `autoRemoveDone` and `autoRemoveGraceSec` (`POST /api/settings`).
+- The lead's prompt and the team rules assume the cleanup: to reuse a teammate, send its next instruction in the turn its report arrives. The server cannot know whether a lead still plans follow-ups for a teammate, so that part stays a rule.
+
 ## 0.15.1 — 2026-11-13
 
 ### Fixed
