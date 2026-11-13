@@ -11,7 +11,7 @@ import { replyStyle } from "./style.js";
 import { effectiveRoles, teamSettings } from "./settings.js";
 import { codexLimits, geminiResetFrom, isQuotaError, SharedLimits } from "./limits.js";
 import { recordState, trimToWindow, WINDOW_MS } from "../shared/timeline.js";
-import { asksUser, attentionOf, checkKey, ctxOver, ctxShare, recordCheck, sessionState, sessionStuck, stuckSig, taskStuck } from "./state.js";
+import { asksUser, attentionOf, checkKey, ctxOver, ctxShare, longOver, mtokens, recordCheck, sessionState, sessionStuck, stuckSig, taskStuck } from "./state.js";
 
 const MCP_SCRIPT = path.join(path.dirname(fileURLToPath(import.meta.url)), "mcp.js");
 const MAX_TRANSCRIPT = 400;
@@ -485,11 +485,16 @@ export class Hub extends EventEmitter {
     const s = this.get(id);
     if (!s) throw new Error("세션이 없어요");
     if (!force && this.paused) throw new Error("사용량 한도로 일시정지 중이에요. 남은 작업은 티켓으로 저장됐고, 초기화되면 이어서 진행해요.");
-    this.push(s, { kind: "user", text });
     const r = this.rt(id);
-    if (this.shouldRotate(s)) return this.rotate(s, text);
+    // A pending length-guard note is attached here and cleared only on a path that delivers the message.
+    const pend = s.longPending;
+    if (pend) text = `${text}\n\n${pend}`;
+    const sent = () => { if (pend && s.longPending === pend) s.longPending = null; };
+    this.push(s, { kind: "user", text });
+    if (this.shouldRotate(s)) { sent(); return this.rotate(s, text); }
     if (s.provider === "claude" && r.proc) {
       r.proc.stdin.write(JSON.stringify({ type: "user", message: { role: "user", content: text } }) + "\n");
+      sent();
       this.touch(s, { status: "running" });
     } else if (s.provider === "openai" && r.proc) {
       throw new Error("Codex는 응답이 끝난 뒤에 다음 메시지를 보낼 수 있어요");
@@ -525,6 +530,38 @@ export class Hub extends EventEmitter {
     const text = `[Dispatch] 컨텍스트를 ${pct}% 썼다. 새 조사·탐색은 시작하지 마라. 지금까지 한 일을 커밋하고, 끝낸 것·남은 것·다음 단계를 짧게 정리해 답하고 이 턴을 끝내라. 다음 지시는 새 CLI 세션에서 이어 받는다.`;
     this.push(s, { kind: "info", text: `컨텍스트 ${pct}%: 마무리하고 새 세션으로 넘기라고 알렸어요` });
     r.proc.stdin.write(JSON.stringify({ type: "user", message: { role: "user", content: text } }) + "\n");
+  }
+
+  /**
+   * Session length guard (issue #29). Rotation keeps each call's context small, but a session kept for
+   * hundreds of turns still costs a re-read per call and drifts. Past `handoffMTokens` total tokens:
+   * flag it (attention, list_sessions), and say once who should act. A teammate's lead is told to stop it
+   * and give the rest to a fresh teammate. A lead is told to write a handover and ask for a fresh lead:
+   * mid-turn through stdin when it is running (Claude), otherwise with its next message.
+   */
+  checkLong(s, now = Date.now()) {
+    if (!longOver(s, this.team())) return;
+    const mtok = Math.round(mtokens(s));
+    if (!s.longRun) this.mark(s, { longRun: { mtok, sinceMs: now, noticed: false } });
+    else s.longRun.mtok = mtok;
+    // `noticed` is saved with the session, so a server restart does not repeat the notice.
+    if (s.longRun.noticed) return;
+    s.longRun.noticed = true;
+    this.store.save();
+    if (s.parent) {
+      // Rides on the teammate's next report: no extra turn for the lead, nothing to retry when it is busy.
+      s.longNote = `[Dispatch] ${s.name}(${s.roleName ?? s.role}) 세션이 누적 ${mtok}M 토큰을 넘었다. 지금 맡은 단계가 끝나면 stop_session(remove: true)으로 정리하고, 남은 일은 브랜치·커밋·다음 할 일만 적어 새 팀원에게 맡겨라. 이 세션에 새 일을 이어 붙이지 마라.`;
+      this.push(s, { kind: "info", text: `누적 ${mtok}M 토큰: 다음 보고에 새 팀원으로 바꾸라는 안내를 붙여요` });
+      return;
+    }
+    const text = `[Dispatch] 이 세션이 누적 ${mtok}M 토큰을 넘었다. 새 일을 시작하지 마라. 남은 일을 40줄 이내로 인계(작업마다 담당·브랜치·커밋·단계·다음 할 일)해 답하고, 새 ${s.canSpawn ? "관리자" : "세션"}로 바꿔 달라고 요청하며 이 턴을 끝내라.`;
+    this.push(s, { kind: "info", text: `누적 ${mtok}M 토큰: 인계하고 새 세션으로 바꾸라고 알렸어요` });
+    const r = this.live.get(s.id);
+    if (s.provider === "claude" && r?.proc && s.status === "running") {
+      r.proc.stdin.write(JSON.stringify({ type: "user", message: { role: "user", content: text } }) + "\n");
+    } else {
+      s.longPending = text; // goes out with the next delivered message, so an idle session is not woken for it
+    }
   }
 
   /** Ends the current CLI session and starts a fresh one with a handoff note plus `text`. */
@@ -795,6 +832,8 @@ export class Hub extends EventEmitter {
     const r = this.live.get(s.id);
     if (!r?.lastText) return;
     r.pendingReport = `[${s.name}(${s.roleName}) 보고${s.branch ? ` · ${s.branch}` : ""}]\n${clip(r.lastText, 2500)}`;
+    // The length-guard note (checkLong) travels with the report instead of waking the lead on its own.
+    if (s.longNote) { r.pendingReport += `\n\n${s.longNote}`; s.longNote = null; }
     r.lastText = null;
     this.deliverReport(s);
   }
@@ -871,7 +910,8 @@ export class Hub extends EventEmitter {
     args.push("--mcp-config", JSON.stringify({ mcpServers: { dispatch: {
       command: process.execPath, args: [MCP_SCRIPT], env: this.mcpEnv(s) } } }),
       "--allowedTools", "mcp__dispatch");
-    const proc = spawn("claude", args, { cwd: s.cwd, env: sessionEnv(), stdio: ["pipe", "pipe", "pipe"] });
+    // DISPATCH_URL / DISPATCH_SESSION let the plugin's length hook (hooks/long-session.mjs) find this session.
+    const proc = spawn("claude", args, { cwd: s.cwd, env: { ...sessionEnv(), DISPATCH_URL: `http://127.0.0.1:${this.port}`, DISPATCH_SESSION: s.id }, stdio: ["pipe", "pipe", "pipe"] });
     s._costBase = s.cost;
     this.attach(s, proc);
     onJsonLines(proc.stdout, m => this.onClaude(s, m));
@@ -896,7 +936,7 @@ export class Hub extends EventEmitter {
           for (const k in delta) s.usage[k] += delta[k];
           s.ctx = delta.input + delta.cacheRead + delta.cacheWrite + delta.output;
           this.store.addDaily(s.model, s.role, delta);
-          this.checkCtx(s);
+          this.checkCtx(s); this.checkLong(s);
         }
         for (const c of msg.content || []) {
           if (c.type === "text" && c.text.trim()) { this.push(s, { kind: "assistant", text: c.text }); s.last = clip(c.text, 400); r.lastText = c.text; }
@@ -1006,7 +1046,7 @@ export class Hub extends EventEmitter {
         const delta = { input: Math.max(0, (u.input_tokens || 0) - cached), output: (u.output_tokens || 0),
           cacheRead: cached, cacheWrite: u.cache_write_input_tokens || 0 };
         for (const k in delta) s.usage[k] += delta[k];
-        s.ctx = (u.input_tokens || 0) + (u.output_tokens || 0); this.checkCtx(s);
+        s.ctx = (u.input_tokens || 0) + (u.output_tokens || 0); this.checkCtx(s); this.checkLong(s);
         this.store.addDaily(s.model, s.role, delta);
         this.touch(s, { status: "idle", turns: s.turns + 1, turnsSinceRotate: (s.turnsSinceRotate ?? s.turns ?? 0) + 1 });
         this.reportToParent(s);
@@ -1061,7 +1101,7 @@ export class Hub extends EventEmitter {
             const u = su.usage;
             const delta = { input: u.input_tokens || 0, output: u.output_tokens || 0, cacheRead: u.cache_read_tokens || 0, cacheWrite: 0 };
             for (const k in delta) s.usage[k] += delta[k];
-            s.ctx = delta.input + delta.output; this.checkCtx(s);
+            s.ctx = delta.input + delta.output; this.checkCtx(s); this.checkLong(s);
             this.store.addDaily(s.model, s.role, delta);
           }
         } else if (su.step_type === "tool") {

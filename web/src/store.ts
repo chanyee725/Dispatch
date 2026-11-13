@@ -46,7 +46,7 @@ let state: AppState = {
   project: { name: "", path: "", branch: null }, roles: [], perms: [], models: [],
   providers: {} as Record<Provider, ProviderStatus>,
   limits: { five: null, seven: null, fable: null, fiveReset: null, sevenReset: null, fableReset: null, updatedAt: null },
-  settings: { guard: { enabled: true, five: 0.9, seven: 0.85 }, team: { rotateLead: 5, rotateOthers: 10, ctxHandoff: 70, maxChildren: 8, replyStyle: true, shareDeps: true, dropWorktrees: true, roleModels: {} } },
+  settings: { guard: { enabled: true, five: 0.9, seven: 0.85 }, team: { rotateLead: 5, rotateOthers: 10, ctxHandoff: 70, handoffMTokens: 15, maxChildren: 8, replyStyle: true, shareDeps: true, dropWorktrees: true, roleModels: {} } },
   sessions: [],
 };
 

@@ -2,6 +2,14 @@
 
 Every release is tagged `vX.Y.Z` and published on [GitHub Releases](https://github.com/chanyee725/Dispatch/releases). The plugin version in `.claude-plugin/plugin.json` matches the tag.
 
+## 0.14.0 — 2026-11-13
+
+### Added
+
+- **Session length guard** (설정 → 오래 쓴 세션 교체 기준, default 15M tokens, 0 turns it off; #29). Turn rotation keeps each call's context small, but a session kept for hundreds of turns still re-reads its work on every call: a lead in another project processed 29M tokens over 189 turns. Past the budget a session gets `longRun` and a 확인 필요 warning, and Dispatch says once who should act: a teammate's lead is told to stop it and give the rest to a fresh teammate; a lead is told to write a handover and ask for a fresh lead (mid-turn when it is running, otherwise with its next message, so an idle lead is not woken for it). The lead's `list_sessions` shows `mtok` and `long`.
+- The lead's rules say so too: replace a long teammate instead of adding work to it, and hand over when told.
+- **Plugin hook** `hooks/long-session.mjs` (PostToolUse): inside a Dispatch session that is over the guard, it adds the same note to the model's context once, as a backstop. Outside Dispatch sessions it does nothing and sends no request. Claude sessions get `DISPATCH_URL` and `DISPATCH_SESSION` in their environment for it.
+
 ## 0.13.0 — 2026-11-12
 
 ### Added

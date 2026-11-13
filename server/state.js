@@ -45,6 +45,18 @@ export function ctxOver(s, cfg) {
   return pct > 0 && share != null && share * 100 >= pct;
 }
 
+/** Tokens the session has processed in total, in millions (input + cache read + cache write + output). */
+export function mtokens(s) {
+  const u = s?.usage || {};
+  return ((u.input || 0) + (u.cacheRead || 0) + (u.cacheWrite || 0) + (u.output || 0)) / 1e6;
+}
+
+/** True when the session is at or over the team's length guard (`handoffMTokens`, millions; 0 = off). */
+export function longOver(s, cfg) {
+  const m = cfg?.handoffMTokens ?? 0;
+  return m > 0 && mtokens(s) >= m;
+}
+
 /** Why a person should look, or null when nothing is needed. `level` maps to the --bad / --warn colours. */
 export function attentionOf(s, state, pending = 0, since = null) {
   switch (state) {
@@ -54,6 +66,8 @@ export function attentionOf(s, state, pending = 0, since = null) {
     default:
       // Over the context guard: not stuck, but the next message starts a fresh CLI session.
       if (s.ctxHigh && state !== "done") return { level: "warn", reason: `컨텍스트를 ${s.ctxHigh.pct}% 썼어요`, since: s.ctxHigh.sinceMs ?? since };
+      // Over the length guard: the session should be replaced by a fresh one.
+      if (s.longRun && state !== "done") return { level: "warn", reason: `오래 쓴 세션이에요 (누적 ${s.longRun.mtok}M 토큰). 새 세션으로 바꿔 주세요`, since: s.longRun.sinceMs ?? since };
       return null;
   }
 }
