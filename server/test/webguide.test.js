@@ -69,3 +69,18 @@ test("non-Claude sessions get the npx commands instead of the Skill tool", () =>
   assert.doesNotMatch(p, /Skill 도구/);
   assert.match(webGuidance("impl", "claude", home(WITH)), /Skill 도구/);
 });
+
+test("Codex and Gemini are told to skip offline; Claude wording is unchanged", () => {
+  const h = home(WITH);
+  for (const provider of ["codex", "gemini"]) {
+    const p = webGuidance("impl", provider, h);
+    assert.match(p, /네트워크가 있을 때만/);
+    assert.match(p, /즉시 건너뛰고/);
+    assert.match(p, /sandbox 완화를 하지 말고/);
+    assert.match(p, /가이드 조회 불가\(네트워크 없음\)/);
+  }
+  const c = webGuidance("impl", "claude", h);
+  assert.doesNotMatch(c, /조회 불가|건너뛰/);
+  assert.match(c, /Skill 도구로/);
+  assert.match(webGuidance("lead", "claude", h), /조회 불가"라고 적힌 절은 채워진 것으로 본다/);
+});
