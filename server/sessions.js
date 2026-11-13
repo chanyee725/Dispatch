@@ -1,5 +1,5 @@
 import { spawn } from "node:child_process";
-import { appendFileSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { appendFileSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { randomUUID } from "node:crypto";
 import { EventEmitter } from "node:events";
 import path from "node:path";
@@ -84,6 +84,7 @@ export class Hub extends EventEmitter {
     this.shared.on("change", () => { this.emit("limits", this.currentLimits()); this.checkTickets(); });
     this.live = new Map(); // id -> { proc, transcript, perms, seenMsgIds }
     this.isConnected = () => true; // replaced by the server with the Dispatch-level connection check
+    this.dropDelayMs = 1500; // a removed session's process gets this long to exit before its worktree goes
 
     // Transcripts are appended per session under .dispatch/transcripts so a restart keeps them.
     this.tdir = path.join(root, ".dispatch", "transcripts");
@@ -173,6 +174,9 @@ export class Hub extends EventEmitter {
       if (r) r.activity = null;
     }
     if (patch.status === "running" && patch.status !== prev) { const r = this.live.get(s.id); if (r) r.lastEventAt = Date.now(); }
+    // A new turn, a permission request or a stop ends the auto-remove grace period.
+    if (patch.status && patch.status !== "idle") this.cancelAutoRemove(s.id);
+    if (patch.status === "error" && prev !== "error") this.noticeError(s);
     if (s.stuck && patch.status) this.refreshStuck(s, Date.now(), false);
     this.store.save();
     this.emit("session", this.publicSession(s));
@@ -182,6 +186,7 @@ export class Hub extends EventEmitter {
     const r = this.rt(s.id);
     entry.at = Date.now();
     r.lastEventAt = entry.at;
+    r.events = (r.events ?? 0) + 1;
     if (s.stuck?.reason === "silent") this.refreshStuck(s, entry.at);
     if (entry.kind === "tool") {
       r.lastTool = entry.name + (entry.text ? ` ${clip(entry.text, 80)}` : "");
@@ -487,6 +492,16 @@ export class Hub extends EventEmitter {
     if (!s) throw new Error("세션이 없어요");
     if (!force && this.paused) throw new Error("사용량 한도로 일시정지 중이에요. 남은 작업은 티켓으로 저장됐고, 초기화되면 이어서 진행해요.");
     const r = this.rt(id);
+    // Whoever writes to a teammate in its grace period keeps it: the auto-remove timer stops here.
+    this.cancelAutoRemove(id);
+    // Notices for a lead (auto-removed teammates, kept worktrees) ride on its next message; put back if it
+    // does not go out.
+    const notes = r.leadNotes?.length ? r.leadNotes.splice(0) : [];
+    if (notes.length) text = `${text}\n\n${notes.join("\n")}`;
+    try { this.deliver(s, r, text); } catch (e) { r.leadNotes = [...notes, ...(r.leadNotes || [])]; throw e; }
+  }
+
+  deliver(s, r, text) {
     // A pending length-guard note is attached here and cleared only on a path that delivers the message.
     const pend = s.longPending;
     if (pend) text = `${text}\n\n${pend}`;
@@ -625,7 +640,8 @@ export class Hub extends EventEmitter {
     this.touch(s, { status: "done" });
   }
 
-  remove(id) {
+  /** `strict`: the worktree check also keeps ignored files and treats a failed git status as dirty (auto-remove). */
+  remove(id, { strict = false, info = {} } = {}) {
     const gone = this.get(id);
     this.kill(id);
     delete this.store.data.sessions[id];
@@ -637,9 +653,84 @@ export class Hub extends EventEmitter {
     this.store.save();
     this.emit("removed", { id });
     // Its worktree goes too when nothing uncommitted is left in it; the branch stays.
-    if (gone?.worktree && this.team().dropWorktrees) setTimeout(() => dropWorktree(this.root, gone.cwd).catch(() => {}), 1500);
+    const dropped = gone?.worktree && this.team().dropWorktrees
+      ? new Promise(res => setTimeout(() => dropWorktree(this.root, gone.cwd, { strict, info }).then(res, () => res(false)), this.dropDelayMs))
+      : Promise.resolve(null);
     this.emit("tasks", this.tasks);
     this.emit("tickets", this.tickets);
+    return dropped; // true: worktree removed, false: kept (uncommitted changes), null: not tried
+  }
+
+  /* ---------------- Auto-remove finished teammates (issue #39) ---------------- */
+  // Leads forgot stop_session(remove: true), so finished teammates piled up holding worktrees and slots.
+  // Once a teammate's report has reached its lead and nothing waits on a person, the server removes it
+  // after a grace period unless the lead writes to it. The timer lives in memory only: after a restart
+  // nothing is armed until the teammate's next report.
+
+  /** Why `s` must not be auto-removed now, or null when it may be. */
+  autoRemoveBlocked(s) {
+    if (!s || !this.team().autoRemoveDone) return "off";
+    if (!s.parent || s.canSpawn) return "lead"; // only teammates; a lead is never removed by the server
+    if (s.status !== "idle") return s.status; // running, waiting, error, done
+    if (s.asksUser) return "asks";
+    const r = this.live.get(s.id);
+    if (r?.perms.size) return "perm";
+    if (r?.pendingReport) return "report"; // not delivered yet
+    return null;
+  }
+
+  /** Starts (or restarts) the grace timer for a teammate whose report just reached its lead. */
+  armAutoRemove(s) {
+    this.cancelAutoRemove(s.id);
+    if (this.autoRemoveBlocked(s)) return;
+    const r = this.rt(s.id);
+    r.armedEvents = r.events ?? 0;
+    r.autoRemove = setTimeout(() => { r.autoRemove = null; this.autoRemove(s.id).catch(() => {}); }, this.team().autoRemoveGraceSec * 1000);
+    r.autoRemove.unref?.();
+  }
+
+  cancelAutoRemove(id) {
+    const r = this.live.get(id);
+    if (r?.autoRemove) { clearTimeout(r.autoRemove); r.autoRemove = null; }
+  }
+
+  /** The grace period ran out: stop and remove the teammate, then tell its lead. */
+  async autoRemove(id) {
+    const s = this.get(id);
+    if (!s || this.autoRemoveBlocked(s)) return false;
+    const { parent, name, branch, cwd, worktree } = s;
+    const who = `${name}(${s.roleName ?? s.role})`;
+    // Work since the report (a queued message started another turn, events with status still idle) keeps it.
+    const r = this.live.get(id);
+    if (r?.armedEvents !== undefined && (r.events ?? 0) !== r.armedEvents) return false;
+    const info = {};
+    const dropped = this.remove(id, { strict: true, info });
+    const kept = worktree && (await dropped) === false && existsSync(cwd);
+    const why = info.detached ? ` 분리된 HEAD라 worktree를 남겼어요${info.sha ? ` (커밋 ${info.sha})` : ""}. 작업 폴더는 ${cwd}예요.`
+      : info.unknown ? ` git 상태를 확인하지 못해 작업 폴더 ${cwd}는 남겼어요.`
+      : ` 커밋 안 된 변경이나 git이 무시하는 파일이 있거나 상태를 확인하지 못해 작업 폴더 ${cwd}는 남겼어요.`;
+    this.notifyLead(parent, `[Dispatch] ${who} 세션을 정리했어요${branch ? `(브랜치 ${branch})` : ""}.`
+      + (kept ? why : ""));
+    return true;
+  }
+
+  /** A teammate stopped with an error: it is not removed, and its lead hears about it at once. */
+  noticeError(s) {
+    if (s._killed || !this.team().autoRemoveDone || !s.parent || s.canSpawn) return;
+    this.notifyLead(s.parent, `[Dispatch] ${s.name}(${s.roleName ?? s.role}) 세션이 오류로 멈췄어요${s.branch ? `(브랜치 ${s.branch})` : ""}: ${clip(s.error || "알 수 없는 오류", 300)}\n자동 정리하지 않았어요. 원인을 보고 다시 지시하거나 stop_session(remove: true)로 정리하세요.`, { wake: true });
+  }
+
+  /**
+   * Tells a lead something without spending a turn on it: mid-turn when its Claude process is running,
+   * otherwise with its next message (like the length guard's longPending). `wake` sends it now.
+   */
+  notifyLead(leadId, text, { wake = false } = {}) {
+    const lead = this.get(leadId);
+    if (!lead || lead.status === "done") return;
+    const r = this.rt(leadId);
+    const midTurn = lead.provider === "claude" && r.proc && (lead.status === "running" || lead.status === "waiting");
+    if (wake || midTurn) { try { this.send(leadId, text); return; } catch { /* kept for the next message */ } }
+    (r.leadNotes ||= []).push(text);
   }
 
   respondPermission(id, requestId, behavior, always = false) {
@@ -843,7 +934,8 @@ export class Hub extends EventEmitter {
     const r = this.live.get(s.id), parent = s.parent && this.get(s.parent);
     if (!r?.pendingReport || !parent || parent.status === "done") return;
     if (this.paused) return; // kept; delivered after the reset
-    try { this.send(parent.id, r.pendingReport + this.boardNote(parent.id)); r.pendingReport = null; } catch { /* retried by checkTeams */ }
+    try { this.send(parent.id, r.pendingReport + this.boardNote(parent.id)); r.pendingReport = null; } catch { return; /* retried by checkTeams */ }
+    this.armAutoRemove(s);
   }
 
   stopAll() {
@@ -923,6 +1015,8 @@ export class Hub extends EventEmitter {
 
   onClaude(s, m) {
     const r = this.rt(s.id);
+    // Work signals end an auto-remove grace period (a queued message may start a turn while status is idle).
+    if (["assistant", "user", "control_request"].includes(m.type) || (m.type === "system" && m.subtype === "init")) this.cancelAutoRemove(s.id);
     switch (m.type) {
       case "system":
         if (m.subtype === "init" && m.session_id) this.touch(s, { providerSessionId: m.session_id });
@@ -1024,6 +1118,7 @@ export class Hub extends EventEmitter {
   }
 
   onCodex(s, m) {
+    if (/^(item|turn\.started)/.test(m.type || "")) this.cancelAutoRemove(s.id);
     switch (m.type) {
       case "thread.started":
         this.touch(s, { providerSessionId: m.thread_id });
@@ -1087,6 +1182,7 @@ export class Hub extends EventEmitter {
   }
 
   onGemini(s, m) {
+    if (m.event === "step_update") this.cancelAutoRemove(s.id);
     switch (m.event) {
       case "init":
         if (m.conversation_id) this.touch(s, { providerSessionId: m.conversation_id });

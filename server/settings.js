@@ -19,6 +19,14 @@ export const TEAM_DEFAULTS = () => ({
   shareDeps: true,
   /** Remove a session's worktree with it when nothing uncommitted is left. */
   dropWorktrees: true,
+  /**
+   * Remove a teammate (any session with a lead, never a lead) once its turn ended, its report reached the
+   * lead and nothing waits on a person, unless the lead writes to it within `autoRemoveGraceSec`. Leads
+   * forgot stop_session(remove: true) and finished teammates piled up (issue #39).
+   */
+  autoRemoveDone: true,
+  /** Grace period before that removal, in seconds. */
+  autoRemoveGraceSec: 120,
   /** Default model per role id, overriding the built-in preset. */
   roleModels: {},
   /**
@@ -77,12 +85,13 @@ export function patchTeam(store, patch, { roles, models }) {
     if (n !== 0 && n < 2) throw Object.assign(new Error("0 또는 2~500 사이 숫자를 넣어 주세요"), { status: 400 });
     next.handoffMTokens = n;
   }
+  if ("autoRemoveGraceSec" in patch) next.autoRemoveGraceSec = int(patch.autoRemoveGraceSec, 10, 3600);
   if ("maxChildren" in patch) next.maxChildren = int(patch.maxChildren, 1, 16);
   if ("stuckFails" in patch) next.stuckFails = int(patch.stuckFails, 0, 20);
   if ("stuckSilentMinutes" in patch) next.stuckSilentMinutes = int(patch.stuckSilentMinutes, 0, 240);
   if ("stuckMismatchMinutes" in patch) next.stuckMismatchMinutes = int(patch.stuckMismatchMinutes, 0, 240);
   if ("stuckEtaRatio" in patch) next.stuckEtaRatio = ratio(patch.stuckEtaRatio, 1, 10);
-  for (const k of ["replyStyle", "shareDeps", "dropWorktrees"]) if (k in patch) next[k] = patch[k] === true;
+  for (const k of ["replyStyle", "shareDeps", "dropWorktrees", "autoRemoveDone"]) if (k in patch) next[k] = patch[k] === true;
   if (patch.roleModels && typeof patch.roleModels === "object") {
     const rm = { ...(cur.roleModels || {}) };
     for (const [role, model] of Object.entries(patch.roleModels)) {
