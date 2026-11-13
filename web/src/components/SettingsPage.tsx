@@ -122,6 +122,12 @@ export function SettingsPage() {
         <Row label="관리자 한 명이 둘 수 있는 팀원" hint="동시에 열려 있는 팀원 수의 상한이에요.">
           <NumberField value={team.maxChildren} min={1} max={16} unit="명" label="관리자당 최대 팀원 수" onSave={n => save({ team: { maxChildren: n } })} />
         </Row>
+        <Row label="끝난 팀원 자동 정리" hint="팀원의 보고가 관리자에게 전달되고 기다리는 권한 요청·질문이 없으면, 유예 시간 뒤에 세션을 지우고 관리자에게 알려요. 그사이 관리자가 메시지를 보내면 남겨요. 관리자와 오류로 멈춘 세션은 지우지 않아요.">
+          <Toggle checked={team.autoRemoveDone ?? true} label="끝난 팀원 자동 정리" onChange={v => save({ team: { autoRemoveDone: v } })} />
+        </Row>
+        <Row label="자동 정리 유예 시간" hint="보고가 전달된 뒤 이만큼 기다렸다가 지워요.">
+          <NumberField value={team.autoRemoveGraceSec ?? 120} min={10} max={3600} unit="초" label="자동 정리 유예 시간 (초)" onSave={n => save({ team: { autoRemoveGraceSec: n } })} />
+        </Row>
       </Section>
 
       <Section title="역할별 기본 모델" note="새 세션을 만들 때와 관리자가 팀원을 만들 때 쓰는 기본값이에요.">

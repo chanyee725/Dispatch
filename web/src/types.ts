@@ -138,6 +138,10 @@ export interface TeamSettings {
   replyStyle: boolean;
   shareDeps: boolean;
   dropWorktrees: boolean;
+  /** Remove a finished teammate once its report reached the lead and the grace period passed. */
+  autoRemoveDone?: boolean;
+  /** That grace period in seconds (10–3600). */
+  autoRemoveGraceSec?: number;
   roleModels: Record<string, string>;
 }
 export interface Settings { guard: { enabled: boolean; five: number; seven: number }; team: TeamSettings }
