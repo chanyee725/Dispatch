@@ -12,6 +12,12 @@ Every release is tagged `vX.Y.Z` and published on [GitHub Releases](https://gith
 
 - The `installed_plugins.json` lookup used for the `i-have-adhd` reply style moved to `server/plugins.js` (`pluginDir`) and is shared by both features.
 
+## 0.15.2 — 2026-11-13
+
+### Fixed
+
+- **Usage limits: a second update in the same millisecond is no longer dropped** (#43). The merge used a strict `>` on the timestamp, so two `setClaude`/`setGemini` calls with the same timestamp kept the first value. A tie now goes to the incoming value, and a write keeps its own value over the file's on a tie. An older value still never overwrites a newer one.
+
 ## 0.15.1 — 2026-11-13
 
 ### Fixed
