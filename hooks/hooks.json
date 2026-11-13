@@ -1,9 +1,9 @@
 {
-  "description": "Dispatch hooks: inside a Dispatch session that has run too long, remind it to hand over (issue #29); in a main Claude Code session editing files in a project with a live Dispatch server, remind it once to delegate to a lead (issue #31). Neither blocks a tool.",
+  "description": "Dispatch hooks: inside a Dispatch session that has run too long, remind it to hand over (issue #29); in a main Claude Code session editing files (or running a Bash command that writes) in a project with a live Dispatch server, remind it to delegate to a lead, again every 30 minutes (issues #31, #33). Neither blocks a tool.",
   "hooks": {
     "PreToolUse": [
       {
-        "matcher": "Edit|Write|MultiEdit|NotebookEdit",
+        "matcher": "Edit|Write|MultiEdit|NotebookEdit|Bash",
         "hooks": [
           { "type": "command", "command": "node \"${CLAUDE_PLUGIN_ROOT}/hooks/main-delegates.mjs\"", "timeout": 5 }
         ]
