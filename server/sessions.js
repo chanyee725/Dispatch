@@ -185,6 +185,7 @@ export class Hub extends EventEmitter {
     const r = this.rt(s.id);
     entry.at = Date.now();
     r.lastEventAt = entry.at;
+    r.events = (r.events ?? 0) + 1;
     if (s.stuck?.reason === "silent") this.refreshStuck(s, entry.at);
     if (entry.kind === "tool") {
       r.lastTool = entry.name + (entry.text ? ` ${clip(entry.text, 80)}` : "");
@@ -638,7 +639,8 @@ export class Hub extends EventEmitter {
     this.touch(s, { status: "done" });
   }
 
-  remove(id) {
+  /** `strict`: the worktree check also keeps ignored files and treats a failed git status as dirty (auto-remove). */
+  remove(id, { strict = false } = {}) {
     const gone = this.get(id);
     this.kill(id);
     delete this.store.data.sessions[id];
@@ -651,7 +653,7 @@ export class Hub extends EventEmitter {
     this.emit("removed", { id });
     // Its worktree goes too when nothing uncommitted is left in it; the branch stays.
     const dropped = gone?.worktree && this.team().dropWorktrees
-      ? new Promise(res => setTimeout(() => dropWorktree(this.root, gone.cwd).then(res, () => res(false)), this.dropDelayMs))
+      ? new Promise(res => setTimeout(() => dropWorktree(this.root, gone.cwd, { strict }).then(res, () => res(false)), this.dropDelayMs))
       : Promise.resolve(null);
     this.emit("tasks", this.tasks);
     this.emit("tickets", this.tickets);
@@ -681,6 +683,7 @@ export class Hub extends EventEmitter {
     this.cancelAutoRemove(s.id);
     if (this.autoRemoveBlocked(s)) return;
     const r = this.rt(s.id);
+    r.armedEvents = r.events ?? 0;
     r.autoRemove = setTimeout(() => { r.autoRemove = null; this.autoRemove(s.id).catch(() => {}); }, this.team().autoRemoveGraceSec * 1000);
     r.autoRemove.unref?.();
   }
@@ -696,10 +699,13 @@ export class Hub extends EventEmitter {
     if (!s || this.autoRemoveBlocked(s)) return false;
     const { parent, name, branch, cwd, worktree } = s;
     const who = `${name}(${s.roleName ?? s.role})`;
-    const dropped = this.remove(id);
+    // Work since the report (a queued message started another turn, events with status still idle) keeps it.
+    const r = this.live.get(id);
+    if (r?.armedEvents !== undefined && (r.events ?? 0) !== r.armedEvents) return false;
+    const dropped = this.remove(id, { strict: true });
     const kept = worktree && (await dropped) === false && existsSync(cwd);
     this.notifyLead(parent, `[Dispatch] ${who} 세션을 정리했어요${branch ? `(브랜치 ${branch})` : ""}.`
-      + (kept ? ` 커밋 안 된 변경이 있어 작업 폴더 ${cwd}는 남겼어요.` : ""));
+      + (kept ? ` 커밋 안 된 변경이나 git이 무시하는 파일이 있거나 상태를 확인하지 못해 작업 폴더 ${cwd}는 남겼어요.` : ""));
     return true;
   }
 
@@ -1003,6 +1009,8 @@ export class Hub extends EventEmitter {
 
   onClaude(s, m) {
     const r = this.rt(s.id);
+    // Work signals end an auto-remove grace period (a queued message may start a turn while status is idle).
+    if (["assistant", "user", "control_request"].includes(m.type) || (m.type === "system" && m.subtype === "init")) this.cancelAutoRemove(s.id);
     switch (m.type) {
       case "system":
         if (m.subtype === "init" && m.session_id) this.touch(s, { providerSessionId: m.session_id });
@@ -1104,6 +1112,7 @@ export class Hub extends EventEmitter {
   }
 
   onCodex(s, m) {
+    if (/^(item|turn\.started)/.test(m.type || "")) this.cancelAutoRemove(s.id);
     switch (m.type) {
       case "thread.started":
         this.touch(s, { providerSessionId: m.thread_id });
@@ -1167,6 +1176,7 @@ export class Hub extends EventEmitter {
   }
 
   onGemini(s, m) {
+    if (m.event === "step_update") this.cancelAutoRemove(s.id);
     switch (m.event) {
       case "init":
         if (m.conversation_id) this.touch(s, { providerSessionId: m.conversation_id });

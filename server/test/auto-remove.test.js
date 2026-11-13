@@ -6,6 +6,7 @@ import { existsSync, mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Hub } from "../sessions.js";
+import { dropWorktree } from "../git.js";
 import { patchTeam, teamSettings } from "../settings.js";
 
 // Auto-remove of finished teammates (issue #39) on a real Hub with fake CLI processes.
@@ -170,7 +171,7 @@ test("a worktree with uncommitted changes is kept and the lead is told; a clean 
   assert.equal(await hub.autoRemove("K"), true);
   assert.equal(store.data.sessions.K, undefined);
   assert.ok(existsSync(dirty), "dirty worktree kept");
-  assert.match(said(leadProc), /세션을 정리했어요\(브랜치 b-dirty\)\. 커밋 안 된 변경이 있어 작업 폴더 .*wt-dirty는 남겼어요/);
+  assert.match(said(leadProc), /세션을 정리했어요\(브랜치 b-dirty\)\. 커밋 안 된 변경이나 git이 무시하는 파일이 있거나 상태를 확인하지 못해 작업 폴더 .*wt-dirty는 남겼어요/);
 
   store.data.sessions.C = { id: "C", name: "Ari", roleName: "리뷰어", parent: "L", provider: "claude", status: "idle", usage: {}, worktree: true, cwd: clean, branch: "b-clean" };
   assert.equal(await hub.autoRemove("C"), true);
@@ -189,4 +190,55 @@ test("settings: autoRemoveDone defaults on, grace defaults to 120 s and is range
   assert.equal(next.autoRemoveGraceSec, 45);
   assert.throws(() => patchTeam(store, { autoRemoveGraceSec: 5 }, { roles: [], models: [] }), /10~3600/);
   assert.throws(() => patchTeam(store, { autoRemoveGraceSec: 4000 }, { roles: [], models: [] }), /10~3600/);
+});
+
+test("work after the report keeps the teammate even while its status still reads idle", async () => {
+  const { hub, store, kid, finish } = makeHub();
+  // A queued message starts another turn: its first event is init, with no status change.
+  finish();
+  hub.onClaude(kid, { type: "system", subtype: "init", session_id: "x" });
+  assert.equal(kid.status, "idle");
+  mock.timers.tick(500_000);
+  await flush();
+  assert.ok(store.data.sessions.K, "init cancels the timer");
+
+  // Any transcript event after the report blocks the removal even if the timer was not cancelled.
+  finish();
+  hub.push(kid, { kind: "tool", name: "Bash", text: "npm test" });
+  assert.equal(kid.status, "idle");
+  mock.timers.tick(120_000);
+  await flush();
+  assert.ok(store.data.sessions.K, "kept: it is working");
+
+  // The next report re-arms and, with no work after it, the removal goes ahead.
+  finish();
+  mock.timers.tick(120_000);
+  await flush();
+  assert.equal(store.data.sessions.K, undefined);
+});
+
+test("dropWorktree strict (auto-remove) keeps ignored files and failed status; the manual path is unchanged", async () => {
+  mock.timers.reset();
+  const root = mkdtempSync(join(tmpdir(), "dispatch-ar-strict-"));
+  const git = (...a) => execFileSync("git", ["-C", root, ...a], { stdio: "pipe" });
+  git("init", "-q");
+  writeFileSync(join(root, ".gitignore"), ".env\nnode_modules/\n");
+  git("add", "."); git("-c", "user.email=t@t", "-c", "user.name=t", "commit", "-q", "-m", "init");
+  const wt = name => { const d = join(root, name); git("worktree", "add", "-q", "-b", name, d); return d; };
+
+  const env = wt("w-env");
+  writeFileSync(join(env, ".env"), "SECRET=1");
+  assert.equal(await dropWorktree(root, env, { strict: true }), false, "ignored .env keeps it");
+  assert.ok(existsSync(env));
+  assert.equal(await dropWorktree(root, env), true, "manual removal: ignored files do not count, as before");
+
+  const noise = wt("w-noise");
+  execFileSync("mkdir", ["-p", join(noise, "node_modules", "x")]);
+  writeFileSync(join(noise, "node_modules", "x", "i.js"), "");
+  assert.equal(await dropWorktree(root, noise, { strict: true }), true, "node_modules is noise");
+
+  const broken = wt("w-broken");
+  writeFileSync(join(broken, ".git"), "gitdir: /nonexistent\n");
+  assert.equal(await dropWorktree(root, broken, { strict: true }), false, "failed status counts as dirty");
+  assert.ok(existsSync(broken));
 });

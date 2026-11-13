@@ -71,9 +71,14 @@ async function shareDeps(root, dir) {
  * files outside build noise. The branch and its commits stay. Worktrees of removed sessions
  * otherwise piled up (37 GB across ~100 of them).
  */
-export async function dropWorktree(root, dir) {
+export async function dropWorktree(root, dir, { strict = false } = {}) {
   if (!dir || path.resolve(dir) === path.resolve(root) || !existsSync(dir)) return false;
-  const st = await out(git(dir, "status", "--porcelain"));
+  let st;
+  if (strict) {
+    // Removal nobody clicked (auto-remove): a failed status counts as dirty, and ignored files
+    // (.env, local data, …) count too unless they are known build noise.
+    try { st = (await git(dir, "status", "--porcelain", "--ignored")).stdout; } catch { return false; }
+  } else st = await out(git(dir, "status", "--porcelain"));
   if (st.split("\n").filter(Boolean).map(l => l.slice(3)).some(f => keep(f.replace(/\/$/, "")))) return false;
   try { await git(root, "worktree", "remove", "--force", dir); return true; } catch { return false; }
 }
