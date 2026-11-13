@@ -8,6 +8,7 @@ import { dropWorktree, prepareWorkdir, verifyMerged } from "./git.js";
 import { enterStage } from "./tasks.js";
 import { CHILD_PROMPT, NAMES, PERMS, SPAWN_PROMPT } from "./roles.js";
 import { replyStyle } from "./style.js";
+import { webGuidance } from "./webguide.js";
 import { effectiveRoles, teamSettings } from "./settings.js";
 import { codexLimits, geminiResetFrom, isQuotaError, SharedLimits } from "./limits.js";
 import { recordState, trimToWindow, WINDOW_MS } from "../shared/timeline.js";
@@ -863,7 +864,8 @@ export class Hub extends EventEmitter {
     const where = s.canSpawn && s.worktree
       ? `\n\n[병합 위치] 너의 작업 폴더는 ${s.cwd} (브랜치 ${s.branch})이고 통합 브랜치가 아니다. 병합은 프로젝트 폴더 ${this.root}에서 한다: git -C ${this.root} merge --no-ff <브랜치> (또는 --ff-only). 병합 뒤 git -C ${this.root} log --oneline -1 로 통합 브랜치 HEAD를 확인하고 보고에 적는다.`
       : "";
-    return [s.prompt, (s.canSpawn ? SPAWN_PROMPT : CHILD_PROMPT) + where, this.team().replyStyle ? replyStyle() : ""].filter(Boolean).join("\n\n");
+    const role = s.canSpawn ? "lead" : s.role;
+    return [s.prompt, (s.canSpawn ? SPAWN_PROMPT : CHILD_PROMPT) + where, webGuidance(role, s.provider), this.team().replyStyle ? replyStyle() : ""].filter(Boolean).join("\n\n");
   }
 
   start(s, prompt) {

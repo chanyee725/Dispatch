@@ -54,6 +54,10 @@ A teammate without `parent` never reports to the lead, and the lead stalls waiti
 
 Every session gets [reference/rules.md](reference/rules.md) prepended to its task: branch and merge discipline, one heavy check at a time, review before merge, what only the user may decide, and privacy. Edit that file to change how every future team works; keep it short, since it is sent with every session.
 
+## Web work
+
+When the `modern-web-guidance` Claude Code plugin (`modern-web-guidance@googlechrome`) is installed, the server adds a `[Modern Web Guidance]` section to the implementer, designer and reviewer prompts, and the lead is told to put it in web briefs: for HTML, CSS or client-side JS, run the `modern-web-guidance:modern-web-guidance` skill (search → retrieve → check the code against the guide) and end the report or PR with a `### Modern Web Guidance` section. Project rules win over the guides, and queries stay generic (no project, file or people names). Server, test and build work doesn't use it. Codex and Gemini sessions skip the guide at once when `npx` fails or there is no network (no retry, approval request or sandbox loosening) and note "가이드 조회 불가(네트워크 없음)" in the section; the lead counts that as filled. Without the plugin nothing is added.
+
 ## Limits
 
 - The server refuses new Claude sessions at or above the limit guard (`settings.guard`); the script stops and prints the server's message — relay it.
