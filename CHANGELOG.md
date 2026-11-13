@@ -2,6 +2,12 @@
 
 Every release is tagged `vX.Y.Z` and published on [GitHub Releases](https://github.com/chanyee725/Dispatch/releases). The plugin version in `.claude-plugin/plugin.json` matches the tag.
 
+## 0.17.1 — 2026-11-13
+
+### Fixed
+
+- **Sessions know who they are** (#45). The system prompt now opens with `[나는 누구인가] 당신은 <이름>(<역할>)이다. 세션 id <id>.` and, when the project has open leads, lists each as `- <이름>(<역할>), id <id>`, marking the session itself `(당신)`. A lead can now tell that a message addressed to its name is its own, and knows the other leads in the project. The list is taken when the session starts (the prompt says so) and holds only name, role and id: no account details or conversation, and nothing new is stored. There is no separate merge-owner role in Dispatch; the note says merges are done by leads, as before.
+
 ## 0.17.0 — 2026-11-13
 
 ### Added

@@ -951,13 +951,28 @@ export class Hub extends EventEmitter {
       : { DISPATCH_URL: `http://127.0.0.1:${this.port}`, DISPATCH_SELF: s.id, DISPATCH_MODE: "child" };
   }
 
+  /**
+   * Who this session is and who the project's leads are (issue #45): name, role and id only, never
+   * account details or conversation. Taken when the session starts; later changes do not reach it.
+   */
+  identityNote(s) {
+    const who = x => `${x.name}(${x.roleName ?? x.role})`;
+    const lines = [`[나는 누구인가] 당신은 ${who(s)}이다. 세션 id ${s.id}.`];
+    const leads = this.sessions.filter(x => x.canSpawn && x.status !== "done");
+    if (leads.length) {
+      lines.push("[이 프로젝트의 관리자] 세션 시작 시점 기준이며, 이후 바뀐 것은 반영되지 않는다. 병합은 관리자가 한다.");
+      for (const x of leads) lines.push(`- ${who(x)}, id ${x.id}${x.id === s.id ? " (당신)" : ""}`);
+    }
+    return lines.join("\n");
+  }
+
   systemPrompt(s) {
     // A lead works in its own worktree; without the project folder spelled out it merged into its own branch.
     const where = s.canSpawn && s.worktree
       ? `\n\n[병합 위치] 너의 작업 폴더는 ${s.cwd} (브랜치 ${s.branch})이고 통합 브랜치가 아니다. 병합은 프로젝트 폴더 ${this.root}에서 한다: git -C ${this.root} merge --no-ff <브랜치> (또는 --ff-only). 병합 뒤 git -C ${this.root} log --oneline -1 로 통합 브랜치 HEAD를 확인하고 보고에 적는다.`
       : "";
     const role = s.canSpawn ? "lead" : s.role;
-    return [s.prompt, (s.canSpawn ? SPAWN_PROMPT : CHILD_PROMPT) + where, webGuidance(role, s.provider), this.team().replyStyle ? replyStyle() : ""].filter(Boolean).join("\n\n");
+    return [this.identityNote(s), s.prompt, (s.canSpawn ? SPAWN_PROMPT : CHILD_PROMPT) + where, webGuidance(role, s.provider), this.team().replyStyle ? replyStyle() : ""].filter(Boolean).join("\n\n");
   }
 
   start(s, prompt) {
