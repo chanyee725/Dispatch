@@ -2,6 +2,16 @@
 
 Every release is tagged `vX.Y.Z` and published on [GitHub Releases](https://github.com/chanyee725/Dispatch/releases). The plugin version in `.claude-plugin/plugin.json` matches the tag.
 
+## 0.16.0 — 2026-11-13
+
+### Added
+
+- **modern-web-guidance for web work** (#35). When the `modern-web-guidance` Claude Code plugin (`modern-web-guidance@googlechrome`) is installed, implementer, designer and reviewer sessions get a `[Modern Web Guidance]` prompt section: for HTML, CSS and client-side JS, run the `modern-web-guidance:modern-web-guidance` skill (Codex and Gemini sessions: `npx -y modern-web-guidance@latest`), search → retrieve → check the code against the guide, and end the report or PR with a `### Modern Web Guidance` section. The lead is told to put that in web briefs and to ask for the section before merging. Project rules (CLAUDE.md / AGENTS.md) win over the guides; search queries stay generic, with no project, file or people names. Server, test and build work doesn't use it, and tester and docs sessions get nothing. Without the plugin nothing is added. The team rules (`skills/dispatch-team/reference/rules.md`) say the same.
+
+### Changed
+
+- The `installed_plugins.json` lookup used for the `i-have-adhd` reply style moved to `server/plugins.js` (`pluginDir`) and is shared by both features.
+
 ## 0.15.1 — 2026-11-13
 
 ### Fixed
