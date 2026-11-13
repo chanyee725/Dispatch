@@ -24,7 +24,17 @@ Builds on the `dispatch` skill (a sibling directory of this one): that skill sta
    `<skill-dir>/scripts/team.sh "<project-root>" <preset> "<task in the user's words>"`.
    It creates the lead first and every teammate as the lead's child, so each teammate's finished turn reaches the lead as a report. It starts or reuses the server (via `../dispatch/scripts/start.sh`; set `DISPATCH_PORT` if 4317 serves another project), connects Claude in Dispatch when the CLI is logged in, and creates the sessions with `worktree: true`. Done when it prints one line per session (name, model, branch).
 
-3. **Hand over.** Give the user the URL and the session list. The lead (관리자) now runs the team: it splits the task, steers the others through its Dispatch MCP tools, merges reviewed branches and reports. Answer the user's later questions from `GET /api/state` and the lead's transcript (`GET /api/sessions/<lead-id>/messages`).
+3. **Hand over.** Give the user the URL and the session list. The lead (관리자) now runs the team: it splits the task, steers the others through its Dispatch MCP tools, merges reviewed branches and reports. Answer the user's later questions from `GET /api/state` and the lead's transcript (`GET /api/sessions/<lead-id>/messages`). From here on you delegate (see below): new work goes to a lead, not to your own edits.
+
+## Main session delegates
+
+You, the session that talks to the user, never implement, fix or investigate code yourself.
+
+- Hand every task to a Dispatch lead. Your part: write briefs, verify before merge, comment on PRs, merge.
+- A different stream (another area or repo, or the current lead's context is heavy or it shows `longRun`) gets a **new** lead, not more work on an existing one.
+- Small review should-fixes go back to the owning lead; do not patch them yourself.
+
+The plugin's `hooks/main-delegates.mjs` reminds you once per session when you edit a file in a project with a live Dispatch server. It never blocks the edit.
 
 ## Permission mode for the whole team
 

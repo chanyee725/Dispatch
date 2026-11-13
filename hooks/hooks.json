@@ -1,6 +1,14 @@
 {
-  "description": "Dispatch session length guard: inside a Dispatch session that has run too long, remind it to hand over (issue #29).",
+  "description": "Dispatch hooks: inside a Dispatch session that has run too long, remind it to hand over (issue #29); in a main Claude Code session editing files in a project with a live Dispatch server, remind it once to delegate to a lead (issue #31). Neither blocks a tool.",
   "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Edit|Write|MultiEdit|NotebookEdit",
+        "hooks": [
+          { "type": "command", "command": "node \"${CLAUDE_PLUGIN_ROOT}/hooks/main-delegates.mjs\"", "timeout": 5 }
+        ]
+      }
+    ],
     "PostToolUse": [
       {
         "hooks": [

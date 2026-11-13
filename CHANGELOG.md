@@ -2,6 +2,13 @@
 
 Every release is tagged `vX.Y.Z` and published on [GitHub Releases](https://github.com/chanyee725/Dispatch/releases). The plugin version in `.claude-plugin/plugin.json` matches the tag.
 
+## 0.15.0 — 2026-11-13
+
+### Added
+
+- **The main session delegates** (#31). The `dispatch` and `dispatch-team` skills now say it: the Claude Code session that talks to the user does not implement, fix or investigate code itself; it hands every task to a Dispatch lead, writes briefs, verifies before merge, comments on PRs and merges. A different stream (another area or repo, or a lead whose context is heavy or shows `longRun`) gets a new lead, and small review should-fixes go back to the owning lead. The team rules tell leads the same about should-fixes.
+- **Plugin hook** `hooks/main-delegates.mjs` (PreToolUse on `Edit|Write|MultiEdit|NotebookEdit`): outside Dispatch sessions, when the edited file sits in a project with a live Dispatch server (`~/.dispatch/servers/*.json`, pid check only, no network), it adds that rule to the model's context once per session. It never blocks the edit, does nothing inside Dispatch sessions, and stays silent on any error.
+
 ## 0.14.0 — 2026-11-13
 
 ### Added
