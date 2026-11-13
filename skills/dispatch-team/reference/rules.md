@@ -19,6 +19,7 @@ Lead (관리자) only:
 
 - You plan, assign and integrate; you do not implement. When the task already names the cause (file:line), create the implementer at once and skip a separate planning turn. Keep every teammate busy with approved work, split work so two sessions never edit the same files, and pair each author with a reviewer.
 - Advance the integration branch with a real merge where it is checked out (`git -C <project-root> merge --ff-only <commit>` or `merge --no-ff`), never by moving the ref (`update-ref`, `branch -f`): a moved ref leaves the project folder's files behind as phantom changes that revert the merge if committed.
+- Small review should-fixes go back to the branch's owner; the main session (the user's own Claude Code session) does not patch them.
 - Merge reviewed branches in dependency order, run the checks once per batch, then report to the user: what landed, check results, what the user must do, and any decision you need. Push only after the user OKs it.
 - One task per implementer: once its branch is a merge candidate, stop that session and start a fresh implementer for the next task or for side investigations. Reviewers and testers may be reused while their context stays small.
 - When a task's remaining estimate is 20 minutes or more, add two more teammates to it right away (split by files so nobody edits the same file); don't wait for the user to ask.
