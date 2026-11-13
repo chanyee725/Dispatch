@@ -2,6 +2,12 @@
 
 Every release is tagged `vX.Y.Z` and published on [GitHub Releases](https://github.com/chanyee725/Dispatch/releases). The plugin version in `.claude-plugin/plugin.json` matches the tag.
 
+## 0.13.0 — 2026-11-12
+
+### Added
+
+- **Context guard** (설정 → 컨텍스트 넘김 기준, default 70 %, 0 turns it off). Turn-count rotation only runs between turns, so a teammate kept in one long turn by its lead's mid-turn follow-ups filled 87 % of its window with no warning and 0 turns counted. Now, once a session's context crosses the guard: a running Claude session is told once, mid-turn, to commit, summarise what is done and left, and end the turn; the session gets `ctxHigh` and a 확인 필요 warning; and its next message starts a fresh CLI session with the usual handoff note, whatever its turn count. The lead's `list_sessions` / `get_session` show `ctxPct`.
+
 ## 0.12.0 — 2026-11-12
 
 ### Added

@@ -33,13 +33,28 @@ export function sessionState(s, pending = 0) {
   return "resting";
 }
 
+/** Share of the context window in use (0–1), or null when the window is unknown. */
+export function ctxShare(s) {
+  return s?.ctxWindow > 0 && s.ctx >= 0 ? s.ctx / s.ctxWindow : null;
+}
+
+/** True when the session is at or over the team's context guard (`ctxHandoff`, percent; 0 = off). */
+export function ctxOver(s, cfg) {
+  const pct = cfg?.ctxHandoff ?? 0;
+  const share = ctxShare(s);
+  return pct > 0 && share != null && share * 100 >= pct;
+}
+
 /** Why a person should look, or null when nothing is needed. `level` maps to the --bad / --warn colours. */
 export function attentionOf(s, state, pending = 0, since = null) {
   switch (state) {
     case "failed": return { level: "bad", reason: "오류로 멈췄어요", since };
     case "waiting": return { level: "warn", reason: pending > 0 || s.status === "waiting" ? "권한 승인을 기다려요" : "사용자 답을 기다려요", since };
     case "stuck": return { level: "warn", reason: s.stuck?.label || "멈춘 것 같아요", since: s.stuck?.sinceMs ?? since };
-    default: return null;
+    default:
+      // Over the context guard: not stuck, but the next message starts a fresh CLI session.
+      if (s.ctxHigh && state !== "done") return { level: "warn", reason: `컨텍스트를 ${s.ctxHigh.pct}% 썼어요`, since: s.ctxHigh.sinceMs ?? since };
+      return null;
   }
 }
 

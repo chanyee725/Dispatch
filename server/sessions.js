@@ -11,7 +11,7 @@ import { replyStyle } from "./style.js";
 import { effectiveRoles, teamSettings } from "./settings.js";
 import { codexLimits, geminiResetFrom, isQuotaError, SharedLimits } from "./limits.js";
 import { recordState, trimToWindow, WINDOW_MS } from "../shared/timeline.js";
-import { asksUser, attentionOf, checkKey, recordCheck, sessionState, sessionStuck, stuckSig, taskStuck } from "./state.js";
+import { asksUser, attentionOf, checkKey, ctxOver, ctxShare, recordCheck, sessionState, sessionStuck, stuckSig, taskStuck } from "./state.js";
 
 const MCP_SCRIPT = path.join(path.dirname(fileURLToPath(import.meta.url)), "mcp.js");
 const MAX_TRANSCRIPT = 400;
@@ -500,11 +500,31 @@ export class Hub extends EventEmitter {
     }
   }
 
-  /** Idle (between turns) and past the turn budget since its CLI session started. */
+  /** Idle (between turns) and past the turn budget, or over the context guard, since its CLI session started. */
   shouldRotate(s) {
+    if (!s.providerSessionId || (s.status !== "idle" && s.status !== "error")) return false;
+    if (ctxOver(s, this.team())) return true;
     const after = s.canSpawn ? this.team().rotateLead : this.team().rotateOthers;
-    return after > 0 && !!s.providerSessionId && (s.turnsSinceRotate ?? s.turns ?? 0) >= after
-      && (s.status === "idle" || s.status === "error");
+    return after > 0 && (s.turnsSinceRotate ?? s.turns ?? 0) >= after;
+  }
+
+  /**
+   * Context guard. Turn-count rotation only runs between turns, so a session that keeps one turn going
+   * (a lead's follow-ups land mid-turn) can fill its window with no warning. Once a session crosses
+   * `ctxHandoff`: flag it (attention, lead's list_sessions), and tell a running Claude session once,
+   * mid-turn, to commit and wrap up. Its next message then starts a fresh CLI session (shouldRotate).
+   */
+  checkCtx(s, now = Date.now()) {
+    if (!ctxOver(s, this.team())) return;
+    const pct = Math.round(ctxShare(s) * 100);
+    if (!s.ctxHigh) this.mark(s, { ctxHigh: { pct, sinceMs: now } });
+    else s.ctxHigh.pct = pct;
+    const r = this.live.get(s.id);
+    if (r?.ctxNoticed || s.provider !== "claude" || !r?.proc || s.status !== "running") return;
+    r.ctxNoticed = true;
+    const text = `[Dispatch] 컨텍스트를 ${pct}% 썼다. 새 조사·탐색은 시작하지 마라. 지금까지 한 일을 커밋하고, 끝낸 것·남은 것·다음 단계를 짧게 정리해 답하고 이 턴을 끝내라. 다음 지시는 새 CLI 세션에서 이어 받는다.`;
+    this.push(s, { kind: "info", text: `컨텍스트 ${pct}%: 마무리하고 새 세션으로 넘기라고 알렸어요` });
+    r.proc.stdin.write(JSON.stringify({ type: "user", message: { role: "user", content: text } }) + "\n");
   }
 
   /** Ends the current CLI session and starts a fresh one with a handoff note plus `text`. */
@@ -519,11 +539,17 @@ export class Hub extends EventEmitter {
       ? `\n\n[팀원]\n${kids.map(c => `- ${c.name} (${c.roleName}, id ${c.id}, ${c.status}${c.branch ? `, 브랜치 ${c.branch}` : ""}): ${clip(c.last || "", 160)}`).join("\n")}`
       : "";
     const last = clip(r.lastText || s.last || "", 2500);
-    const note = `[Dispatch] 컨텍스트를 줄이려고 ${s.turnsSinceRotate ?? s.turns}턴 만에 새 CLI 세션으로 이어 간다. 이전 대화는 이 세션에 없다. 필요한 상태는 작업 폴더·브랜치·git log·docs로 다시 확인하라.\n\n[직전 내 응답]\n${last || "(없음)"}${team}\n\n[이어서 할 일]\n${text}`;
-    this.push(s, { kind: "info", text: `새 세션으로 이어 감 (${s.turnsSinceRotate ?? s.turns}턴, 대화 요약을 넘김)` });
+    const why = s.ctxHigh ? `컨텍스트를 ${s.ctxHigh.pct}% 써서` : `컨텍스트를 줄이려고 ${s.turnsSinceRotate ?? s.turns}턴 만에`;
+    const note = `[Dispatch] ${why} 새 CLI 세션으로 이어 간다. 이전 대화는 이 세션에 없다. 필요한 상태는 작업 폴더·브랜치·git log·docs로 다시 확인하라.\n\n[직전 내 응답]\n${last || "(없음)"}${team}\n\n[이어서 할 일]\n${text}`;
+    this.push(s, { kind: "info", text: s.ctxHigh
+      ? `새 세션으로 이어 감 (컨텍스트 ${s.ctxHigh.pct}%, 대화 요약을 넘김)`
+      : `새 세션으로 이어 감 (${s.turnsSinceRotate ?? s.turns}턴, 대화 요약을 넘김)` });
     s.rotations = (s.rotations ?? 0) + 1;
     s.providerSessionId = null;
     s.turnsSinceRotate = 0;
+    s.ctx = 0;
+    s.ctxHigh = null;
+    r.ctxNoticed = false;
     this.start(s, note);
   }
 
@@ -870,6 +896,7 @@ export class Hub extends EventEmitter {
           for (const k in delta) s.usage[k] += delta[k];
           s.ctx = delta.input + delta.cacheRead + delta.cacheWrite + delta.output;
           this.store.addDaily(s.model, s.role, delta);
+          this.checkCtx(s);
         }
         for (const c of msg.content || []) {
           if (c.type === "text" && c.text.trim()) { this.push(s, { kind: "assistant", text: c.text }); s.last = clip(c.text, 400); r.lastText = c.text; }
@@ -979,7 +1006,7 @@ export class Hub extends EventEmitter {
         const delta = { input: Math.max(0, (u.input_tokens || 0) - cached), output: (u.output_tokens || 0),
           cacheRead: cached, cacheWrite: u.cache_write_input_tokens || 0 };
         for (const k in delta) s.usage[k] += delta[k];
-        s.ctx = (u.input_tokens || 0) + (u.output_tokens || 0);
+        s.ctx = (u.input_tokens || 0) + (u.output_tokens || 0); this.checkCtx(s);
         this.store.addDaily(s.model, s.role, delta);
         this.touch(s, { status: "idle", turns: s.turns + 1, turnsSinceRotate: (s.turnsSinceRotate ?? s.turns ?? 0) + 1 });
         this.reportToParent(s);
@@ -1034,7 +1061,7 @@ export class Hub extends EventEmitter {
             const u = su.usage;
             const delta = { input: u.input_tokens || 0, output: u.output_tokens || 0, cacheRead: u.cache_read_tokens || 0, cacheWrite: 0 };
             for (const k in delta) s.usage[k] += delta[k];
-            s.ctx = delta.input + delta.output;
+            s.ctx = delta.input + delta.output; this.checkCtx(s);
             this.store.addDaily(s.model, s.role, delta);
           }
         } else if (su.step_type === "tool") {

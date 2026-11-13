@@ -1,6 +1,6 @@
 {
   "name": "dispatch",
-  "version": "0.12.0",
+  "version": "0.13.0",
   "description": "Run a team of Claude Code, Codex and Gemini sessions in parallel from a local web UI: roles (관리자·구현자·리뷰어·테스터·디자이너·문서화), one git worktree per session, a lead that assigns, reviews and merges, live transcripts, diffs, usage and limits.",
   "author": {
     "name": "chanyee725",

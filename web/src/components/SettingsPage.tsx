@@ -113,6 +113,9 @@ export function SettingsPage() {
         <Row label="다른 역할 대화 새로 시작" hint="구현자·리뷰어·테스터 등에 같은 규칙을 써요.">
           <NumberField value={team.rotateOthers} min={0} max={100} unit="턴" label="다른 역할 대화 새로 시작 턴 수" onSave={n => save({ team: { rotateOthers: n } })} />
         </Row>
+        <Row label="컨텍스트 넘김 기준" hint="이 비율을 넘으면 하던 일을 커밋하고 마무리하라고 알리고, 다음 지시부터 새 세션으로 이어 가요. 턴이 하나로 길어져도 적용돼요. 0이면 꺼요.">
+          <NumberField value={team.ctxHandoff ?? 70} min={0} max={95} unit="%" label="컨텍스트 넘김 기준 퍼센트" onSave={n => save({ team: { ctxHandoff: n } })} />
+        </Row>
         <Row label="관리자 한 명이 둘 수 있는 팀원" hint="동시에 열려 있는 팀원 수의 상한이에요.">
           <NumberField value={team.maxChildren} min={1} max={16} unit="명" label="관리자당 최대 팀원 수" onSave={n => save({ team: { maxChildren: n } })} />
         </Row>
