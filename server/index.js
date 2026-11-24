@@ -11,11 +11,11 @@ import { copyUserStateSync } from './dispatch/state-migrate.js';
 const HOST = '127.0.0.1';
 const DEFAULT_PORT = 4330;
 
-// ~/.atelier/drawing.json: the default workspace and port when the command line and DRAW_PORT name none.
-// An older version's ~/.dispatch files are copied to ~/.atelier once, before anything reads them (#782).
-if (copyUserStateSync() === 'copied') console.log('Copied ~/.dispatch settings to ~/.atelier');
+// ~/.dispatch/drawing.json: the default workspace and port when the command line and DISPATCH_PORT (or DRAW_PORT) name none.
+// The Atelier days' ~/.atelier files are copied to ~/.dispatch once (never over a file there), before anything reads them (#782).
+if (copyUserStateSync() === 'copied') console.log('Copied ~/.atelier settings to ~/.dispatch');
 const userDefaults = readDefaultsSync();
-if (userDefaults.error) console.error(`~/.atelier/drawing.json unreadable (${userDefaults.error}); using built-in defaults.`);
+if (userDefaults.error) console.error(`~/.dispatch/drawing.json unreadable (${userDefaults.error}); using built-in defaults.`);
 const start = startDefaults(userDefaults.values, process.env, DEFAULT_PORT);
 
 let opts;
@@ -39,7 +39,7 @@ try {
   const claim = await claimWorkspace(opts.workspaceDir);
   if (!claim.ok) {
     const at = claim.holder?.port ? `: http://${HOST}:${claim.holder.port}/` : '';
-    console.error(`Another Atelier server is already running for this workspace${at}`);
+    console.error(`Another Dispatch server is already running for this workspace${at}`);
     process.exit(1);
   }
   lock = claim.lock;
@@ -59,7 +59,7 @@ const port = start.port;
 app = await createApp({ ...opts, lock }, { claimWorkspace });
 app.server.on('error', async (err) => {
   if (err.code === 'EADDRINUSE') {
-    console.error(`Port ${port} is already in use. Pick another one: DRAW_PORT=<port> npm start -- <workspace-dir>`);
+    console.error(`Port ${port} is already in use. Pick another one: DISPATCH_PORT=<port> npm start -- <workspace-dir>`);
   } else {
     console.error(`Server error: ${err.message}`);
   }
@@ -68,7 +68,7 @@ app.server.on('error', async (err) => {
 });
 app.server.listen(port, HOST, () => {
   app.ctx.lock?.setPort(port).catch((err) => console.error(`Could not update the workspace lock (${err.code ?? err.name})`));
-  console.log(`Atelier: http://${HOST}:${port}/  (workspace ${opts.workspaceDir}${opts.projectMode ? ', project mode' : ''})`);
+  console.log(`Dispatch: http://${HOST}:${port}/  (workspace ${opts.workspaceDir}${opts.projectMode ? ', project mode' : ''})`);
 });
 
 for (const sig of ['SIGINT', 'SIGTERM']) {

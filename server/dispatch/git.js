@@ -19,10 +19,10 @@ async function hasHead(dir) {
 }
 
 // Keep the session worktrees and the team state out of `git status` without touching the tracked
-// .gitignore. Only Atelier's own entries: the rest of .atelier/ (documents) is the user's to track.
-// `worktrees` is the folder new worktrees go in; a not-yet-moved .dispatch/ is excluded whole, as before.
-/** Atelier's own run files in the state folder (kept out of git, and out of the 작업 보기 diff, #906). */
-/** The chat history folder inside .atelier/ (chat-store.js). */
+// .gitignore. Only Dispatch's own entries: the rest of .dispatch/ (documents) is the user's to track.
+// `worktrees` is the folder new worktrees go in; a not-yet-copied .atelier/ is excluded whole.
+/** Dispatch's own run files in the state folder (kept out of git, and out of the 작업 보기 diff, #906). */
+/** The chat history folder inside .dispatch/ (chat-store.js). */
 export const CHAT_DIR = "chat";
 const STATE_FILES = ["state.json", "drawing.lock*", "server.port", "server.pid", "server.log"];
 
@@ -46,7 +46,7 @@ export async function ensureExcluded(root, worktrees) {
 }
 
 // Returns { cwd, branch, worktree, warning }. Falls back to the project dir when a worktree can't be made.
-// `worktrees` is the folder the worktree goes in: <project>/.atelier/worktrees unless the store still uses .dispatch/.
+// `worktrees` is the folder the worktree goes in: <project>/.dispatch/worktrees (wt/ for a standalone Dispatch's folder) unless the store still uses .atelier/.
 export async function prepareWorkdir(root, slug, useWorktree, { shareDeps: share = true, worktrees = stateLayout(root).worktrees } = {}) {
   if (!useWorktree) return { cwd: root, branch: await currentBranch(root), worktree: false };
   if (!(await hasHead(root))) {
@@ -126,7 +126,7 @@ const NOISE = new Set(["node_modules", ".next", ".next-prod", "dist", ".playwrig
 const IGNORED_NOISE = new Set([...NOISE, "coverage"]);
 // Untracked files count as work unless they sit in a top-level noise folder (a linked node_modules).
 const keep = f => !NOISE.has(f.split("/")[0]);
-// The 작업 보기 diff also skips Atelier's own run files and worktrees in the state folder (#906): a lock or state.json
+// The 작업 보기 diff also skips Dispatch's own run files and worktrees in the state folder (#906): a lock or state.json
 // is not the session's work. Documents in that folder still show, since they are work.
 const isRunFile = f => {
   if (!f.startsWith(STATE_DIR + "/")) return false;

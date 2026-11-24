@@ -1,10 +1,10 @@
 #!/usr/bin/env node
-// Claude Code PreToolUse hook shipped with the Atelier plugin (issues #31, #33, #769).
-// Inside an Atelier session (DISPATCH_SESSION / DISPATCH_PARENT / DISPATCH_SELF set) it does nothing. In any other
-// Claude Code session, before a file edit — or a Bash command that looks like a write — it checks whether an Atelier
+// Claude Code PreToolUse hook shipped with the Dispatch plugin (issues #31, #33, #769).
+// Inside an Dispatch session (DISPATCH_SESSION / DISPATCH_PARENT / DISPATCH_SELF set) it does nothing. In any other
+// Claude Code session, before a file edit — or a Bash command that looks like a write — it checks whether an Dispatch
 // server runs for the project that holds the file: the project is the git top-level of the hook's cwd, its port is in
 // <project>/.dispatch/server.port (written by plugin/scripts/start.sh) and must be all digits, the project's
-// <project>/.atelier/.drawing/server.lock (or the older atelier/ or pipelines/) must name that port and a live pid (the rule of ours() in start.sh), and
+// <project>/.dispatch/.drawing/server.lock (or the Atelier-era .atelier/, or the older atelier/ or pipelines/) must name that port and a live pid (the rule of ours() in start.sh), and
 // http://127.0.0.1:<port>/api/info must answer as a project-mode server (loopback only, short timeout).
 // Lanes (#768): the main session may do a quickfix (1-3 files) itself. The hook counts the distinct files the session
 // writes in that project; once it passes QUICKFIX_FILES it adds a note to the model's context: hand normal and risky
@@ -18,10 +18,10 @@ import { get } from "node:http";
 import { homedir, tmpdir } from "node:os";
 import { dirname, isAbsolute, join, resolve, sep } from "node:path";
 
-export const NOTE = "[Atelier 훅] 이 프로젝트에는 Atelier 서버가 돌고 있다. 메인 세션이 직접 하는 일은 1–3개 파일의 빠른 수정(atelier-quickfix)까지다. 이 세션은 3개 파일을 넘게 고치고 있다: 일반·위험 작업이니 atelier-team 으로 관리자(lead)에게 넘겨라. 인증·데이터·삭제·구조를 건드리는 위험 작업은 파일 수와 상관없이 넘긴다. 다른 흐름의 일이면 새 관리자를 만든다.";
+export const NOTE = "[Dispatch 훅] 이 프로젝트에는 Dispatch 서버가 돌고 있다. 메인 세션이 직접 하는 일은 1–3개 파일의 빠른 수정(dispatch-quickfix)까지다. 이 세션은 3개 파일을 넘게 고치고 있다: 일반·위험 작업이니 dispatch-team 으로 관리자(lead)에게 넘겨라. 인증·데이터·삭제·구조를 건드리는 위험 작업은 파일 수와 상관없이 넘긴다. 다른 흐름의 일이면 새 관리자를 만든다.";
 
-// Distinct files the main session may write in one project before the note (quickfix lane). ATELIER_QUICKFIX_FILES
-// overrides it (tests use 0).
+// Distinct files the main session may write in one project before the note (quickfix lane). DISPATCH_QUICKFIX_FILES
+// (or the older ATELIER_QUICKFIX_FILES) overrides it (tests use 0).
 export const QUICKFIX_FILES = 3;
 
 export const REMIND_MS = 30 * 60 * 1000;
@@ -108,13 +108,13 @@ export function projectRoot(dir) {
   }
 }
 
-// The project's workspace folder (#782) and the older ones a server started before #782 or #773 may still run on.
-const WORKSPACES = [".atelier", "atelier", "pipelines"];
+// The project's workspace folder (#782), the Atelier-era .atelier and the older ones a server started before #782 or #773 may still run on.
+const WORKSPACES = [".dispatch", ".atelier", "atelier", "pipelines"];
 
-// The port in <root>/.atelier/server.port (or an older .dispatch/ not moved yet, #782) when it is plain digits in 1..65535, else null.
+// The port in <root>/.dispatch/server.port (or the Atelier-era .atelier/, #782) when it is plain digits in 1..65535, else null.
 export function readPort(root) {
   let raw = null;
-  for (const dir of [".atelier", ".dispatch"]) {
+  for (const dir of [".dispatch", ".atelier"]) {
     try { raw = readFileSync(join(root, dir, "server.port"), "utf8").trim(); break; } catch { /* next */ }
   }
   if (raw === null) return null;
@@ -123,7 +123,7 @@ export function readPort(root) {
   return n >= 1 && n <= 65535 ? n : null;
 }
 
-// True when <root>/.atelier/.drawing/server.lock (or the older atelier/ or pipelines/) names `port` and a live pid (EPERM means alive, owned by another user).
+// True when <root>/.dispatch/.drawing/server.lock (or .atelier/, or the older atelier/ or pipelines/) names `port` and a live pid (EPERM means alive, owned by another user).
 export function lockLive(root, port) {
   return WORKSPACES.some((ws) => {
     try {
@@ -135,7 +135,7 @@ export function lockLive(root, port) {
   });
 }
 
-// True when a project-mode Atelier server on the ".atelier" (or older "atelier", "pipelines") workspace answers /api/info on 127.0.0.1:<port>.
+// True when a project-mode Dispatch server on the ".dispatch" (or the older ".atelier", "atelier", "pipelines") workspace answers /api/info on 127.0.0.1:<port>.
 export function probe(port, timeout = 1500) {
   return new Promise(done => {
     const req = get({ host: "127.0.0.1", port, path: "/api/info", timeout }, res => {
@@ -174,14 +174,14 @@ async function check(env, input, markDir, home, now) {
   const fp = input.tool_input?.file_path ?? input.tool_input?.notebook_path;
   const target = typeof fp === "string" && fp ? resolve(cwd ?? "/", expandHome(fp, home)) : cwd;
   if (!target || !isAbsolute(target)) return null;
-  const mark = join(markDir, `atelier-main-${sid}`);
+  const mark = join(markDir, `dispatch-main-${sid}`);
   const state = readMark(mark);
   if (now - state.noteAt < REMIND_MS) return null;
   if (!cwd || !(await findServer(target, cwd))) return null;
   // A Bash write has no known file: all of them share one slot.
   const key = createHash("sha256").update(bash ? "bash:" : target).digest("hex").slice(0, 12);
   if (!state.files.includes(key)) state.files.push(key);
-  const raw = env.ATELIER_QUICKFIX_FILES;
+  const raw = env.DISPATCH_QUICKFIX_FILES ?? env.ATELIER_QUICKFIX_FILES;
   const limit = typeof raw === "string" && /^[0-9]+$/.test(raw) ? Number(raw) : QUICKFIX_FILES;
   const over = state.files.length > limit;
   if (over) state.noteAt = now;

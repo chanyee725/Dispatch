@@ -1,4 +1,4 @@
-// The user's defaults in one human-editable file, ~/.atelier/drawing.json (E555, issue #724).
+// The user's defaults in one human-editable file, ~/.dispatch/drawing.json (E555, issue #724).
 // Schema and fallback order: docs/design/user-defaults.md.
 //
 // Metadata only: theme, default models per role, harness profiles per mode, guard thresholds, team settings, default workspace
@@ -29,11 +29,11 @@ const TEAM_NUM = ['stuckEtaRatio'];
 const TEAM_BOOL = ['replyStyle', 'shareDeps', 'dropWorktrees', 'autoRemoveDone', 'autoRotateLong'];
 const GUARD_NUM = ['five', 'seven', 'fable'];
 
-export const BROKEN_MESSAGE = '~/.atelier/drawing.json 파일을 읽지 못했어요. 파일을 고치거나 지우면 다시 저장할 수 있어요. 지금은 기본값을 써요.';
+export const BROKEN_MESSAGE = '~/.dispatch/drawing.json 파일을 읽지 못했어요. 파일을 고치거나 지우면 다시 저장할 수 있어요. 지금은 기본값을 써요.';
 
 const isNum = (v) => typeof v === 'number' && Number.isFinite(v);
 
-/** ~/.atelier/drawing.json for this HOME, or null when DRAWING_USER_DEFAULTS=off. */
+/** ~/.dispatch/drawing.json for this HOME, or null when DRAWING_USER_DEFAULTS=off. */
 export function defaultsFile(env = process.env) {
   if (env.DRAWING_USER_DEFAULTS === 'off') return null;
   return path.join(userDir(env), 'drawing.json');
@@ -186,7 +186,7 @@ export class UserDefaults {
   /** What GET /api/user-defaults answers: the file's place (HOME as ~), its values and any error. */
   status() {
     return {
-      file: this.file ? '~/.atelier/drawing.json' : null,
+      file: this.file ? '~/.dispatch/drawing.json' : null,
       values: this.values,
       error: this.error ? BROKEN_MESSAGE : null,
       problems: this.problems,
@@ -241,13 +241,13 @@ export class UserDefaults {
 
 /**
  * Where `npm start` runs when the command line names no folder, and on which port.
- * Workspace: the file's `workspace`, else `lastWorkspace`. Port: DRAW_PORT, else the file's `port`, else fallback.
+ * Workspace: the file's `workspace`, else `lastWorkspace`. Port: DISPATCH_PORT, else DRAW_PORT (the older name), else the file's `port`, else fallback.
  */
 export function startDefaults(values, env = process.env, fallbackPort = 4330) {
   const ws = values.workspace ?? values.lastWorkspace ?? null;
   return {
     workspaceDir: ws ? expandHome(ws, env) : null,
-    port: Number(env.DRAW_PORT) || values.port || fallbackPort,
+    port: Number(env.DISPATCH_PORT) || Number(env.DRAW_PORT) || values.port || fallbackPort,
   };
 }
 
@@ -307,11 +307,11 @@ export function checkPatch(body) {
   return out;
 }
 
-/** Atelier module entry (server/modules.js): GET/POST /api/user-defaults. Other modules use `defaults`. */
+/** Dispatch module entry (server/modules.js): GET/POST /api/user-defaults. Other modules use `defaults`. */
 export async function setup(ctx, { file } = {}) {
   const defaults = new UserDefaults(file === undefined ? defaultsFile() : file);
   await defaults.load();
-  if (defaults.error) console.error(`User defaults: ~/.atelier/drawing.json unreadable (${defaults.error}); using built-in defaults.`);
+  if (defaults.error) console.error(`User defaults: ~/.dispatch/drawing.json unreadable (${defaults.error}); using built-in defaults.`);
   const send = (res, status, body) => {
     res.writeHead(status, { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store' });
     res.end(JSON.stringify(body));

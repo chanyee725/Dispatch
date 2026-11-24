@@ -1,14 +1,15 @@
 #!/usr/bin/env bash
-# Call the Atelier server of a project from a skill (Claude Code or Codex).
+# Call the Dispatch server of a project from a skill (Claude Code or Codex).
 #   api.sh [-C project-root] METHOD PATH [BODY]
 #     METHOD  GET, POST, PUT, PATCH or DELETE
 #     PATH    starts with /api/ (query string allowed; encode it yourself)
 #     BODY    JSON text, or @file to send a file's contents, or - for stdin
-# Port: <project>/.atelier/server.port (or an older .dispatch/), else $DRAW_PORT / $DISPATCH_PORT, else 4330.
+# Port: <project>/.dispatch/server.port (or the Atelier-era .atelier/), else $DISPATCH_PORT / $DRAW_PORT, else 4330.
 # project-root defaults to the git top level of the current folder, else the current folder.
 # Non-GET requests carry x-drawing: 1, and x-drawing-session: $DRAWING_SESSION when that is set.
 # Prints the response body; exits 1 on an HTTP status >= 400 (body on stderr) or when no server answers.
-# Talks to 127.0.0.1 only. Gives up after $ATELIER_API_TIMEOUT seconds (default 60).
+# Talks to 127.0.0.1 only. Gives up after $DISPATCH_API_TIMEOUT seconds (default 60; the older $ATELIER_API_TIMEOUT
+# is read when that is unset).
 set -euo pipefail
 
 root=""
@@ -22,14 +23,14 @@ case "$method" in GET | POST | PUT | PATCH | DELETE) ;; *) echo "Bad method: $1"
 
 if [ -z "$root" ]; then root="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"; fi
 port=""
-for f in "$root/.atelier/server.port" "$root/.dispatch/server.port"; do
+for f in "$root/.dispatch/server.port" "$root/.atelier/server.port"; do
   if [ -f "$f" ]; then port="$(tr -d '[:space:]' < "$f")"; break; fi
 done
-port="${port:-${DRAW_PORT:-${DISPATCH_PORT:-4330}}}"
+port="${port:-${DISPATCH_PORT:-${DRAW_PORT:-4330}}}"
 [[ "$port" =~ ^[0-9]+$ ]] || { echo "Bad port: $port" >&2; exit 1; }
 
-timeout="${ATELIER_API_TIMEOUT:-60}"
-[[ "$timeout" =~ ^[0-9]+$ ]] || { echo "Bad ATELIER_API_TIMEOUT: $timeout" >&2; exit 2; }
+timeout="${DISPATCH_API_TIMEOUT:-${ATELIER_API_TIMEOUT:-60}}"
+[[ "$timeout" =~ ^[0-9]+$ ]] || { echo "Bad DISPATCH_API_TIMEOUT: $timeout" >&2; exit 2; }
 # -g: brackets and braces in a path or query (노트[1]) are sent as they are, not expanded by curl.
 args=(-sS -g --max-time "$timeout" -X "$method" -w '\n%{http_code}')
 if [ "$method" != GET ]; then
@@ -44,7 +45,7 @@ if [ -n "$body" ]; then
   esac
 fi
 
-out="$(curl "${args[@]}" "http://127.0.0.1:$port$path")" || { echo "No Atelier server on http://127.0.0.1:$port (start it with atelier-setup)" >&2; exit 1; }
+out="$(curl "${args[@]}" "http://127.0.0.1:$port$path")" || { echo "No Dispatch server on http://127.0.0.1:$port (start it with the dispatch skill)" >&2; exit 1; }
 code="${out##*$'\n'}"
 text="${out%$'\n'*}"
 if [ "$code" -ge 400 ]; then

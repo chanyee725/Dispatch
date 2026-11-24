@@ -6,7 +6,9 @@
 import { runCli } from "./cli.js";
 import { classify, prTrackingEnabled } from "./pr-status.js";
 
-export const ACCOUNTS_MARKER = "<!-- atelier:accounts -->";
+export const ACCOUNTS_MARKER = "<!-- dispatch:accounts -->";
+/** The marker of comments posted while the app was named Atelier: still matched, so those are updated too. */
+export const LEGACY_ACCOUNTS_MARKER = "<!-- atelier:accounts -->";
 const TIMEOUT_MS = 10000;
 
 /** The comment body for an issue's summary line. */
@@ -28,7 +30,7 @@ export function createAccountsComment({ workspaceDir, cwd, env, prDefault = asyn
     const body = accountsCommentBody(issue, summary);
     try {
       const { stdout } = await gh(["--paginate", `repos/{owner}/{repo}/issues/${pr}/comments`,
-        "--jq", `.[] | select((.body // "") | startswith(${JSON.stringify(ACCOUNTS_MARKER)})) | .id`]);
+        "--jq", `.[] | select((.body // "") | startswith(${JSON.stringify(ACCOUNTS_MARKER)}) or startswith(${JSON.stringify(LEGACY_ACCOUNTS_MARKER)})) | .id`]);
       const ids = stdout.split("\n").map(Number).filter(n => Number.isInteger(n) && n > 0);
       for (const id of ids.reverse()) {
         try {

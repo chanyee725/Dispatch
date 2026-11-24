@@ -16,7 +16,7 @@ const DEFAULT_ROOT = fileURLToPath(new URL('..', import.meta.url));
 /** Directories copied as they are (relative to the source root). */
 const DIRS = ['server', 'shared', 'public', 'plugin'];
 /** Never ship these, wherever they sit in the tree. */
-const SKIP = new Set(['node_modules', '.dispatch', '.git', '.drawing', '.DS_Store']);
+const SKIP = new Set(['node_modules', '.dispatch', '.atelier', '.git', '.drawing', '.DS_Store']);
 const skipEntry = (src) => {
   const name = src.split('/').pop();
   return !(SKIP.has(name) || name === '.env' || name.startsWith('.env.') || name.endsWith('.log'));

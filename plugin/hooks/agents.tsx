@@ -1,6 +1,6 @@
-// The /atelier-agents mod (#755; Claude Code ships /agents itself, so that name is refused): a pane beside the chat that follows Atelier's agent teams, and a one-line status.
+// The /dispatch-agents mod (#755; Claude Code ships /agents itself, so that name is refused): a pane beside the chat that follows Dispatch's agent teams, and a one-line status.
 // Every few seconds it reads GET http://127.0.0.1:<port>/api/agents/summary (the port from the project's
-// .atelier/server.port, as main-delegates.mjs and scripts/server-check.sh find it). Read only, loopback only,
+// .dispatch/server.port (or the Dispatch-era .dispatch/), as main-delegates.mjs and scripts/server-check.sh find it). Read only, loopback only,
 // metadata only: the summary carries names, roles, models, states, stages, times and issue/PR numbers.
 // When the server does not answer the pane says offline. Formatting lives in agents-format.mjs (tested by node).
 import { atom, read, update } from 'claude-code'
@@ -9,15 +9,15 @@ import type { EngineInterface, Register } from 'claude-code'
 import type { AgentsView } from '../types'
 import { asSummary, githubRepo, paneModel, parsePort, statusLine } from './agents-format.mjs'
 
-const PANE = 'atelier-agents'
-const TITLE = 'Atelier 에이전트'
+const PANE = 'dispatch-agents'
+const TITLE = 'Dispatch 에이전트'
 const POLL_MS = 4000
 const FETCH_MS = 2500
 const MAX_UP = 12
 
 // Change the shape tag when AgentsView changes: a value an earlier version stored outlives a reload.
-const view = atom({ plugin: 'atelier', key: 'agentsView' } as const, { kind: 'none' } as AgentsView, { shape: 'agents-view-1' })
-const repo = atom({ plugin: 'atelier', key: 'agentsRepo' } as const, null as string | null, { shape: 'agents-repo-1' })
+const view = atom({ plugin: 'dispatch', key: 'agentsView' } as const, { kind: 'none' } as AgentsView, { shape: 'agents-view-1' })
+const repo = atom({ plugin: 'dispatch', key: 'agentsRepo' } as const, null as string | null, { shape: 'agents-repo-1' })
 
 let timer: { cancel: () => void } | null = null
 let busy = false
@@ -35,7 +35,7 @@ async function projectRoot($: EngineInterface): Promise<string | null> {
 }
 
 async function readPort($: EngineInterface, root: string): Promise<number | null> {
-  for (const dir of ['.atelier', '.dispatch']) {
+  for (const dir of ['.dispatch', '.atelier']) {
     const raw = await $.fs.read(`${root}/${dir}/server.port`).catch(() => null)
     if (typeof raw === 'string') return parsePort(raw)
   }
@@ -74,7 +74,7 @@ async function poll($: EngineInterface): Promise<void> {
 
 export const register: Register = on => {
   on('session.start', async ($, e, next) => {
-    await $.command.register({ name: 'atelier-agents', description: 'Atelier 에이전트 팀 진행 상황을 옆 창에 보여줘요' })
+    await $.command.register({ name: 'dispatch-agents', description: 'Dispatch 에이전트 팀 진행 상황을 옆 창에 보여줘요' })
     timer?.cancel()
     timer = $.clock.every(POLL_MS, () => void poll($).catch(() => undefined))
     void poll($).catch(() => undefined)
@@ -87,10 +87,10 @@ export const register: Register = on => {
     return next(e)
   })
 
-  on('command.run', { command: 'atelier-agents' }, async $ => {
+  on('command.run', { command: 'dispatch-agents' }, async $ => {
     await $.ui.open({ id: PANE, title: TITLE })
     void poll($).catch(() => undefined)
-    return { text: 'Atelier 에이전트 창을 열었어요.' }
+    return { text: 'Dispatch 에이전트 창을 열었어요.' }
   })
 
   on('ui.render', { component: 'Pane', requestId: PANE }, async ($, e) => {
