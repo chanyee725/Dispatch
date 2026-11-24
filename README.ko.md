@@ -1,19 +1,19 @@
 <div align="center">
 
-# Atelier
+# Dispatch
 
 **AI 에이전트 세션을 한 화면에서 돌리고 지켜봐요. 내 컴퓨터에서만 도는 앱이에요.**<br>
 Claude Code · Codex · Gemini 세션과 팀을 띄우고, 세션 보드에서 지켜보고, 채팅으로 말을 걸어요.
 
 [English](README.md) · **한국어**
 
-[![version](https://img.shields.io/badge/version-0.1.0-6366f1)](CHANGELOG.md)
+[![version](https://img.shields.io/badge/version-1.0.0-6366f1)](CHANGELOG.md)
 [![node](https://img.shields.io/badge/node-%E2%89%A522.18-339933?logo=nodedotjs&logoColor=white)](#-빠른-시작)
 [![Claude Code plugin](https://img.shields.io/badge/Claude_Code-plugin-d97757)](#-스킬-설치)
 [![Codex plugin](https://img.shields.io/badge/Codex-plugin-111111)](#-스킬-설치)
 [![local only](https://img.shields.io/badge/127.0.0.1-local_only-0ea5e9)](#-개인정보와-로컬-전용)
 
-<a href="docs/images/demo.mp4"><img src="docs/images/demo-poster.png" alt="데모: Atelier 팀이 PLC 데이터를 받아 로봇을 움직이는 웹 페이지를 계획해요" width="900"></a>
+<a href="docs/images/demo.mp4"><img src="docs/images/demo-poster.png" alt="데모: Dispatch 팀이 PLC 데이터를 받아 로봇을 움직이는 웹 페이지를 계획해요" width="900"></a>
 
 <sub>데모 영상 · <a href="docs/images/demo.mp4">MP4로 보기</a> <!-- TODO(youtube): swap the MP4 link for the YouTube link once uploaded --> · 리드와 팀원이 실제 Claude CLI로 "PLC 데이터를 받아 로봇을 움직이는 웹 페이지"를 계획해요</sub>
 
@@ -32,10 +32,10 @@ Claude Code · Codex · Gemini 세션과 팀을 띄우고, 세션 보드에서 �
 필요한 것: Node.js 22.18 이상, git
 
 ```bash
-git clone https://github.com/chanyee725/Atelier.git
-cd Atelier
+git clone https://github.com/chanyee725/Dispatch.git
+cd Dispatch
 npm install && npm run build
-mkdir -p ~/atelier-notes && npm start -- ~/atelier-notes
+mkdir -p ~/dispatch-notes && npm start -- ~/dispatch-notes
 ```
 
 터미널에 나온 주소(기본 `http://127.0.0.1:4330/`)를 브라우저로 열어요.
@@ -43,42 +43,51 @@ mkdir -p ~/atelier-notes && npm start -- ~/atelier-notes
 | 설정 | 뜻 |
 |---|---|
 | `<작업 폴더>` | 파일이 저장되는 폴더. 미리 만들어 둬요. |
-| `DRAW_PORT` | 포트 번호. 없으면 4330. `DRAW_PORT=4340 npm start -- <작업 폴더>` |
+| `DISPATCH_PORT` | 포트 번호. 없으면 4330. `DISPATCH_PORT=4340 npm start -- <작업 폴더>`. 예전 이름 `DRAW_PORT`도 돼요. 둘 다 있으면 `DISPATCH_PORT`를 써요. |
 
 - `npm run build`를 건너뛰면 페이지 대신 "Web app not built"가 나와요.
 - 포트가 이미 쓰이고 있으면 서버가 바로 끝나고 다른 포트를 고르라고 알려줘요.
 
 ## 🔌 스킬 설치
 
-GitHub 저장소에서 바로 설치해요. 저장소 루트의 marketplace가 `plugin/`을 가리켜요.
+GitHub 저장소에서 바로 설치해요. 플러그인은 저장소 루트 전체라서(1.0 전과 같아요) 서버도 함께 받아요. 스킬과 훅은 `plugin/`에 있어요.
 
 **Claude Code**
 
 ```text
-/plugin marketplace add chanyee725/Atelier
-/plugin install atelier@atelier
+/plugin marketplace add chanyee725/Dispatch
+/plugin install dispatch@dispatch
 ```
 
 **Codex CLI**
 
 ```bash
-codex plugin marketplace add chanyee725/Atelier
-codex plugin add atelier@atelier
+codex plugin marketplace add chanyee725/Dispatch
+codex plugin add dispatch@dispatch
 ```
 
-그다음 프로젝트에서 "아틀리에 켜줘"라고 말하거나 `atelier-setup` 스킬을 써요. 자세한 내용: [plugin/README.md](plugin/README.md)
+그다음 프로젝트에서 "디스패치 켜줘"라고 말하거나 `dispatch` 스킬을 써요. 자세한 내용: [plugin/README.md](plugin/README.md)
+
+### Atelier나 Dispatch 0.x에서 옮겨 올 때
+
+Dispatch 1.0은 Atelier라고 부르던 앱을 Dispatch 이름으로 낸 거예요. 옮기는 동안 아무것도 지우지 않아요.
+
+- **Atelier로 쓰던 프로젝트**: `<프로젝트>/.atelier`는 그대로 둬요. 서버가 시작할 때 저장된 세션이 없으면 보드, 설정, 저장한 대화를 `<프로젝트>/.dispatch`로 한 번 복사해요(그 전까지는 `.atelier`를 그대로 써요). 예전 worktree는 제자리에 있어요.
+- **내 기본값**: `~/.atelier/`의 `drawing.json`, `limits.json`, `prefs.json`을 `~/.dispatch/`에 같은 파일이 없을 때만 한 번 복사해요.
+- **Dispatch 0.x로 쓰던 프로젝트**: 지금 있는 `<프로젝트>/.dispatch`(worktree는 `wt/`)를 그대로 써요. 0.x 서버는 먼저 꺼 주세요. `~/.dispatch/servers/`(0.x 등록 파일)는 읽지도 쓰지도 않아요.
+- **환경 변수**: `ATELIER_API_TIMEOUT`, `ATELIER_QUICKFIX_FILES`도 계속 돼요. 새 이름은 `DISPATCH_API_TIMEOUT`, `DISPATCH_QUICKFIX_FILES`예요.
 
 ## 🧩 스킬 7개
 
 | 스킬 | 하는 일 | 이렇게 말해요 |
 |---|---|---|
-| `atelier-setup` | 프로젝트에서 서버 켜기·끄기, Claude·Codex·Gemini 연결 | "아틀리에 켜줘" |
-| `atelier-update` | 최신 GitHub 릴리스로 업데이트하고 서버 다시 켜기 | "아틀리에 업데이트" |
-| `atelier-team` | 이슈 하나에 리드·구현자·리뷰어 팀 꾸리기 | "팀 꾸려서 진행해" |
-| `atelier-quickfix` | 1~3개 파일을 한 세션으로 빠르게 고치기 | "문구만 고쳐줘" |
-| `atelier-session` | 세션 하나 띄우기, 메시지·중단·권한 응답 | "세션 하나 띄워줘" |
-| `atelier-status` | 세션 상태, 남은 시간, 막힘, 사용량 한도 | "지금 뭐 하고 있어?" |
-| `atelier-settings` | 비용·토큰, 한도 가드, 역할별 모델 | "역할별 모델 바꿔줘" |
+| `dispatch` | 프로젝트에서 서버 켜기·끄기, Claude·Codex·Gemini 연결 | "디스패치 켜줘" |
+| `dispatch-update` | 최신 GitHub 릴리스로 업데이트하고 서버 다시 켜기 | "디스패치 업데이트" |
+| `dispatch-team` | 이슈 하나에 리드·구현자·리뷰어 팀 꾸리기 | "팀 꾸려서 진행해" |
+| `dispatch-quickfix` | 1~3개 파일을 한 세션으로 빠르게 고치기 | "문구만 고쳐줘" |
+| `dispatch-session` | 세션 하나 띄우기, 메시지·중단·권한 응답 | "세션 하나 띄워줘" |
+| `dispatch-status` | 세션 상태, 남은 시간, 막힘, 사용량 한도 | "지금 뭐 하고 있어?" |
+| `dispatch-settings` | 비용·토큰, 한도 가드, 역할별 모델 | "역할별 모델 바꿔줘" |
 
 ## 🧭 팀이 일하는 방식
 

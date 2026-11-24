@@ -1,19 +1,19 @@
 <div align="center">
 
-# Atelier
+# Dispatch
 
 **Run and watch AI agent sessions in one local app.**<br>
 Start Claude Code, Codex and Gemini sessions and teams, follow them on the session board, and talk to them in the chat.
 
 **English** · [한국어](README.ko.md)
 
-[![version](https://img.shields.io/badge/version-0.1.0-6366f1)](CHANGELOG.md)
+[![version](https://img.shields.io/badge/version-1.0.0-6366f1)](CHANGELOG.md)
 [![node](https://img.shields.io/badge/node-%E2%89%A522.18-339933?logo=nodedotjs&logoColor=white)](#-quick-start)
 [![Claude Code plugin](https://img.shields.io/badge/Claude_Code-plugin-d97757)](#-install-the-skills)
 [![Codex plugin](https://img.shields.io/badge/Codex-plugin-111111)](#-install-the-skills)
 [![local only](https://img.shields.io/badge/127.0.0.1-local_only-0ea5e9)](#-privacy-and-local-only)
 
-<a href="docs/images/demo.mp4"><img src="docs/images/demo-poster.png" alt="Demo: an Atelier team plans a web page that reads PLC data and moves a robot" width="900"></a>
+<a href="docs/images/demo.mp4"><img src="docs/images/demo-poster.png" alt="Demo: a Dispatch team plans a web page that reads PLC data and moves a robot" width="900"></a>
 
 <sub>Demo video · <a href="docs/images/demo.mp4">Watch the MP4</a> <!-- TODO(youtube): swap the MP4 link for the YouTube link once uploaded --> · a lead and a teammate plan "a web page that takes PLC data and moves a robot" with the real Claude CLI</sub>
 
@@ -32,10 +32,10 @@ Start Claude Code, Codex and Gemini sessions and teams, follow them on the sessi
 You need Node.js 22.18+ and git.
 
 ```bash
-git clone https://github.com/chanyee725/Atelier.git
-cd Atelier
+git clone https://github.com/chanyee725/Dispatch.git
+cd Dispatch
 npm install && npm run build
-mkdir -p ~/atelier-notes && npm start -- ~/atelier-notes
+mkdir -p ~/dispatch-notes && npm start -- ~/dispatch-notes
 ```
 
 Open the address it prints (default `http://127.0.0.1:4330/`).
@@ -43,42 +43,51 @@ Open the address it prints (default `http://127.0.0.1:4330/`).
 | Setting | Meaning |
 |---|---|
 | `<workspace>` | The folder your files live in. Create it first. |
-| `DRAW_PORT` | Port, 4330 when unset. `DRAW_PORT=4340 npm start -- <workspace>` |
+| `DISPATCH_PORT` | Port, 4330 when unset. `DISPATCH_PORT=4340 npm start -- <workspace>`. The older name `DRAW_PORT` still works; `DISPATCH_PORT` wins when both are set. |
 
 - Without `npm run build` the page says "Web app not built".
 - When the port is taken, the server stops at once and asks for another one.
 
 ## 🔌 Install the skills
 
-Install straight from GitHub; the marketplace at the repo root points at `plugin/`.
+Install straight from GitHub. The plugin is the repository root (as before 1.0, so the server comes with it); its skills and hooks live in `plugin/`.
 
 **Claude Code**
 
 ```text
-/plugin marketplace add chanyee725/Atelier
-/plugin install atelier@atelier
+/plugin marketplace add chanyee725/Dispatch
+/plugin install dispatch@dispatch
 ```
 
 **Codex CLI**
 
 ```bash
-codex plugin marketplace add chanyee725/Atelier
-codex plugin add atelier@atelier
+codex plugin marketplace add chanyee725/Dispatch
+codex plugin add dispatch@dispatch
 ```
 
-Then say "Atelier 켜줘" (or run the `atelier-setup` skill) in a project. Details: [plugin/README.md](plugin/README.md).
+Then say "디스패치 켜줘" (or run the `dispatch` skill) in a project. Details: [plugin/README.md](plugin/README.md).
+
+### Coming from Atelier or Dispatch 0.x
+
+Dispatch 1.0 is the app that was called Atelier, under the Dispatch name. Nothing is deleted on the way:
+
+- **Atelier projects**: `<project>/.atelier` is left as it is. On start the server copies its board, settings and saved chats into `<project>/.dispatch` once no session is saved there (until then it keeps using `.atelier`). Old worktrees stay where they are.
+- **Your defaults**: `~/.atelier/drawing.json`, `limits.json` and `prefs.json` are copied to `~/.dispatch/` once, only where `~/.dispatch/` has no such file.
+- **Dispatch 0.x projects**: an existing `<project>/.dispatch` (worktrees in `wt/`) is used as it is. Stop the 0.x server first. `~/.dispatch/servers/` (the 0.x registry) is not read or written.
+- **Environment**: `ATELIER_API_TIMEOUT` and `ATELIER_QUICKFIX_FILES` still work; the new names are `DISPATCH_API_TIMEOUT` and `DISPATCH_QUICKFIX_FILES`.
 
 ## 🧩 7 skills
 
 | Skill | What it does | Say |
 |---|---|---|
-| `atelier-setup` | Start or stop the server for a project; connect Claude, Codex, Gemini | "start Atelier" |
-| `atelier-update` | Update to the latest GitHub release and restart servers | "update Atelier" |
-| `atelier-team` | A lead, implementers and reviewers for one issue | "run this as a team" |
-| `atelier-quickfix` | A 1–3 file change in one session | "just fix the copy" |
-| `atelier-session` | One session: start, message, interrupt, permissions | "start one session" |
-| `atelier-status` | Sessions, ETAs, stuck flags, usage limits | "what's everyone doing?" |
-| `atelier-settings` | Cost and tokens, limit guard, model per role | "change the model per role" |
+| `dispatch` | Start or stop the server for a project; connect Claude, Codex, Gemini | "start Dispatch" |
+| `dispatch-update` | Update to the latest GitHub release and restart servers | "update Dispatch" |
+| `dispatch-team` | A lead, implementers and reviewers for one issue | "run this as a team" |
+| `dispatch-quickfix` | A 1–3 file change in one session | "just fix the copy" |
+| `dispatch-session` | One session: start, message, interrupt, permissions | "start one session" |
+| `dispatch-status` | Sessions, ETAs, stuck flags, usage limits | "what's everyone doing?" |
+| `dispatch-settings` | Cost and tokens, limit guard, model per role | "change the model per role" |
 
 ## 🧭 How a team runs
 

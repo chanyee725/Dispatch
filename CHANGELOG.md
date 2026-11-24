@@ -4,6 +4,24 @@
 
 ## [Unreleased]
 
+## [1.0.0] - 2026-11-24
+
+Atelier 앱 전체를 Dispatch 이름으로 내요. 코드와 동작은 Atelier 그대로이고 이름만 바뀌어요. 예전 Dispatch(0.x)를 통째로 바꾸는 큰 변화라 메이저 버전을 올렸어요.
+
+### Changed
+
+- 앱, 화면 제목, 로그, 패키지 이름이 Dispatch예요. 플러그인은 예전처럼 `dispatch@dispatch`(marketplace `chanyee725/Dispatch`, 저장소 루트)로 설치하고 업데이트해요.
+- 스킬 이름: `atelier-setup` → `dispatch`, `atelier-team` → `dispatch-team`, `atelier-update` → `dispatch-update`, 그 밖에 `dispatch-session`, `dispatch-quickfix`, `dispatch-status`, `dispatch-settings`. 상태 창 명령은 `/dispatch-agents`예요.
+- 프로젝트 상태 폴더는 `<프로젝트>/.dispatch`, 사용자 폴더는 `~/.dispatch`예요. 포트 변수는 `DISPATCH_PORT`(예전 `DRAW_PORT`도 돼요), 기본 포트는 4330이에요.
+- 환경 변수 `DISPATCH_API_TIMEOUT`, `DISPATCH_QUICKFIX_FILES`를 써요. 예전 `ATELIER_*` 이름도 계속 읽어요.
+
+### Migration
+
+- Atelier로 쓰던 프로젝트의 `.atelier`는 지우지도 바꾸지도 않아요. 저장된 세션이 없으면 서버가 시작할 때 보드, 설정, 대화를 `.dispatch`로 한 번 복사해요. 그 전까지는 `.atelier`를 그대로 써요.
+- `~/.atelier`의 기본값 파일은 `~/.dispatch`에 같은 파일이 없을 때만 한 번 복사해요.
+- Dispatch 0.x의 `.dispatch`(worktree는 `wt/`)는 그대로 써요. 0.x 서버는 먼저 꺼 주세요. `~/.dispatch/servers/` 등록 파일은 건드리지 않아요.
+- PR의 계정 요약 댓글은 예전 표시(`atelier:accounts`)가 붙은 댓글도 찾아서 고쳐요.
+
 ## [0.1.0] - 2026-11-21
 
 첫 릴리즈예요. 아래는 묶음 요약이고, 그 밑에 자세한 변경이 있어요.
