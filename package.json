@@ -1,18 +1,62 @@
 {
-  "name": "dispatch",
+  "name": "atelier",
   "version": "0.1.0",
   "private": true,
-  "description": "Web UI for running Claude Code and Codex sessions side by side",
   "type": "module",
-  "scripts": {
-    "dev": "scripts/dev.sh",
-    "start": "node server/index.js",
-    "build": "npm --prefix web run build",
-    "dev:web": "npm --prefix web run dev",
-    "setup": "scripts/setup.sh",
-    "test": "node --experimental-strip-types --test server/test/*.test.js web/test/*.test.ts"
-  },
+  "description": "Local diagramming tool: document + infinite canvas per file, with agent teams",
   "engines": {
-    "node": ">=22.6"
+    "node": ">=22.18"
+  },
+  "scripts": {
+    "start": "node server/index.js",
+    "test": "node --env-file=test/test-env --test --test-concurrency=4 \"test/**/*.test.*\"",
+    "icons": "node scripts/build-icons.mjs",
+    "pack": "node scripts/pack.mjs",
+    "build": "tsc -p shared && tsc -p web && vite build --config web/vite.config.ts",
+    "dev:web": "vite --config web/vite.config.ts"
+  },
+  "dependencies": {
+    "@codemirror/autocomplete": "^6.20.0",
+    "@codemirror/commands": "^6.11.1",
+    "@codemirror/language": "^6.13.1",
+    "@codemirror/lint": "^6.9.7",
+    "@codemirror/state": "^6.7.6",
+    "@codemirror/view": "^6.43.15",
+    "@excalidraw/excalidraw": "^0.18.1",
+    "@lezer/highlight": "^1.2.5",
+    "@tiptap/core": "^3.33.1",
+    "@tiptap/extension-list": "^3.33.1",
+    "@tiptap/extension-table": "^3.33.1",
+    "@tiptap/extensions": "^3.33.1",
+    "@tiptap/pm": "^3.33.1",
+    "@tiptap/react": "^3.33.1",
+    "@tiptap/starter-kit": "^3.33.1",
+    "@tiptap/suggestion": "^3.33.1",
+    "@tomplum/react-git-log": "^3.5.1",
+    "class-variance-authority": "^0.7.1",
+    "clsx": "^2.1.1",
+    "cmdk": "^1.1.1",
+    "codemirror": "^6.0.2",
+    "elkjs": "^0.12.1",
+    "lucide-react": "^1.72.0",
+    "pretendard": "^1.3.9",
+    "radix-ui": "^1.8.1",
+    "react": "^19.3.1",
+    "react-dom": "^19.3.1",
+    "react-icons": "5.7.0",
+    "sonner": "^2.0.8",
+    "tailwind-merge": "^3.7.0",
+    "tw-animate-css": "^1.4.0"
+  },
+  "devDependencies": {
+    "@tailwindcss/vite": "^4.3.5",
+    "@types/react": "^19.3.0",
+    "@types/react-dom": "^19.3.0",
+    "@vitejs/plugin-react": "^6.3.0",
+    "lucide-static": "^1.72.0",
+    "simple-icons": "^16.37.0",
+    "tailwindcss": "^4.3.5",
+    "typescript": "^7.0.2",
+    "vite": "^8.3.8"
   }
 }

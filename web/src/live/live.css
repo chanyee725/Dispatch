@@ -1,0 +1,669 @@
+/* Agent live view panel (E559, #728; docs/design/agent-live-view.md §1-2). A non-modal top-layer dialog docked to the
+   right edge under the top bar, clamp(460px, calc(40vw - 110px), 720px) wide (#915: as far left as the dashboard's right column); a bottom sheet (full width, 70vh) under 720px. App chrome tokens only; hue
+   only for status. Refresh (#889): a floating panel 8px off the edges, radius 12, its edge a translucent ring.
+   #905: it floats 24px off the bottom so the rounded bottom corners and the shadow under them read clearly; the height
+   comes from the insets, so it shrinks by the same amount. */
+:root {
+  /* Shared with the chat dock (#937), which moves left of an open panel. */
+  --agent-live-w: min(clamp(460px, calc(40vw - 110px), 720px), 100vw - 2rem);
+}
+.agent-live {
+  position: fixed;
+  inset: calc(var(--h-bar, 52px) + 8px) 8px 24px auto;
+  width: var(--agent-live-w);
+  height: auto;
+  max-height: none;
+  max-width: none;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 12px;
+  background: var(--card);
+  color: var(--card-foreground);
+  box-shadow: 0 0 0 1px var(--border), 0 8px 28px rgb(0 0 0 / 0.12);
+  font-size: var(--text-xs); letter-spacing: 0;
+  overscroll-behavior: contain;
+  overflow: hidden;
+}
+.agent-live:popover-open {
+  display: flex;
+  flex-direction: column;
+  /* #942: enters from the right edge it docks to (16px, 220ms ease-out) and leaves the same way in 160ms
+     ([data-closing], set by usePanelExit while the panel is still mounted). Reduced motion: opacity only. */
+  animation: agent-live-fade 220ms cubic-bezier(0.23, 1, 0.32, 1) both;
+}
+.agent-live:popover-open[data-closing] {
+  pointer-events: none;
+  animation: agent-live-out 160ms cubic-bezier(0.23, 1, 0.32, 1) both;
+}
+@media (prefers-reduced-motion: no-preference) {
+  .agent-live:popover-open {
+    animation: agent-live-fade 220ms cubic-bezier(0.23, 1, 0.32, 1) both, agent-live-slide 220ms cubic-bezier(0.23, 1, 0.32, 1) both;
+  }
+  .agent-live:popover-open[data-closing] {
+    animation: agent-live-out 160ms cubic-bezier(0.23, 1, 0.32, 1) both, agent-live-slide-out 160ms cubic-bezier(0.23, 1, 0.32, 1) both;
+  }
+}
+@keyframes agent-live-fade {
+  from {
+    opacity: 0;
+  }
+}
+@keyframes agent-live-out {
+  to {
+    opacity: 0;
+  }
+}
+@keyframes agent-live-slide {
+  from {
+    translate: 16px 0;
+  }
+}
+@keyframes agent-live-slide-out {
+  to {
+    translate: 16px 0;
+  }
+}
+@media (max-width: 719.98px) {
+  .agent-live {
+    inset: auto 0 0 0;
+    width: 100%;
+    height: 70vh;
+    border-radius: 12px 12px 0 0;
+    box-shadow: 0 0 0 1px var(--border), 0 -8px 28px rgb(0 0 0 / 0.12);
+  }
+  @media (prefers-reduced-motion: no-preference) {
+    .agent-live:popover-open {
+      animation: agent-live-fade 220ms cubic-bezier(0.23, 1, 0.32, 1) both, agent-live-rise 220ms cubic-bezier(0.23, 1, 0.32, 1) both;
+    }
+    .agent-live:popover-open[data-closing] {
+      animation: agent-live-out 160ms cubic-bezier(0.23, 1, 0.32, 1) both, agent-live-sink 160ms cubic-bezier(0.23, 1, 0.32, 1) both;
+    }
+  }
+}
+@keyframes agent-live-sink {
+  to {
+    translate: 0 16px;
+  }
+}
+@keyframes agent-live-rise {
+  from {
+    translate: 0 16px;
+  }
+}
+/* Press, hover and focus for the panel's own controls (#889): hover only where a pointer can hover. */
+.agent-live :is(.agent-live-icon, .agent-live-btn) {
+  transition: scale 140ms ease-out, background-color 150ms ease;
+}
+.agent-live :is(.agent-live-icon, .agent-live-btn):active {
+  scale: 0.97;
+}
+/* Focus: FOCUS_RING on each control (2px --primary outline). */
+.agent-live-head {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 12px 12px 12px 16px;
+  border-bottom: 1px solid var(--border);
+}
+.agent-live-head > :not(button):first-of-type {
+  flex: 1;
+  min-width: 0;
+}
+.agent-live-icon {
+  display: inline-grid;
+  place-items: center;
+  flex-shrink: 0;
+  width: 28px;
+  height: 28px;
+  border: 0;
+  border-radius: 6px;
+  background: none;
+  color: var(--muted-foreground);
+}
+@media (hover: hover) {
+  .agent-live-icon:hover {
+    background: var(--accent);
+    color: var(--foreground);
+  }
+}
+.agent-live-offline {
+  margin: 0;
+  padding: 4px 16px;
+  background: color-mix(in oklch, var(--warn) 18%, transparent);
+  color: var(--foreground);
+  font-size: var(--text-2xs); letter-spacing: 0;
+}
+.agent-live-stale {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 8px;
+}
+.agent-live-link {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-decoration: underline;
+  cursor: pointer;
+}
+.agent-live-body {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+}
+.agent-live-body > section {
+  display: grid;
+  gap: 6px;
+  padding: 12px 16px;
+}
+.agent-live-body > section + section {
+  border-top: 1px solid var(--border);
+}
+.agent-live h3 {
+  margin: 0;
+  font-size: var(--text-xs); letter-spacing: 0;
+  font-weight: 600;
+  color: var(--foreground);
+}
+.agent-live h3 .agent-live-count {
+  color: var(--muted-foreground);
+  font-size: var(--text-2xs); letter-spacing: 0;
+  font-weight: 400;
+  font-variant-numeric: tabular-nums;
+}
+/* The agent's name is the panel's title: a step larger, tracked in. */
+.agent-live-head h2 {
+  font-size: var(--text-base);
+  letter-spacing: -0.01em;
+}
+.agent-live-muted {
+  margin: 0;
+  color: var(--muted-foreground);
+  font-size: var(--text-2xs); letter-spacing: 0;
+}
+.agent-live-error {
+  margin: 0;
+  color: var(--destructive);
+}
+.agent-live-ask {
+  grid-template-columns: 1fr auto;
+  align-items: center;
+}
+.agent-live-ask p {
+  margin: 0;
+  color: var(--warn);
+}
+.agent-live-now {
+  display: grid;
+  gap: 4px;
+  margin: 0;
+}
+.agent-live-now > div {
+  display: grid;
+  grid-template-columns: 40px 1fr;
+  align-items: center;
+  min-height: 28px;
+}
+.agent-live-now dt,
+.agent-live-stats dt {
+  color: var(--muted-foreground);
+  font-size: var(--text-2xs); letter-spacing: 0;
+}
+.agent-live-now dd {
+  margin: 0;
+  min-width: 0;
+}
+.agent-live-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  min-height: 28px;
+}
+.agent-live-file {
+  min-height: 30px;
+}
+/* The running tool: the one row that stands out, on the sunken tone. */
+.agent-live-now .agent-live-current {
+  margin-inline: -8px;
+  padding-inline: 8px;
+  border-radius: 6px;
+  background: var(--muted);
+}
+.agent-live-target {
+  font-family: var(--font-mono);
+  font-size: var(--text-2xs); letter-spacing: 0;
+}
+.agent-live-at {
+  flex: 0 0 40px;
+  color: var(--muted-foreground);
+  font-size: var(--text-2xs); letter-spacing: 0;
+  font-variant-numeric: tabular-nums;
+}
+.agent-live-target {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  color: var(--muted-foreground);
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.agent-live-time {
+  flex-shrink: 0;
+  margin-left: auto;
+  color: var(--muted-foreground);
+  font-size: var(--text-2xs); letter-spacing: 0;
+  font-variant-numeric: tabular-nums;
+}
+.agent-live-ok {
+  display: inline-grid;
+  flex: 0 0 16px;
+  place-items: center;
+}
+.agent-live-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.agent-live-list > li {
+  animation: agent-live-in 120ms ease-out;
+}
+.agent-live-list > li + li {
+  border-top: 1px solid var(--border);
+}
+@keyframes agent-live-in {
+  from {
+    opacity: 0;
+  }
+}
+.agent-live-stats {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+  margin: 0;
+}
+.agent-live-stats dd {
+  margin: 0;
+  font-variant-numeric: tabular-nums;
+}
+.agent-live-ctx {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  align-items: center;
+  gap: 8px;
+  color: var(--muted-foreground);
+  font-size: var(--text-2xs); letter-spacing: 0;
+}
+.agent-live-ctx meter {
+  width: 100%;
+  height: 6px;
+}
+.agent-live-link {
+  display: inline-flex;
+  flex: 1;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 4px;
+  background: none;
+  color: var(--primary);
+  font: inherit;
+  text-align: left;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  cursor: pointer;
+}
+@media (hover: hover) {
+  .agent-live-link:hover {
+    text-decoration: underline;
+  }
+}
+.agent-live-btn {
+  justify-self: start;
+  height: 28px;
+  padding: 0 12px;
+  border: 1px solid var(--input);
+  border-radius: 6px;
+  background: var(--card);
+  color: var(--foreground);
+  font: inherit;
+  font-size: var(--text-2xs); letter-spacing: 0;
+  font-weight: 500;
+}
+@media (hover: hover) {
+  .agent-live-btn:hover {
+    background: var(--accent);
+  }
+}
+.agent-live-skeleton {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.agent-live-skeleton li {
+  height: 14px;
+  border-radius: 4px;
+  background: var(--muted);
+}
+/* Tabs (#905): 진행 · 작업 보기 · 대화 · 변경사항 · 정보 in one row under the header; the panel keeps one width for all of
+   them. The selected tab carries an underline (a border on a pseudo-element, so it survives forced colors), not color
+   alone, and nothing that changes its size. The row scrolls instead of wrapping on a narrow sheet. */
+.agent-live {
+  --overlay-x: 16px;
+}
+.agent-live-tabs {
+  flex: 1;
+  min-height: 0;
+  gap: 0;
+}
+.agent-live-tablist.agent-live-tablist {
+  justify-content: flex-start;
+  height: auto;
+  padding: 0 8px;
+  overflow-x: auto;
+  scrollbar-width: none;
+  border-bottom: 1px solid var(--border);
+  border-radius: 0;
+  background: none;
+}
+.agent-live-tab.agent-live-tab {
+  position: relative;
+  flex: none;
+  height: 36px;
+  padding: 0 8px;
+  border: 0;
+  border-radius: 0;
+  background: none;
+  box-shadow: none;
+  font-size: var(--text-2xs); letter-spacing: 0;
+  color: var(--muted-foreground);
+}
+/* box-shadow: none above drops the trigger's ring, so keyboard focus gets an inset outline instead. */
+.agent-live-tab:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: -2px;
+}
+.agent-live-tab[aria-selected='true'] {
+  color: var(--foreground);
+}
+.agent-live-tab[aria-selected='true']::after {
+  content: '';
+  position: absolute;
+  inset: auto 8px 0;
+  border-bottom: 2px solid var(--foreground);
+}
+.agent-live-body-session {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+.agent-live-session {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-height: 0;
+}
+.agent-live-session-scroll {
+  flex: 1;
+  min-height: 0;
+}
+.agent-live-danger {
+  color: var(--destructive);
+}
+.agent-live-btn:disabled {
+  opacity: 0.5;
+}
+.agent-work-sum {
+  float: right;
+  font-size: var(--text-2xs); letter-spacing: 0;
+  font-weight: 400;
+  font-variant-numeric: tabular-nums;
+}
+.agent-work-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 30px;
+  padding: 0 4px;
+  margin-inline: -4px;
+  width: calc(100% + 8px);
+  border: 0;
+  border-radius: 6px;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  /* summary: drop the built-in marker, the chevron draws the state */
+  list-style: none;
+}
+.agent-work-row::-webkit-details-marker {
+  display: none;
+}
+@media (hover: hover) {
+  .agent-work-row:hover {
+    background: var(--accent);
+  }
+}
+.agent-work-chev {
+  color: var(--muted-foreground);
+  transition: rotate 140ms ease-out;
+}
+.agent-work-counts {
+  display: inline-flex;
+  flex-shrink: 0;
+  gap: 6px;
+  margin-left: auto;
+  font-size: var(--text-2xs); letter-spacing: 0;
+  font-variant-numeric: tabular-nums;
+}
+.agent-work-patch {
+  margin: 2px 0 8px;
+  overflow-x: auto;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  font-family: var(--font-mono);
+  font-size: var(--text-2xs); letter-spacing: 0;
+  line-height: 18px;
+}
+.agent-work-hunk {
+  padding: 1px 8px;
+  background: var(--muted);
+  color: var(--muted-foreground);
+}
+.agent-work-line {
+  display: grid;
+  grid-template-columns: 2.5rem 1rem 1fr;
+}
+.agent-work-line[data-kind='add'] {
+  background: color-mix(in oklch, var(--ok) 10%, transparent);
+}
+.agent-work-line[data-kind='del'] {
+  background: color-mix(in oklch, var(--destructive) 10%, transparent);
+}
+.agent-work-no {
+  padding-right: 6px;
+  color: var(--muted-foreground);
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  user-select: none;
+}
+.agent-work-sign {
+  user-select: none;
+}
+.agent-work-line[data-kind='add'] .agent-work-sign {
+  color: var(--ok);
+}
+.agent-work-line[data-kind='del'] .agent-work-sign {
+  color: var(--destructive);
+}
+.agent-work-text {
+  padding-right: 8px;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.agent-work-note {
+  margin: 0;
+  padding: 4px 8px;
+  color: var(--muted-foreground);
+  font-size: var(--text-2xs); letter-spacing: 0;
+}
+
+/* Panel head path (#942): where the panel was opened from, one quiet line above the title. Earlier steps are
+   buttons that go back there; the last one is the current item. */
+.agent-live-trail {
+  margin: 0 0 4px;
+  min-width: 0;
+}
+.agent-live-trail ol {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  font-size: var(--text-2xs); letter-spacing: 0;
+  line-height: 18px;
+  color: var(--muted-foreground);
+  white-space: nowrap;
+}
+.agent-live-trail li {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+}
+.agent-live-trail li + li::before {
+  content: "›";
+  color: var(--muted-foreground);
+}
+.agent-live-trail button {
+  padding: 0 2px;
+  border: 0;
+  border-radius: 4px;
+  background: none;
+  color: inherit;
+  font: inherit;
+}
+@media (hover: hover) {
+  .agent-live-trail button:hover {
+    color: var(--foreground);
+    text-decoration: underline;
+  }
+}
+.agent-live-trail [aria-current="page"] {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: var(--foreground);
+}
+
+/* 조직도 tab (#943): a quiet indented tree, elbow lines in --border. The open session is the one marked node
+   (muted fill and a ring); other nodes are plain rows that open their session on click. */
+.agent-org,
+.agent-org ul {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.agent-org ul {
+  padding-left: 22px;
+}
+.agent-org ul > li {
+  position: relative;
+}
+/* Vertical guide down the left of each child, cut at the last one; a short tick into the node. */
+.agent-org ul > li::before,
+.agent-org ul > li::after {
+  content: '';
+  position: absolute;
+  left: -12px;
+  border-color: var(--border);
+  border-style: solid;
+  pointer-events: none;
+}
+.agent-org ul > li::before {
+  top: 0;
+  bottom: 0;
+  border-width: 0 0 0 1px;
+}
+.agent-org ul > li:last-child::before {
+  bottom: auto;
+  height: 19px;
+}
+.agent-org ul > li::after {
+  top: 19px;
+  width: 9px;
+  border-width: 1px 0 0;
+}
+.agent-org-node {
+  display: grid;
+  gap: 2px;
+  width: 100%;
+  margin: 1px 0;
+  padding: 7px 10px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+}
+button.agent-org-node {
+  cursor: pointer;
+}
+button.agent-org-node:hover {
+  background: color-mix(in oklab, var(--muted) 60%, transparent);
+}
+.agent-org-node[aria-current] {
+  background: var(--muted);
+  box-shadow: inset 0 0 0 1px var(--border);
+}
+@media (forced-colors: active) {
+  .agent-org-node[aria-current] {
+    outline: 2px solid CanvasText;
+    outline-offset: -2px;
+  }
+}
+.agent-org-line {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 6px;
+}
+.agent-org-role {
+  flex: none;
+  padding: 0 6px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  color: var(--muted-foreground);
+  font-size: var(--text-2xs); letter-spacing: 0;
+  line-height: 18px;
+}
+.agent-org-model {
+  display: inline-flex;
+  flex: none;
+  color: var(--muted-foreground);
+}
+.agent-org-here {
+  margin-left: auto;
+  flex: none;
+  color: var(--muted-foreground);
+  font-size: var(--text-2xs); letter-spacing: 0;
+}
+.agent-org-task {
+  overflow: hidden;
+  padding-left: 14px;
+  color: var(--muted-foreground);
+  font-size: var(--text-2xs); letter-spacing: 0;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}

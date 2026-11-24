@@ -1,0 +1,11 @@
+/* In-app confirm / prompt / notice (#732): a native modal <dialog>, styled like the other app modals. */
+dialog.app-dialog:modal {
+  overscroll-behavior: contain;
+  /* A Radix modal underneath sets pointer-events: none on <body>; this dialog sits in <body> too. */
+  pointer-events: auto;
+}
+dialog.app-dialog::backdrop {
+  overflow: hidden;
+  overscroll-behavior: contain;
+  background: oklch(0 0 0 / 0.4);
+}

@@ -1,0 +1,134 @@
+<!doctype html>
+<!-- Static mockup for issue #748 (설정 > 모드별 모델). Design reference only, not app code. Tokens copied from
+     web/src/index.css (dark). Open with ?mode=research&w=390 for the narrow view. -->
+<html lang="ko" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>모드별 모델 목업</title>
+<style>
+  :root {
+    color-scheme: dark;
+    --background: oklch(0.145 0 0); --foreground: oklch(0.985 0 0); --muted: oklch(0.269 0 0);
+    --muted-foreground: oklch(0.708 0 0); --border: oklch(1 0 0 / 10%); --input: oklch(1 0 0 / 15%);
+    --primary: oklch(0.922 0 0); --primary-foreground: oklch(0.205 0 0); --ring: oklch(0.556 0 0);
+    --warn: oklch(0.82 0.15 80); --radius: 0.625rem;
+    font: 14px/1.45 system-ui, sans-serif;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: #0b0b0b; color: var(--foreground); min-height: 100dvh; display: grid; place-items: center; }
+  .dialog { width: min(800px, calc(100vw - 1rem)); height: min(680px, calc(100dvh - 1rem)); background: var(--background);
+    border: 1px solid var(--border); border-radius: 8px; display: flex; flex-direction: column; overflow: hidden; }
+  .head { display: flex; align-items: center; height: 44px; padding: 0 16px; border-bottom: 1px solid var(--border); font-weight: 600; }
+  .head button { margin-left: auto; }
+  .main { display: flex; flex: 1; min-height: 0; }
+  nav { width: 176px; flex: none; border-right: 1px solid var(--border); padding: 8px; }
+  nav button { display: flex; width: 100%; height: 32px; align-items: center; padding: 0 10px; border: 0; border-radius: 6px;
+    background: none; color: var(--muted-foreground); font: inherit; text-align: left; }
+  nav button[aria-current] { background: var(--muted); color: var(--foreground); font-weight: 600; }
+  .mnav { display: none; padding: 8px 16px; border-bottom: 1px solid var(--border); }
+  .body { flex: 1; min-width: 0; overflow-y: auto; padding: 20px 24px 0; display: flex; flex-direction: column; gap: 16px; }
+  .body > * { flex: none; }
+  h3 { margin: 0; font-size: 15px; }
+  .hint, .note { font-size: 12px; color: var(--muted-foreground); margin: 0; }
+  .note.warn { color: var(--warn); display: flex; gap: 4px; align-items: start; }
+  .tabs { display: flex; gap: 2px; padding: 2px; background: var(--muted); border-radius: 6px; overflow-x: auto;
+    scrollbar-width: none; width: fit-content; max-width: 100%; }
+  .tab { flex: none; height: 28px; padding: 0 10px; border: 1px solid transparent; border-radius: 4px; background: none;
+    color: var(--muted-foreground); font: 500 13px/1 system-ui, sans-serif; display: inline-flex; align-items: center; gap: 6px; }
+  .tab[aria-selected="true"] { background: var(--background); color: var(--foreground); border-color: var(--border); }
+  .dot { width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
+  .sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
+  .grid { display: grid; grid-template-columns: 4.5rem minmax(0, 1fr) 6rem 9.5rem; column-gap: 8px; row-gap: 4px; align-items: center; }
+  .colhead, .lab { font-size: 12px; color: var(--muted-foreground); }
+  .lab { display: none; }
+  .cell { min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+  fieldset.row { display: contents; }
+  .role { font-size: 13px; font-weight: 500; }
+  .sel { position: relative; display: flex; align-items: center; height: 32px; border: 1px solid var(--input); border-radius: 6px;
+    padding: 0 8px; gap: 6px; font-size: 13px; min-width: 0; }
+  .sel::after { content: "▾"; margin-left: auto; color: var(--muted-foreground); font-size: 11px; }
+  .sel span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .sel.bad { border-color: var(--warn); }
+  .sel.focus { outline: 2px solid var(--ring); outline-offset: 1px; }
+  .pv { width: 14px; height: 14px; border-radius: 3px; flex: none; display: grid; place-items: center; font: 700 9px/1 system-ui; color: #000; }
+  .pv.claude { background: #d97757; } .pv.codex { background: #e8e8e8; } .pv.gemini { background: #6b9cf7; }
+  .sub { grid-column: 2 / -1; display: flex; flex-direction: column; gap: 4px; margin-bottom: 10px; }
+  .strength { display: flex; align-items: center; gap: 6px; }
+  .strength label { font-size: 12px; color: var(--muted-foreground); flex: none; }
+  .strength input { flex: 1; min-width: 0; height: 28px; border: 1px solid var(--input); border-radius: 6px; background: none;
+    color: var(--foreground); padding: 0 8px; font: 12px system-ui, sans-serif; }
+  .edited { font-size: 11px; color: var(--muted-foreground); border: 1px solid var(--border); border-radius: 4px; padding: 0 4px; }
+  .foot { position: sticky; bottom: 0; background: var(--background); display: flex; align-items: center; gap: 8px; margin-top: auto; padding: 10px 0 12px; border-top: 1px solid var(--border); }
+  .btn { height: 32px; padding: 0 12px; border-radius: 6px; border: 1px solid var(--input); background: none; color: var(--foreground); font: 500 13px system-ui; }
+  .btn.primary { background: var(--primary); color: var(--primary-foreground); border-color: transparent; }
+  .status { margin-right: auto; }
+  @media (max-width: 767px) {
+    nav { display: none; } .mnav { display: block; } .main { flex-direction: column; }
+    .body { padding: 16px; }
+    .grid { grid-template-columns: 1fr 1fr; row-gap: 6px; }
+    .colhead { display: none; } .lab { display: block; }
+    .dialog { height: calc(100dvh - 1rem); }
+    .role { grid-column: 1 / -1; margin-top: 6px; }
+    .model { grid-column: 1 / -1; }
+    .sel, .mnav .sel { height: 44px; }
+    .sub { grid-column: 1 / -1; }
+    .strength input { height: 44px; }
+    .tabs { width: auto; }
+    .tab { height: 36px; }
+    .btn { height: 44px; }
+  }
+</style>
+</head>
+<body>
+<div class="dialog" role="dialog" aria-labelledby="t">
+  <div class="head"><span id="t">설정</span><button class="btn" aria-label="설정 닫기">✕</button></div>
+  <div class="main">
+    <nav aria-label="설정 항목">
+      <button>일반</button><button>워크스페이스</button><button>모델 연결</button>
+      <button aria-current="true">모드별 모델</button><button>팀</button><button>사용량 한도</button><button>멈춤 확인</button>
+    </nav>
+    <div class="mnav"><div class="sel"><span>모드별 모델</span></div></div>
+    <div class="body" id="body"></div>
+  </div>
+</div>
+<script>
+const P = new URLSearchParams(location.search);
+const MODES = [['plan','계획/설계'],['build','구현'],['review','리뷰·테스트'],['docs','문서'],['quick','빠른 수정'],['research','조사']];
+const ROLES = [['lead','관리자'],['impl','구현자'],['review','리뷰어'],['test','테스터'],['design','디자이너'],['docs','문서화']];
+const M = { fable:['claude','Fable 5.2','복잡한 작업'], opus:['claude','Opus 5.5','구현'], sonnet:['claude','Sonnet 5.5','빠른 수정·문서'],
+  gpt:['codex','GPT-5.5','서치·자료 수집'], flash:['gemini','Gemini 3.8 Flash','긴 문맥'] };
+const GRID = {
+  build:    { lead:['sonnet','기본','자동'], impl:['opus','high','자동'], review:['gpt','medium','계획만 (읽기 전용)', 'warn'], test:['sonnet','기본','자동'], design:['sonnet','기본','자동'], docs:['sonnet','low','자동'] },
+  research: { lead:['gpt','medium','자동'], impl:['gpt','high','계획만 (읽기 전용)'], review:['opus','기본','계획만 (읽기 전용)'], test:['sonnet','기본','자동'], design:['sonnet','기본','자동'], docs:['sonnet','low','자동'] },
+};
+const mode = P.get('mode') || 'build';
+const g = GRID[mode];
+const body = document.getElementById('body');
+body.innerHTML = `
+  <header><h3>모드별 모델</h3><p class="hint">팀이나 플랜 단계를 시작할 때 고른 모드의 설정을 써요. 연결한 제공사의 모델이면 어느 것이든 고를 수 있어요.</p></header>
+  <div class="tabs" role="tablist" aria-label="모드">${MODES.map(([id,l]) =>
+    `<button type="button" role="tab" class="tab" aria-selected="${id===mode}" tabindex="${id===mode?0:-1}">${l}${id==='plan'?'<span class="dot" aria-hidden="true"></span><span class="sr">(바뀜)</span>':''}</button>`).join('')}</div>
+  <div role="tabpanel" aria-label="${MODES.find(m=>m[0]===mode)[1]}">
+    <p class="hint" style="margin-bottom:12px">${mode==='research'?'웹 서치와 자료 모으기에 맞춘 모드예요.':'기능을 만들고 고치는 기본 모드예요.'}<br>잘하는 것은 모델마다 하나예요. 고치면 그 모델의 모든 칸에 같이 바뀌어요.</p>
+    <div class="grid">
+      <span></span><span class="colhead">모델</span><span class="colhead">생각 수준</span><span class="colhead">권한</span>
+      ${ROLES.map(([rid,rl]) => { const [mk,eff,perm,warn,hint] = g[rid]; const [pv,label,strength] = M[mk];
+        const focus = mode==='build' && rid==='impl';
+        return `<fieldset class="row"><legend class="sr">${rl}</legend>
+        <span class="role">${rl}</span>
+        <div class="sel model ${warn?'bad':''} ${focus?'focus':''}"><span class="pv ${pv}" aria-hidden="true"></span><span>${label}</span></div>
+        <div class="cell"><span class="lab">생각 수준</span><div class="sel"><span>${eff}</span></div></div>
+        <div class="cell"><span class="lab">권한</span><div class="sel"><span>${perm}</span></div></div>
+        <div class="sub">
+          ${warn?`<p class="note warn"><span aria-hidden="true">⚠</span><span>대신 <b>Opus 5.5</b>: OpenAI Codex 연결 안 됨</span></p>`:''}
+          <div class="strength"><label>잘하는 것</label><input value="${hint||strength}">${hint?'<span class="edited">직접 씀</span>':''}</div>
+        </div></fieldset>`; }).join('')}
+    </div>
+  </div>
+  <div class="foot"><p class="note status" role="status">${mode==='research'?'':'계획/설계 모드에 저장하지 않은 변경이 있어요.'}</p>
+    <button class="btn">이 모드 기본값으로</button><button class="btn primary">저장</button></div>`;
+document.querySelector('[aria-selected="true"]').scrollIntoView({ block: 'nearest', inline: 'nearest', container: 'nearest' });
+</script>
+</body>
+</html>

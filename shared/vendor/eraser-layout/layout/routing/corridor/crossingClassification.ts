@@ -1,0 +1,72 @@
+// @ts-nocheck -- vendored from eraser-diagrams (MIT); checked upstream under its own tsconfig, see README.md in shared/vendor/eraser-layout.
+import { faceChordsCross, type FaceChord } from '../measure/crossings.ts';
+import type { Direction, PositionProps, XYPoint } from '../../types.ts';
+import { isPointEndpoint } from './contract.ts';
+import type { Route } from './route.ts';
+import type { RouteCrossing } from './routeIndex.ts';
+import type { CorridorWorld } from './world.ts';
+
+/**
+ * Exclude the one crossing forced by an outward-facing X of endpoint faces.
+ * Repeated crossings remain repairable because only one crossing can be structurally expected.
+ */
+export function unexpectedCrossings(
+  world: Pick<CorridorWorld, 'entities'>,
+  routes: readonly Route[],
+  crossings: readonly RouteCrossing[],
+): RouteCrossing[] {
+  const pairCounts = new Map<number, number>();
+  for (const crossing of crossings) {
+    const key = pairKey(crossing, routes.length);
+    pairCounts.set(key, (pairCounts.get(key) ?? 0) + 1);
+  }
+  const expectedPairs = new Set<number>();
+  for (const crossing of crossings) {
+    const key = pairKey(crossing, routes.length);
+    if (pairCounts.get(key) !== 1 || expectedPairs.has(key)) {
+      continue;
+    }
+    const routeA = routes[crossing.a.routeIndex];
+    const routeB = routes[crossing.b.routeIndex];
+    const chordA = routeA && routeChord(world, routeA);
+    const chordB = routeB && routeChord(world, routeB);
+    if (chordA && chordB && faceChordsCross(chordA, chordB)) {
+      expectedPairs.add(key);
+    }
+  }
+  return expectedPairs.size === 0
+    ? [...crossings]
+    : crossings.filter((crossing) => !expectedPairs.has(pairKey(crossing, routes.length)));
+}
+
+function pairKey(crossing: RouteCrossing, routeCount: number): number {
+  const lower = Math.min(crossing.a.routeIndex, crossing.b.routeIndex);
+  const upper = Math.max(crossing.a.routeIndex, crossing.b.routeIndex);
+  return lower * routeCount + upper;
+}
+
+/** A face-to-face chord, or undefined when either terminal is a faceless point. */
+function routeChord(world: Pick<CorridorWorld, 'entities'>, route: Route): FaceChord | undefined {
+  if (isPointEndpoint(route.from) || isPointEndpoint(route.to)) {
+    return undefined;
+  }
+  return {
+    from: faceCenter(world.entities[route.from.entityIndex], route.from.face),
+    fromFace: route.from.face,
+    to: faceCenter(world.entities[route.to.entityIndex], route.to.face),
+    toFace: route.to.face,
+  };
+}
+
+function faceCenter(entity: PositionProps, face: Direction): XYPoint {
+  switch (face) {
+    case 'left':
+      return { x: entity.x, y: entity.y + entity.height / 2 };
+    case 'right':
+      return { x: entity.x + entity.width, y: entity.y + entity.height / 2 };
+    case 'up':
+      return { x: entity.x + entity.width / 2, y: entity.y };
+    case 'down':
+      return { x: entity.x + entity.width / 2, y: entity.y + entity.height };
+  }
+}

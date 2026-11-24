@@ -1,6 +1,7 @@
+// shadcn/ui (MIT) new-york Badge, adapted: relative imports. Added for the Dispatch screens (E19).
 import * as React from "react"
 import { cva, type VariantProps } from "class-variance-authority"
-import { cn } from "@/lib/utils"
+import { cn } from "../../lib/utils"
 import { Slot } from "radix-ui"
 
 const badgeVariants = cva(

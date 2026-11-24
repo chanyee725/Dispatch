@@ -1,83 +1,262 @@
+/* One UI font, Pretendard (Latin and Hangul), bundled by Vite from its OFL npm package; nothing is fetched from a
+   CDN. Dynamic subset: only the unicode ranges a page uses are loaded. (doc 6 §4.2) */
 @import "pretendard/dist/web/variable/pretendardvariable-dynamic-subset.css";
 @import "tailwindcss";
 @import "tw-animate-css";
 
-@custom-variant dark (&:is(.dark *));
+/* The theme switch (web/src/theme.ts) sets data-theme on <html>; Tailwind's dark: follows it. */
+@custom-variant dark (&:where([data-theme="dark"], [data-theme="dark"] *));
 
-/* Neutral base; theme follows the OS unless the sidebar picks light or dark. Colour is reserved for information:
-   role lanes, session status and limit levels. */
-:root {
+/* Tailwind v4 borders default to currentColor; without this, `border` draws a white line in dark mode. */
+@layer base {
+  *, ::before, ::after { border-color: var(--border); }
+  /* Clickable things show a pointer (#546). In the base layer so a utility such as cursor-default still wins;
+     disabled controls keep the default cursor, and so does a label whose control is disabled (#564). CSS cannot follow
+     `for` to an id, so this covers the layouts we use: the control right after the label, or inside it. */
+  :is(button, [role="button"], summary, a[href], label[for], select):not(:disabled, [aria-disabled="true"],
+    label:has(+ :disabled, :disabled)) { cursor: pointer; }
+}
+
+/*
+ * App chrome tokens: the shadcn/ui token names (doc 6 §4.1), so web/src/components/ui/* works unchanged. Surfaces and
+ * lines follow the refresh (#889, docs/design/refresh/tokens.css): green-grey paper in steps (sidebar frame < background
+ * panel < card, --muted/--sunken as the well) and translucent ink lines; text, primary, status and role colours are
+ * unchanged. No hue anywhere except the status colours (--ok, --warn, --bad, --idle, --destructive) and the
+ * agent role colours (--role-*). Our only changes to
+ * the defaults: light --muted-foreground is oklch(0.5 0 0) for contrast (doc 6 §5), light --ring is 0.556 so
+ * focus indicators keep 3:1 (#131), and dark --sidebar-primary is neutral instead of blue. Focus rings use
+ * --primary (lib/focus.ts).
+ */
+:root, :root[data-theme="light"] {
+  color-scheme: light;
   --radius: 0.625rem;
-  --background: oklch(0.985 0.002 260);
-  --foreground: oklch(0.2 0.01 260);
-  --card: oklch(1 0 0);
-  --card-foreground: var(--foreground);
-  --popover: oklch(1 0 0);
-  --popover-foreground: var(--foreground);
-  --primary: oklch(0.24 0.012 260);
+  --background: #F3F4F1;
+  --foreground: oklch(0.145 0 0);
+  --card: #FCFCFA;
+  --card-foreground: oklch(0.145 0 0);
+  --popover: #FCFCFA;
+  --popover-foreground: oklch(0.145 0 0);
+  --primary: oklch(0.205 0 0);
   --primary-foreground: oklch(0.985 0 0);
-  --secondary: oklch(0.955 0.004 260);
-  --secondary-foreground: var(--foreground);
-  --muted: oklch(0.955 0.004 260);
-  --muted-foreground: oklch(0.52 0.012 260);
-  --accent: oklch(0.945 0.005 260);
-  --accent-foreground: var(--foreground);
-  --destructive: oklch(0.58 0.21 25);
-  --border: oklch(0.91 0.005 260);
-  --input: oklch(0.89 0.006 260);
-  --ring: oklch(0.6 0.12 255);
+  --secondary: #E3E5E0;
+  --secondary-foreground: oklch(0.205 0 0);
+  --muted: #E3E5E0;
+  --muted-foreground: oklch(0.5 0 0);
+  --accent: #E3E5E0;
+  --accent-foreground: oklch(0.205 0 0);
+  --destructive: oklch(0.577 0.245 27.325);
+  --border: rgb(27 29 26 / 0.1);
+  --input: rgb(27 29 26 / 0.24);
+  --ring: oklch(0.556 0 0); /* shadcn light is 0.708 (2.6:1); 0.556 keeps focus indicators at 3:1+ (#131) */
+  --sidebar: #E9EAE6;
+  --sidebar-foreground: oklch(0.145 0 0);
+  --sidebar-primary: oklch(0.205 0 0);
+  --sidebar-primary-foreground: oklch(0.985 0 0);
+  --sidebar-accent: rgb(27 29 26 / 0.06);
+  --sidebar-accent-foreground: oklch(0.205 0 0);
+  --sidebar-border: rgb(27 29 26 / 0.1);
+  --sidebar-ring: oklch(0.556 0 0);
+  /* Refresh surfaces (#889): the sunken well and the stronger ink line (control outlines). */
+  --sunken: #E3E5E0;
+  --line-strong: rgb(27 29 26 / 0.24);
+  --shadow-pop: 0 0 0 1px var(--border), 0 8px 24px oklch(0 0 0 / 10%);
+  /* Card edge (#889): a translucent ink ring instead of a solid border, so it sits on any surface step. */
+  --shadow-card: 0 0 0 1px var(--border), 0 1px 2px rgb(0 0 0 / 0.04);
 
+  /* Status colours (not in shadcn), from Dispatch light (doc 5 §3.1): only for state dots and bars. */
   --ok: oklch(0.62 0.15 155);
+  /* Merged PRs and issues (#793): purple, as on GitHub, so 머지됨 is not read as 통과. */
+  --merged: oklch(0.55 0.2 300);
   --warn: oklch(0.72 0.15 70);
   --bad: oklch(0.6 0.2 25);
   --idle: oklch(0.62 0.08 250);
-
+  /* Agent role lanes from Dispatch light (doc 5 §3.1): the run overlay's agent colours. */
   --role-lead: oklch(0.56 0.2 290);
+  --role-merge: oklch(0.55 0.11 205);
   --role-impl: oklch(0.56 0.18 255);
   --role-review: oklch(0.68 0.15 65);
   --role-test: oklch(0.6 0.14 160);
   --role-design: oklch(0.62 0.19 0);
   --role-docs: oklch(0.55 0.04 250);
+  /* Step states painted on diagram nodes (#687, web/src/run/nodeStatus.ts). */
+  --step-pending: oklch(0.6 0 0);
+  --step-active: oklch(0.56 0.17 255);
+  --step-done: var(--ok);
+  --step-failed: var(--bad);
+  --step-blocked: oklch(0.54 0.2 300);
 }
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --background: #1A1C1A;
+  --foreground: oklch(0.985 0 0);
+  --card: #212421;
+  --card-foreground: oklch(0.985 0 0);
+  --popover: #212421;
+  --popover-foreground: oklch(0.985 0 0);
+  --primary: oklch(0.922 0 0);
+  --primary-foreground: oklch(0.205 0 0);
+  --secondary: #2A2E2A;
+  --secondary-foreground: oklch(0.985 0 0);
+  --muted: #171917;
+  --muted-foreground: oklch(0.708 0 0);
+  --accent: #2A2E2A;
+  --accent-foreground: oklch(0.985 0 0);
+  --destructive: oklch(0.704 0.191 22.216);
+  --border: rgb(230 232 226 / 0.09);
+  --input: rgb(230 232 226 / 0.2);
+  --ring: oklch(0.556 0 0);
+  --sidebar: #141614;
+  --sidebar-foreground: oklch(0.985 0 0);
+  --sidebar-primary: oklch(0.922 0 0);
+  --sidebar-primary-foreground: oklch(0.205 0 0);
+  --sidebar-accent: rgb(230 232 226 / 0.07);
+  --sidebar-accent-foreground: oklch(0.985 0 0);
+  --sidebar-border: rgb(230 232 226 / 0.09);
+  --sidebar-ring: oklch(0.556 0 0);
+  --sunken: #171917;
+  --line-strong: rgb(230 232 226 / 0.2);
+  --shadow-pop: 0 0 0 1px var(--border), 0 8px 24px oklch(0 0 0 / 40%);
+  --shadow-card: 0 0 0 1px var(--border), 0 1px 2px rgb(0 0 0 / 0.2);
 
-/* Dark tokens: <html class="dark"> is set from the theme choice (system / light / dark). */
-:root.dark {
-  --background: oklch(0.17 0.006 260);
-  --foreground: oklch(0.95 0.004 260);
-  --card: oklch(0.205 0.007 260);
-  --popover: oklch(0.215 0.007 260);
-  --primary: oklch(0.95 0.004 260);
-  --primary-foreground: oklch(0.2 0.01 260);
-  --secondary: oklch(0.25 0.008 260);
-  --muted: oklch(0.25 0.008 260);
-  --muted-foreground: oklch(0.68 0.012 260);
-  --accent: oklch(0.26 0.008 260);
-  --destructive: oklch(0.65 0.2 25);
-  --border: oklch(0.28 0.008 260);
-  --input: oklch(0.31 0.008 260);
-  --ring: oklch(0.68 0.12 255);
-
-  --ok: oklch(0.72 0.15 155);
-  --warn: oklch(0.8 0.14 75);
-  --bad: oklch(0.7 0.18 25);
-  --idle: oklch(0.72 0.08 250);
-
+  /* Status colours from Dispatch's monitor theme (tuned for dark panels). */
+  --ok: oklch(0.76 0.17 150);
+  --merged: oklch(0.72 0.16 300);
+  --warn: oklch(0.82 0.15 80);
+  --bad: oklch(0.7 0.2 25);
+  --idle: oklch(0.68 0.04 250);
+  /* Role lanes from Dispatch dark. */
   --role-lead: oklch(0.7 0.16 290);
+  --role-merge: oklch(0.76 0.11 205);
   --role-impl: oklch(0.7 0.14 255);
   --role-review: oklch(0.78 0.13 70);
   --role-test: oklch(0.74 0.13 160);
   --role-design: oklch(0.72 0.16 0);
   --role-docs: oklch(0.7 0.03 250);
+  --step-pending: oklch(0.66 0 0);
+  --step-active: oklch(0.7 0.15 255);
+  --step-done: var(--ok);
+  --step-failed: var(--bad);
+  --step-blocked: oklch(0.7 0.17 300);
+}
+/* 모니터링 (ported from Dispatch's monitor theme): dark-first, so it sits on top of the dark tokens above. */
+:root[data-theme="dark"].monitor {
+  --radius: 0.25rem;
+  --background: oklch(0.14 0.008 255);
+  --foreground: oklch(0.92 0.005 250);
+  --card: oklch(0.185 0.01 255);
+  --card-foreground: oklch(0.92 0.005 250);
+  --popover: oklch(0.2 0.01 255);
+  --popover-foreground: oklch(0.92 0.005 250);
+  --primary: oklch(0.92 0.005 250);
+  --primary-foreground: oklch(0.16 0.01 255);
+  --secondary: oklch(0.23 0.01 255);
+  --secondary-foreground: oklch(0.92 0.005 250);
+  --muted: oklch(0.23 0.01 255);
+  --muted-foreground: oklch(0.7 0.012 250);
+  --accent: oklch(0.255 0.012 255);
+  --accent-foreground: oklch(0.92 0.005 250);
+  --border: oklch(0.31 0.012 255);
+  --input: oklch(0.34 0.012 255);
+  --ring: oklch(0.72 0.13 250);
+  --sidebar: oklch(0.185 0.01 255);
+  --sidebar-foreground: oklch(0.92 0.005 250);
+  --sidebar-primary: oklch(0.92 0.005 250);
+  --sidebar-primary-foreground: oklch(0.16 0.01 255);
+  --sidebar-accent: oklch(0.255 0.012 255);
+  --sidebar-accent-foreground: oklch(0.92 0.005 250);
+  --sidebar-border: oklch(0.31 0.012 255);
+  --sidebar-ring: oklch(0.72 0.13 250);
+}
+:root {
+  /* Sizes: doc 6 §4.2 (first draft x1.08): 30px rows and controls, 48px header, 264px sidebar, 691px doc column. */
+  --h-row: 30px;
+  --h-compact: 26px;
+  --h-bar: 52px;
+  --w-sidebar: 264px;
+  --w-doc: 691px;
+  /* Overlay spacing (#708): one scale for every dialog, sheet and popover. Sides and top use the base step; the
+     bottom edge gets one step more, so the last line or button row never sits tight against it. */
+  --overlay-x: 20px; /* dialog and sheet sides */
+  --overlay-head-y: 14px; /* header top and bottom */
+  --overlay-y: 16px; /* body top */
+  --overlay-end: 24px; /* body bottom, when the body is the last part (above a footer use overlay-body-mid) */
+  --overlay-foot-y: 12px; /* footer top */
+  --overlay-foot-end: 16px; /* footer bottom */
+  --popover-x: 14px; /* hover cards and small floating panels */
+  --popover-y: 12px;
+  --popover-end: 16px;
+  --menu-pad: 6px; /* list popovers (menus, feeds): items carry their own padding */
+  --menu-end: 10px;
+}
+@media (width < 48rem) {
+  :root {
+    --overlay-x: 16px;
+    --overlay-end: 20px;
+  }
 }
 
+/* Overlay parts (#708): header, scrolling body, footer, a single-box dialog, and a popover box. */
+@utility overlay-head {
+  padding: var(--overlay-head-y) var(--overlay-x);
+}
+@utility overlay-body {
+  padding: var(--overlay-y) var(--overlay-x) var(--overlay-end);
+}
+/* A body with a footer under it (#717): the footer's own top padding and border already part them, so the body
+   ends on the base step instead of --overlay-end, or the gap above the footer doubles up. */
+@utility overlay-body-mid {
+  padding-block: var(--overlay-y);
+  padding-inline: var(--overlay-x);
+}
+@utility overlay-foot {
+  padding: var(--overlay-foot-y) var(--overlay-x) var(--overlay-foot-end);
+}
+@utility overlay-box {
+  padding: var(--overlay-x) var(--overlay-x) var(--overlay-end);
+}
+@utility popover-box {
+  padding: var(--popover-y) var(--popover-x) var(--popover-end);
+}
+
+/* UI type scale (doc 6 §4.2), the one place font sizes are defined (#1025): badges and kbd 12 (text-2xs), meta 13/17
+   (text-xs), UI 14/22 (text-sm), emphasis 15 (text-base), section titles 19 (text-lg), screen titles 22/30 (text-xl);
+   the document body is 14/1.65 (.doc-editor; 2px smaller on the user's request). Nothing is smaller than 12px, and
+   13px and under drop the body's -0.01em tracking (letter-spacing 0, #1025). Not
+   inline and static, so plain CSS reads the same steps as var(--text-xs) etc. Use a step, not an arbitrary px size. */
+@theme static {
+  --text-2xs: 12px;
+  --text-2xs--line-height: 16px;
+  --text-2xs--letter-spacing: 0;
+  --text-xs: 13px;
+  --text-xs--line-height: 17px;
+  --text-xs--letter-spacing: 0;
+  --text-sm: 14px;
+  --text-sm--line-height: 22px;
+  --text-base: 15px;
+  --text-base--line-height: 22px;
+  --text-lg: 19px;
+  --text-lg--line-height: 26px;
+  --text-xl: 22px;
+  --text-xl--line-height: 30px;
+  --text-doc: 14px;
+  --text-doc--line-height: 1.65;
+}
 
 @theme inline {
-  --font-sans: "Pretendard Variable", Pretendard, -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
-  --font-mono: ui-monospace, "SF Mono", "JetBrains Mono", Menlo, monospace;
+  --font-sans: "Pretendard Variable", Pretendard, system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-mono: ui-monospace, "JetBrains Mono", Menlo, Consolas, monospace;
+  /* Radius steps (#889): controls 6 (sm, md), cards 10 (lg), panels 12 (xl), chips full. The named ones say which
+     layer a box is: rounded-control, rounded-card, rounded-panel. */
   --radius-sm: calc(var(--radius) - 4px);
-  --radius-md: calc(var(--radius) - 2px);
+  --radius-md: calc(var(--radius) - 4px);
   --radius-lg: var(--radius);
-  --radius-xl: calc(var(--radius) + 4px);
+  --radius-xl: calc(var(--radius) + 2px);
+  --radius-control: calc(var(--radius) - 4px);
+  --radius-card: var(--radius);
+  --radius-panel: calc(var(--radius) + 2px);
+  /* Large titles track tighter (#889): tracking-title. */
+  --tracking-title: -0.02em;
+  --ease-out: cubic-bezier(0.23, 1, 0.32, 1);
   --color-background: var(--background);
   --color-foreground: var(--foreground);
   --color-card: var(--card);
@@ -96,62 +275,154 @@
   --color-border: var(--border);
   --color-input: var(--input);
   --color-ring: var(--ring);
+  --color-sidebar: var(--sidebar);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-ring: var(--sidebar-ring);
+  --color-sunken: var(--sunken);
+  --color-line-strong: var(--line-strong);
   --color-ok: var(--ok);
+  --color-merged: var(--merged);
   --color-warn: var(--warn);
   --color-bad: var(--bad);
   --color-idle: var(--idle);
+  --shadow-pop: var(--shadow-pop);
+  --shadow-card: var(--shadow-card);
 }
 
-@layer base {
-  * { @apply border-border outline-ring/50; }
-  html { color-scheme: light dark; }
-  body {
-    @apply bg-background text-foreground antialiased;
-    font-feature-settings: "ss06";
-    letter-spacing: -0.01em;
+/* The app shell is exactly one viewport tall (100dvh, #800): no document scroll, only panes scroll inside.
+   overflow: hidden on html and body keeps anything that lands outside #root from growing the page past the frame. */
+html, body { height: 100%; overflow: hidden; }
+#root { height: 100dvh; }
+body {
+  margin: 0;
+  background: var(--background);
+  color: var(--foreground);
+  font: var(--text-sm)/22px var(--font-sans);
+  font-feature-settings: "cv11";
+  letter-spacing: -0.01em;
+  -webkit-font-smoothing: antialiased;
+}
+.num { font-variant-numeric: tabular-nums; }
+/* Reduced motion (#889): movement goes, fades stay. The enter/exit animations (tw-animate-css) keep their opacity
+   and lose their scale, slide and spin; press feedback (.press, Button) drops its scale. Keyframes of our own handle
+   reduced motion next to their rule. */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    --tw-enter-scale: 1 !important; --tw-exit-scale: 1 !important;
+    --tw-enter-translate-x: 0 !important; --tw-enter-translate-y: 0 !important;
+    --tw-exit-translate-x: 0 !important; --tw-exit-translate-y: 0 !important;
+    --tw-enter-rotate: 0 !important; --tw-exit-rotate: 0 !important;
   }
-  .num { font-variant-numeric: tabular-nums; }
-  /* Everything clickable shows a pointer (Tailwind v4 leaves buttons on the default cursor). */
-  :is(button, a[href], summary, [role="tab"], [role="checkbox"], [role="combobox"], [role="option"], [role="menuitem"], label:has(> button[role="checkbox"])):not(:disabled, [aria-disabled="true"], [data-disabled]) {
-    cursor: pointer;
-  }
-  @media (prefers-reduced-motion: reduce) {
-    *, *::before, *::after { animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; }
+  /* Tailwind transitions that would move something (chevrons, switch thumbs, bars) keep only their colour and fade.
+     Unlayered, so it outranks the utilities layer. */
+  .transition, .transition-all, .transition-transform {
+    transition-property: color, background-color, border-color, outline-color, text-decoration-color, fill, stroke,
+      opacity, box-shadow;
   }
 }
-
-/* Thin, quiet scrollbars everywhere (chat, tool output, dialogs). */
-* {
-  scrollbar-width: thin;
-  scrollbar-color: color-mix(in oklch, var(--muted-foreground) 35%, transparent) transparent;
+/* A card (#889): card surface, 10px corners, the ink ring and a faint shadow. */
+@utility card-surface {
+  background-color: var(--card);
+  color: var(--card-foreground);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-card);
 }
-::-webkit-scrollbar { width: 6px; height: 6px; }
-::-webkit-scrollbar-track { background: transparent; }
-::-webkit-scrollbar-thumb { background: color-mix(in oklch, var(--muted-foreground) 35%, transparent); border-radius: 9999px; }
-::-webkit-scrollbar-thumb:hover { background: color-mix(in oklch, var(--muted-foreground) 55%, transparent); }
-::-webkit-scrollbar-corner { background: transparent; }
-
-/* Monitor theme (Grafana-style): dark-first, flat panels with thin borders, tight spacing.
-   Status colours (--ok/--warn/--bad/--idle) are tuned for the dark panel and stay separate from the role lanes
-   (--role-*), which keep their own hues so a lane is never mistaken for a status. */
-:root.monitor {
-  --radius: 0.25rem;
-  --background: oklch(0.14 0.008 255);
-  --foreground: oklch(0.92 0.005 250);
-  --card: oklch(0.185 0.01 255);
-  --popover: oklch(0.2 0.01 255);
-  --primary: oklch(0.92 0.005 250);
-  --primary-foreground: oklch(0.16 0.01 255);
-  --secondary: oklch(0.23 0.01 255);
-  --muted: oklch(0.23 0.01 255);
-  --muted-foreground: oklch(0.7 0.012 250);
-  --accent: oklch(0.255 0.012 255);
-  --border: oklch(0.31 0.012 255);
-  --input: oklch(0.34 0.012 255);
-  --ring: oklch(0.72 0.13 250);
-
-  --ok: oklch(0.76 0.17 150);
-  --warn: oklch(0.82 0.15 80);
-  --bad: oklch(0.7 0.2 25);
-  --idle: oklch(0.68 0.04 250);
+/* Press feedback (#889) for buttons that are not ui/button: shrink to 0.97 while held, no movement with reduced
+   motion. Hover styles stay inside @media (hover: hover) (Tailwind's hover: already is). */
+@utility press {
+  transition-property: color, background-color, border-color, box-shadow, opacity, scale;
+  transition-duration: 150ms;
+  transition-timing-function: var(--ease-out);
+  &:active:not(:disabled, [aria-disabled="true"]) { scale: 0.97; }
+  @media (prefers-reduced-motion: reduce) { &:active:not(:disabled, [aria-disabled="true"]) { scale: none; } }
 }
+
+@keyframes timeline-blink { 0%, 100% { opacity: 1; } 40% { opacity: 0.2; } }
+
+/* Provider marks in brand colours (E539, #670). The colours live in web/src/providerIcons.ts and come in as
+   --brand-* custom properties; here only the theme picks the shade. 모니터링 sits on dark, so it takes the dark shade. */
+.provider-icon { color: var(--brand-light); }
+:root[data-theme="dark"] .provider-icon { color: var(--brand-dark); }
+.provider-gradient-from { stop-color: var(--brand-light-from); }
+.provider-gradient-to { stop-color: var(--brand-light-to); }
+:root[data-theme="dark"] .provider-gradient-from { stop-color: var(--brand-dark-from); }
+:root[data-theme="dark"] .provider-gradient-to { stop-color: var(--brand-dark-to); }
+@media (forced-colors: active) {
+  /* Back to the system text colour: no brand colour, no gradient. */
+  .provider-icon { color: inherit; fill: currentColor; }
+}
+
+/* Working track (#889, #942): a 2px track; while the session works a sliver sweeps it and the state dot breathes. The
+   colour, speed and sliver width come from what it does now (trackTone() in home/trackTone.ts sets the --track-* vars);
+   the defaults are the plain green sweep. Waiting (.is-wait): no sweep, the whole track blinks softly. Reduced motion
+   stops both: the track fills halfway in its colour. */
+.session-track { display: block; height: 2px; border-radius: 2px; background: var(--muted); overflow: hidden; position: relative; }
+.session-track.is-on::after {
+  content: ""; position: absolute; inset: 0; width: var(--track-width, 28%); border-radius: 2px;
+  background: var(--track-color, var(--ok)); opacity: var(--track-opacity, 1);
+  animation: session-sweep var(--track-speed, 2.4s) linear infinite;
+}
+.session-track.is-wait::after {
+  content: ""; position: absolute; inset: 0; border-radius: 2px; background: var(--track-color, var(--warn));
+  animation: session-blink var(--track-speed, 1.6s) ease-in-out infinite;
+}
+.session-dot.is-on { animation: session-breathe 2.6s ease-in-out infinite; }
+@keyframes session-sweep { from { transform: translateX(-100%); } to { transform: translateX(var(--track-end, 360%)); } }
+@keyframes session-blink { 0%, 100% { opacity: .25; } 50% { opacity: .7; } }
+@keyframes session-breathe { 0%, 100% { opacity: 1; } 50% { opacity: .35; } }
+@media (prefers-reduced-motion: reduce) {
+  .session-track:is(.is-on, .is-wait)::after { animation: none; transform: none; width: 50%; opacity: .5; }
+}
+
+/* Panel origin (#942, live/origin.ts): the card or row that opened the right panel keeps a 2px ink ring and a slightly
+   darker fill while the panel is open (aria-current), and flashes once when the panel closes (the ring fades out over
+   600ms). The flash only fades, so it also runs under reduced motion. */
+/* 30% lighter than full ink (2026-11-20): the ring marks the origin without shouting. */
+:root { --origin-ring: color-mix(in oklab, var(--primary) 70%, transparent); }
+[data-origin][aria-current="true"] {
+  box-shadow: inset 0 0 0 2px var(--origin-ring);
+  background-color: color-mix(in oklab, var(--accent), var(--foreground) 4%);
+}
+[data-origin][data-origin-flash] { animation: origin-flash 600ms cubic-bezier(0.23, 1, 0.32, 1) both; }
+@keyframes origin-flash {
+  from { box-shadow: inset 0 0 0 2px var(--origin-ring); }
+  to { box-shadow: inset 0 0 0 2px transparent; }
+}
+@media (forced-colors: active) {
+  [data-origin][aria-current="true"] { outline: 2px solid Highlight; outline-offset: -2px; }
+}
+
+/* A session that waits for a person (사람 기다림, permission or question): an amber ring that breathes, so it is seen
+   from across the dashboard. Reduced motion keeps a steady ring. */
+.session-look {
+  box-shadow: 0 0 0 1.5px var(--warn), 0 0 0 4px color-mix(in oklch, var(--warn) 18%, transparent);
+  animation: session-look 1.8s ease-in-out infinite;
+}
+@keyframes session-look {
+  0%, 100% { box-shadow: 0 0 0 1.5px var(--warn), 0 0 0 4px color-mix(in oklch, var(--warn) 18%, transparent); }
+  50% { box-shadow: 0 0 0 1.5px var(--warn), 0 0 0 7px color-mix(in oklch, var(--warn) 6%, transparent); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .session-look { animation: none; }
+}
+/* A waiting card that also opened the panel (#942) keeps both rings: the ink ring inside, a steady amber ring outside. */
+.session-look[data-origin][aria-current="true"] {
+  animation: none;
+  box-shadow: inset 0 0 0 2px var(--origin-ring), 0 0 0 1.5px var(--warn), 0 0 0 4px color-mix(in oklch, var(--warn) 18%, transparent);
+}
+
+/* The 시작하기 confirm's team (#972): one quiet row per step; the one standout is the start button. */
+.start-row { display: grid; grid-template-columns: minmax(0, 1.3fr) minmax(0, 1.6fr) minmax(0, 0.8fr) minmax(0, 1fr) minmax(0, 0.7fr); gap: 6px; align-items: center; font-size: var(--text-2xs); letter-spacing: 0; }
+.start-row-name { display: flex; min-width: 0; flex-direction: column; }
+.start-row [data-slot="native-select"] { display: flex; }
+@media (max-width: 640px) { .start-row { grid-template-columns: 1fr 1fr; } .start-row-name { grid-column: 1 / -1; } }
+.start-total { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px; border-top: 1px solid var(--border); padding-top: 8px; font-size: var(--text-2xs); letter-spacing: 0; }
+.start-meter { display: inline-flex; align-items: center; gap: 8px; color: var(--muted-foreground); }
+.start-meter-bar { width: 72px; height: 4px; overflow: hidden; border-radius: 2px; background: color-mix(in srgb, var(--foreground) 10%, transparent); }
+.start-meter-bar > span { display: block; height: 100%; background: var(--muted-foreground); }
+.start-meter-bar > span[data-high] { background: var(--destructive); }

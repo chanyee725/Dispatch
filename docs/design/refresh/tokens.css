@@ -1,0 +1,101 @@
+/* Atelier refresh tokens v2: ink on green-grey paper, no brand hue.
+   Color is reserved for states that need the user or report a result. */
+.at,
+.at[data-theme="light"] {
+  --bg: #E9EAE6; --panel: #F3F4F1; --card: #FCFCFA; --sunken: #E3E5E0;
+  --line: rgb(27 29 26 / .10); --line2: rgb(27 29 26 / .24);
+  --text: #1B1D1A; --text2: #474B45; --text3: #656A62;
+  --accent: #1B1D1A; --accent-fg: #FCFCFA; --accent-soft: #E3E5E0;
+  --ok: #3F6B4F; --warn: #8A5A12; --bad: #9C3B2E; --merged: #6A4A6E;
+  --r-lead: #474B45; --r-impl: #474B45; --r-rev: #474B45; --r-merge: #474B45; --r-test: #474B45; --r-des: #474B45;
+}
+.at[data-theme="dark"] {
+  --bg: #141614; --panel: #1A1C1A; --card: #212421; --sunken: #171917;
+  --line: rgb(230 232 226 / .09); --line2: rgb(230 232 226 / .20);
+  --text: #E6E8E2; --text2: #B0B4AB; --text3: #8C9188;
+  --accent: #E6E8E2; --accent-fg: #141614; --accent-soft: #2A2E2A;
+  --ok: #8DB89A; --warn: #D4A657; --bad: #D98A7C; --merged: #B79CBB;
+  --r-lead: #B0B4AB; --r-impl: #B0B4AB; --r-rev: #B0B4AB; --r-merge: #B0B4AB; --r-test: #B0B4AB; --r-des: #B0B4AB;
+}
+/* v1 palette, kept only for the before / after comparison on the token sheet */
+.at[data-theme="prev-light"] {
+  --bg: #ECEEF4; --panel: #F7F8FB; --card: #FFFFFF; --sunken: #E6E9F0;
+  --line: #DEE2EA; --line2: #C8CEDA;
+  --text: #161A22; --text2: #454C5C; --text3: #626A7C;
+  --accent: #2B55E0; --accent-fg: #FFFFFF; --accent-soft: #E6ECFE;
+  --ok: #14774B; --warn: #8F5600; --bad: #BF2F28; --merged: #6B43C9;
+  --r-lead: #0B6F78; --r-impl: #1F5FBF; --r-rev: #9A2C9E; --r-merge: #6B43C9; --r-test: #4A6B12; --r-des: #B02563;
+}
+.at[data-theme="prev-dark"] {
+  --bg: #0C0E12; --panel: #12151B; --card: #191D25; --sunken: #0F1217;
+  --line: #232833; --line2: #333A48;
+  --text: #E8EAF0; --text2: #B1B7C5; --text3: #8C93A3;
+  --accent: #7C9BFF; --accent-fg: #0C1230; --accent-soft: #1B2648;
+  --ok: #4CC38A; --warn: #E5A63A; --bad: #F0736B; --merged: #A98BF5;
+  --r-lead: #4FC3CC; --r-impl: #7CB0FF; --r-rev: #E08BE3; --r-merge: #A98BF5; --r-test: #A3C95A; --r-des: #F581AE;
+}
+.at {
+  font-family: "Pretendard Variable", Pretendard, "Noto Sans KR", system-ui, sans-serif;
+  font-size: 13px; line-height: 1.45; color: var(--text); background: var(--bg);
+  box-sizing: border-box; -webkit-font-smoothing: antialiased;
+  --ease-out: cubic-bezier(0.23, 1, 0.32, 1); --ease-in-out: cubic-bezier(0.77, 0, 0.175, 1);
+}
+.at *, .at *::before, .at *::after { box-sizing: border-box; }
+.at a { color: var(--text); text-decoration: underline; text-decoration-color: var(--line2); text-underline-offset: 3px; }
+.at .num { font-variant-numeric: tabular-nums; }
+.at .sub { color: var(--text2); }
+.at .mut { color: var(--text3); }
+.at .h { font-size: 13px; font-weight: 600; margin: 0; }
+/* tighter tracking on the larger sizes (15 and 20) */
+.at h1, .at [style*="font-size: 15px"] { letter-spacing: -0.01em; }
+.at [style*="font-size: 20px"] { letter-spacing: -0.02em; }
+/* edge drawn as a translucent ring shadow, not a solid border: it sits on any surface tone */
+.at .card { background: var(--card); border: 1px solid transparent; border-radius: 10px; box-shadow: 0 0 0 1px var(--line), 0 1px 2px rgb(0 0 0 / .04); background-clip: padding-box; }
+/* State chip: neutral ground, a small colored dot carries the state. */
+.at .chip {
+  display: inline-flex; align-items: center; gap: 5px; height: 20px; padding: 0 8px;
+  border-radius: 999px; font-size: 12px; font-weight: 500; white-space: nowrap; font-variant-numeric: tabular-nums;
+  background: color-mix(in srgb, var(--text) 6%, transparent);
+}
+.at .chip::before { content: ""; width: 5px; height: 5px; border-radius: 50%; background: currentColor; flex: none; }
+.at .chip[style*="--text"]::before, .at .chip:has(.dot)::before { display: none; }
+/* Role chip: told apart by shape (squared outline) and its label, not by hue. */
+.at .chip[style*="--r-"] {
+  background: transparent; box-shadow: inset 0 0 0 1px var(--line2); border-radius: 4px; padding: 0 6px;
+}
+.at .chip[style*="--r-"]::before { display: none; }
+.at[data-theme^="prev"] .chip, .at[data-theme^="prev"] .chip[style*="--r-"] {
+  background: color-mix(in srgb, currentColor 13%, transparent); box-shadow: none; border-radius: 999px; padding: 0 8px;
+}
+.at[data-theme^="prev"] .chip::before { display: none; }
+.at .btn {
+  height: 28px; padding: 0 10px; border-radius: 6px; border: 1px solid var(--line2);
+  background: var(--card); color: var(--text); font: inherit; font-size: 12px; font-weight: 500; cursor: pointer; font-variant-numeric: tabular-nums;
+}
+/* press feedback on every pressable; only transform and color animate, never `all` */
+.at button { transition: transform 140ms var(--ease-out), background-color 150ms ease, border-color 150ms ease; }
+.at button:active { transform: scale(0.97); }
+.at a { transition: background-color 150ms ease; }
+.at :is(button, a):focus-visible { outline: 2px solid var(--text); outline-offset: 2px; }
+@media (hover: hover) and (pointer: fine) {
+  .at .btn:not(.pri):hover { background: var(--sunken); }
+  .at .btn.pri:hover { background: color-mix(in srgb, var(--accent) 86%, var(--card)); }
+  .at button[aria-label]:not(.btn):hover, .at a[style*="border-top"]:hover { background-color: color-mix(in srgb, var(--text) 5%, transparent); }
+}
+/* popover grows from its trigger (bell, top right) */
+.at [aria-label="알림함"] { transform-origin: top right; }
+.at .btn.pri { background: var(--accent); border-color: var(--accent); color: var(--accent-fg); }
+.at .ell { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+.at .dot { width: 6px; height: 6px; border-radius: 50%; flex: none; display: inline-block; }
+.at .track { height: 2px; border-radius: 2px; background: var(--sunken); overflow: hidden; position: relative; }
+.at .track.on::after {
+  content: ""; position: absolute; inset: 0; width: 28%; border-radius: 2px; background: var(--accent);
+  animation: at-sweep 2.4s linear infinite;
+}
+.at .dot.on, .at .live { animation: at-breathe 2.6s ease-in-out infinite; }
+@keyframes at-sweep { 0% { transform: translateX(-100%); } 100% { transform: translateX(360%); } }
+@keyframes at-breathe { 0%, 100% { opacity: 1; } 50% { opacity: .35; } }
+/* reduced motion: stop movement, keep the gentle opacity pulse */
+@media (prefers-reduced-motion: reduce) {
+  .at .track.on::after { animation: none; width: 100%; opacity: .5; }
+}

@@ -1,0 +1,3 @@
+# Loaded by `npm test` through node --env-file (works on every OS shell, unlike VAR=x prefixes).
+# Keeps ~/.dispatch/drawing.json (the user's defaults) out of every test; test/user-defaults.test.js uses a temp HOME.
+DRAWING_USER_DEFAULTS=off

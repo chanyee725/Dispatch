@@ -1,0 +1,15 @@
+/* 모델 연결 (E525, #570). */
+/* Busy spinner next to 로그인 중 and on a pending button: slowed down, not stopped, under reduced motion. */
+.connect-spin {
+  animation: connect-spin 1s linear infinite;
+}
+@media (prefers-reduced-motion: reduce) {
+  .connect-spin {
+    animation-duration: 6s;
+  }
+}
+@keyframes connect-spin {
+  to {
+    rotate: 1turn;
+  }
+}

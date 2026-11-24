@@ -1,0 +1,687 @@
+<!doctype html>
+<!--
+  E42 app shell prototype (static, throwaway). Not app code.
+  Query: ?layout=a|b|mix&theme=dark|light&screen=home|project|doc|cmd|nav
+  Query: layout=mix is the chosen combination (dashboard, project home, sidebar = B; document and diagram = A).
+  Font: Pretendard for everything, Latin included. Loads fonts/Pretendard.woff2 next to this file if present (the
+  screenshot script links it in a temp copy); otherwise system fonts. Nothing is fetched from the network.
+  Colours: shadcn/ui stock neutral theme. Sizes: about 108% of the first draft (UI 14px, meta 13px, doc body 16px).
+  Icons are simple shapes drawn here; no third-party icon set.
+-->
+<html lang="ko">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>E42 앱 셸 시안</title>
+<style>
+@font-face { font-family: "Pretendard Proto"; src: url("fonts/Pretendard.woff2") format("woff2"); font-weight: 45 920; }
+
+/* ---------- Tokens: shadcn/ui stock theme, base colour "neutral" (radius 0.625rem), light and dark as shipped.
+   Prototype role names below are only aliases onto the stock tokens; no custom greys. ---------- */
+:root[data-theme="light"] {
+  color-scheme: light;
+  --radius: 0.625rem;
+  --background: oklch(1 0 0);
+  --foreground: oklch(0.145 0 0);
+  --card: oklch(1 0 0);
+  --card-foreground: oklch(0.145 0 0);
+  --popover: oklch(1 0 0);
+  --popover-foreground: oklch(0.145 0 0);
+  --primary: oklch(0.205 0 0);
+  --primary-foreground: oklch(0.985 0 0);
+  --secondary: oklch(0.97 0 0);
+  --secondary-foreground: oklch(0.205 0 0);
+  --muted: oklch(0.97 0 0);
+  --muted-foreground: oklch(0.5 0 0); /* decided 2026-11-13: darker than stock 0.556 for meta contrast (5.5:1+) */
+  --accent: oklch(0.97 0 0);
+  --accent-foreground: oklch(0.205 0 0);
+  --destructive: oklch(0.577 0.245 27.325);
+  --border: oklch(0.922 0 0);
+  --input: oklch(0.922 0 0);
+  --ring: oklch(0.708 0 0);
+  --sidebar: oklch(0.985 0 0);
+  --sidebar-foreground: oklch(0.145 0 0);
+  --sidebar-primary: oklch(0.205 0 0);
+  --sidebar-primary-foreground: oklch(0.985 0 0);
+  --sidebar-accent: oklch(0.97 0 0);
+  --sidebar-accent-foreground: oklch(0.205 0 0);
+  --sidebar-border: oklch(0.922 0 0);
+  --sidebar-ring: oklch(0.708 0 0);
+  /* Status colours are not part of shadcn; same as Dispatch (doc 5 §3.1). */
+  --ok: oklch(0.58 0.15 155);
+  --warn: oklch(0.66 0.15 70);
+  --input-bg: transparent;
+}
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --radius: 0.625rem;
+  --background: oklch(0.145 0 0);
+  --foreground: oklch(0.985 0 0);
+  --card: oklch(0.205 0 0);
+  --card-foreground: oklch(0.985 0 0);
+  --popover: oklch(0.205 0 0);
+  --popover-foreground: oklch(0.985 0 0);
+  --primary: oklch(0.922 0 0);
+  --primary-foreground: oklch(0.205 0 0);
+  --secondary: oklch(0.269 0 0);
+  --secondary-foreground: oklch(0.985 0 0);
+  --muted: oklch(0.269 0 0);
+  --muted-foreground: oklch(0.708 0 0);
+  --accent: oklch(0.269 0 0);
+  --accent-foreground: oklch(0.985 0 0);
+  --destructive: oklch(0.704 0.191 22.216);
+  --border: oklch(1 0 0 / 10%);
+  --input: oklch(1 0 0 / 15%);
+  --ring: oklch(0.556 0 0);
+  --sidebar: oklch(0.205 0 0);
+  --sidebar-foreground: oklch(0.985 0 0);
+  /* Stock dark --sidebar-primary is blue (264); set to the neutral primary so no hue is left outside status. */
+  --sidebar-primary: oklch(0.922 0 0);
+  --sidebar-primary-foreground: oklch(0.205 0 0);
+  --sidebar-accent: oklch(0.269 0 0);
+  --sidebar-accent-foreground: oklch(0.985 0 0);
+  --sidebar-border: oklch(1 0 0 / 10%);
+  --sidebar-ring: oklch(0.556 0 0);
+  --ok: oklch(0.72 0.15 155);
+  --warn: oklch(0.80 0.14 75);
+  --input-bg: color-mix(in oklch, var(--input) 30%, transparent); /* shadcn Input: dark:bg-input/30 */
+}
+:root {
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+  /* Aliases used by the prototype CSS -> stock shadcn tokens. */
+  --frame: var(--sidebar);
+  --main: var(--background);
+  --panel-border: var(--sidebar-border);
+  --raised: var(--card);
+  --card-border: var(--border);
+  --pop: var(--popover);
+  --hover: var(--accent);
+  --active: var(--accent);
+  --border-strong: var(--input);
+  --text-1: var(--foreground);
+  --text-2: var(--foreground);
+  --text-3: var(--muted-foreground);
+  --text-4: var(--muted-foreground);
+  --focus: var(--primary); /* focus ring: white-ish in dark, near-black in light */
+  --selected: var(--muted);
+  --btn-bg: var(--primary);
+  --btn-fg: var(--primary-foreground);
+  --idle: var(--muted-foreground);
+  --scrim: oklch(0 0 0 / 50%); /* shadcn Dialog overlay bg-black/50 */
+  --shadow-pop: 0 0 0 1px var(--border), 0 4px 6px -1px oklch(0 0 0 / 10%), 0 2px 4px -2px oklch(0 0 0 / 10%); /* shadow-md */
+  --dot: var(--border);
+  --kbd-bg: var(--muted);
+}
+
+* { box-sizing: border-box; }
+html, body { margin: 0; height: 100%; }
+body {
+  font: 14px/22px "Pretendard Proto", "Pretendard Variable", Pretendard, system-ui, sans-serif;
+  letter-spacing: -0.005em;
+  color: var(--text-1);
+  background: var(--frame);
+  -webkit-font-smoothing: antialiased;
+}
+button { font: inherit; color: inherit; letter-spacing: inherit; }
+.num { font-variant-numeric: tabular-nums; }
+:focus { outline: none; }
+:focus-visible, .show-focus { outline: 2px solid var(--focus); outline-offset: 2px; }
+.sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+svg.i { width: 17px; height: 17px; flex: none; fill: none; stroke: currentColor; stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round; }
+svg.i.sm { width: 15px; height: 15px; }
+kbd {
+  font: 500 12px/17px "Pretendard Proto", "Pretendard Variable", Pretendard, system-ui, sans-serif; color: var(--text-3);
+  min-width: 19px; height: 19px; padding: 1px 5px; border-radius: var(--radius-sm); background: var(--kbd-bg);
+  border: 1px solid var(--border); display: inline-flex; align-items: center; justify-content: center;
+}
+
+/* ---------- Shell ---------- */
+.app { display: grid; grid-template-columns: 264px 1fr; height: 100vh; }
+.side { display: flex; flex-direction: column; min-height: 0; padding: 9px 9px 11px; gap: 2px; }
+.mainwrap { min-width: 0; min-height: 0; display: flex; }
+.main { flex: 1; min-width: 0; background: var(--main); display: flex; flex-direction: column; overflow: hidden; }
+/* A: main sits flush with a left border. B: main is an inset panel on the frame. */
+.layout-a .main { border-left: 1px solid var(--panel-border); }
+.layout-b .mainwrap { padding: 9px 9px 9px 0; }
+.layout-b .main { border: 1px solid var(--panel-border); border-radius: var(--radius-xl); }
+:root[data-theme="light"] .layout-b .main { box-shadow: 0 1px 2px oklch(0 0 0 / 4%); }
+
+/* Sidebar rows */
+.ws { display: flex; align-items: center; gap: 9px; height: 35px; padding: 0 9px; border-radius: var(--radius-md); background: none; border: 0; width: 100%; text-align: left; cursor: default; }
+.ws:hover { background: var(--hover); }
+.ws-mark { width: 22px; height: 22px; border-radius: var(--radius-sm); background: var(--sidebar-primary); color: var(--sidebar-primary-foreground); display: grid; place-items: center; font-weight: 600; font-size: 12px; }
+.ws-name { font-weight: 600; font-size: 14px; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ws-tools { display: flex; gap: 2px; }
+.ibtn { width: 30px; height: 30px; display: grid; place-items: center; border: 0; background: none; color: var(--text-3); border-radius: var(--radius-md); }
+.ibtn:hover { background: var(--hover); color: var(--text-1); }
+.ibtn.boxed { border: 1px solid var(--border); background: var(--raised); color: var(--text-2); }
+.nav { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 1px; }
+.row {
+  display: flex; align-items: center; gap: 9px; height: 30px; padding: 0 9px; border-radius: var(--radius-md); width: 100%;
+  border: 0; background: none; color: var(--text-2); text-align: left; font-weight: 500;
+}
+.row:hover { background: var(--hover); color: var(--text-1); }
+.row[aria-current="page"] { background: var(--active); color: var(--text-1); }
+.row .lab { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.row .cnt { color: var(--text-3); font-size: 13px; }
+.row kbd { opacity: 0; }
+.row:hover kbd, .row:focus-visible kbd { opacity: 1; }
+.always-kbd .row kbd { opacity: 1; }
+.row .chev { color: var(--text-4); width: 13px; height: 13px; margin-left: -2px; transition: transform .12s; }
+.row[aria-expanded="true"] .chev { transform: rotate(90deg); }
+.row.sub { font-weight: 400; color: var(--text-3); }
+.row.sub:hover { color: var(--text-1); }
+.row.sub[aria-current="page"] { color: var(--text-1); }
+.sec { display: flex; align-items: center; height: 30px; padding: 0 4px 0 9px; margin-top: 15px; color: var(--text-3); font-size: 13px; font-weight: 500; }
+.sec .lab { flex: 1; }
+.sec .ibtn { width: 26px; height: 26px; }
+.pico { width: 17px; height: 17px; border-radius: var(--radius-sm); display: grid; place-items: center; font-size: 11px; font-weight: 700; flex: none; background: var(--muted); color: var(--foreground); }
+.pico.none { background: none; color: var(--muted-foreground); }
+.grow { flex: 1; min-height: 9px; }
+.scroll { overflow: auto; min-height: 0; }
+
+/* Model connection block */
+.models { border-top: 1px solid var(--border); padding-top: 9px; margin-top: 9px; display: flex; flex-direction: column; gap: 1px; }
+.model { display: grid; grid-template-columns: 9px 1fr auto; align-items: center; column-gap: 9px; padding: 5px 9px; border-radius: var(--radius-md); border: 0; background: none; text-align: left; width: 100%; }
+.model:hover { background: var(--hover); }
+.model .dot { width: 9px; height: 9px; border-radius: 50%; }
+.model .nm { color: var(--text-2); font-weight: 500; }
+.model .st { color: var(--text-3); font-size: 13px; }
+.model .meter { grid-column: 2 / 4; height: 3px; border-radius: var(--radius-sm); background: var(--active); margin-top: 5px; overflow: hidden; }
+.model .meter > i { display: block; height: 100%; background: var(--text-3); border-radius: var(--radius-sm); }
+.model .meter > i.hi { background: var(--warn); }
+.model .lim { grid-column: 2 / 4; display: flex; justify-content: space-between; color: var(--text-3); font-size: 13px; line-height: 17px; margin-top: 3px; }
+.model .connect { color: var(--foreground); font-size: 13px; font-weight: 500; text-decoration: underline; text-underline-offset: 3px; }
+.btn-primary {
+  height: 35px; border-radius: var(--radius-md); border: 0; background: var(--btn-bg); color: var(--btn-fg); font-weight: 500;
+  display: flex; align-items: center; justify-content: center; gap: 6px; width: 100%; margin-top: 9px;
+}
+.btn-primary kbd { background: color-mix(in oklch, var(--btn-fg) 12%, transparent); border-color: transparent; color: var(--btn-fg); }
+.btn { height: 30px; padding: 0 11px; border-radius: var(--radius-md); border: 1px solid var(--border-strong); background: var(--input-bg); color: var(--text-1); font-weight: 500; display: inline-flex; align-items: center; gap: 6px; }
+.btn:hover { background: var(--active); }
+.btn.solid { background: var(--btn-bg); border-color: transparent; color: var(--btn-fg); }
+
+/* B: compact model strip */
+.mstrip { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 13px; padding: 6px 9px; border-radius: var(--radius-md); border: 0; background: none; color: var(--text-3); font-size: 13px; width: 100%; }
+.mstrip:hover { background: var(--hover); }
+.mstrip span { display: inline-flex; align-items: center; gap: 5px; }
+.mstrip .dot { width: 8px; height: 8px; border-radius: 50%; }
+
+/* ---------- Main header ---------- */
+.mh { height: 52px; flex: none; display: flex; align-items: center; gap: 13px; padding: 0 22px 0 26px; border-bottom: 1px solid var(--border); }
+.layout-b .mh { height: 48px; padding: 0 13px 0 17px; }
+.crumbs { display: flex; align-items: center; gap: 6px; color: var(--text-3); white-space: nowrap; overflow: hidden; min-width: 0; }
+.crumbs b { color: var(--text-1); font-weight: 500; overflow: hidden; text-overflow: ellipsis; }
+.crumbs .sep { color: var(--text-4); }
+.mh .sp { flex: 1; }
+.tabs { display: flex; gap: 2px; }
+.tab { height: 30px; padding: 0 11px; border-radius: var(--radius-md); border: 0; background: none; color: var(--text-3); font-weight: 500; white-space: nowrap; }
+.tab:hover { color: var(--text-1); background: var(--hover); }
+.tab[aria-selected="true"] { color: var(--text-1); background: var(--active); }
+.layout-b .tab { height: 28px; border: 1px solid var(--border); border-radius: 999px; padding: 0 11px; font-size: 13px; }
+.layout-b .tab[aria-selected="true"] { border-color: var(--border-strong); }
+.search {
+  height: 32px; width: 302px; display: flex; align-items: center; gap: 9px; padding: 0 6px 0 11px; border-radius: var(--radius-md);
+  border: 1px solid var(--border-strong); background: var(--input-bg); color: var(--text-3);
+}
+.search span { flex: 1; }
+.body { overflow: auto; flex: 1; min-height: 0; }
+.wrap { max-width: 1188px; margin: 0 auto; padding: 26px 35px 52px; }
+.layout-b .wrap { max-width: none; padding: 0 0 52px; }
+h1.t { font-size: 22px; line-height: 30px; font-weight: 600; letter-spacing: -0.015em; margin: 0; }
+.subt { color: var(--text-3); margin: 4px 0 0; }
+.toolbar { display: flex; align-items: center; gap: 13px; margin-bottom: 22px; }
+
+/* Quick-create cards (A) */
+.cards { display: grid; grid-template-columns: repeat(4, 1fr); gap: 13px; margin: 0 0 30px; }
+.card {
+  display: flex; align-items: center; gap: 13px; padding: 15px; border-radius: var(--radius-lg); border: 1px solid var(--card-border);
+  background: var(--raised); text-align: left; min-height: 69px;
+}
+.card:hover { border-color: var(--border-strong); background: var(--active); }
+.card .ic { width: 35px; height: 35px; border-radius: var(--radius-md); display: grid; place-items: center; background: var(--active); color: var(--text-2); flex: none; }
+.card b { display: block; font-weight: 500; color: var(--text-1); }
+.card small { display: block; font-size: 13px; line-height: 17px; color: var(--text-3); margin-top: 2px; }
+.card kbd { margin-left: auto; align-self: flex-start; }
+
+/* File table */
+.h2 { font-size: 14px; font-weight: 500; color: var(--text-2); margin: 0 0 9px; display: flex; align-items: center; gap: 9px; }
+.h2 .c { color: var(--text-4); font-weight: 400; }
+table.ft { width: 100%; border-collapse: collapse; table-layout: fixed; }
+.ft th { text-align: left; font-weight: 500; font-size: 13px; color: var(--text-3); height: 35px; padding: 0 13px; border-bottom: 1px solid var(--border); }
+.ft td { height: 43px; padding: 0 13px; border-bottom: 1px solid var(--border); color: var(--text-3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ft tr.r:hover td { background: var(--hover); }
+.ft tr.sel td { background: var(--selected); }
+.ft td.n { color: var(--text-1); }
+.ft .nm { display: flex; align-items: center; gap: 11px; min-width: 0; }
+.ft .nm span { overflow: hidden; text-overflow: ellipsis; }
+.ft .kind { color: var(--text-3); }
+.ft .more { opacity: 0; }
+.ft tr.r:hover .more, .ft tr.sel .more { opacity: 1; }
+.loc { display: inline-flex; align-items: center; gap: 6px; color: var(--text-2); }
+.loc.none { color: var(--text-3); }
+.tw { width: 15px; height: 22px; display: grid; place-items: center; color: var(--text-4); border: 0; background: none; padding: 0; border-radius: var(--radius-sm); }
+.tw svg { width: 13px; height: 13px; }
+.tw[aria-expanded="true"] svg { transform: rotate(90deg); }
+.tw.ph { visibility: hidden; }
+.badge { font-size: 12px; line-height: 17px; padding: 0 6px; border-radius: var(--radius-sm); border: 1px solid var(--border); color: var(--text-3); }
+.badge.run { color: var(--foreground); display: inline-flex; align-items: center; gap: 5px; }
+.badge.run::before { content: ""; width: 6px; height: 6px; border-radius: 50%; background: var(--ok); } /* colour on the dot only */
+
+/* B: grouped list */
+.grp { display: flex; align-items: center; gap: 9px; height: 39px; padding: 0 17px; background: color-mix(in oklch, var(--muted) 50%, var(--main)); border-bottom: 1px solid var(--border); color: var(--text-2); font-weight: 500; position: sticky; top: 0; }
+.grp .c { color: var(--text-3); font-weight: 400; }
+.grp .sp { flex: 1; }
+.li { display: flex; align-items: center; gap: 11px; height: 41px; padding: 0 17px; border-bottom: 1px solid var(--border); color: var(--text-1); }
+.li:hover { background: var(--hover); }
+.li .ttl { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; display: flex; align-items: center; gap: 9px; }
+.li .ttl em { font-style: normal; color: var(--text-3); font-size: 13px; }
+.li .meta { color: var(--text-3); font-size: 13px; width: 78px; text-align: right; flex: none; }
+.li .kind { color: var(--text-3); }
+.newbar { display: flex; gap: 6px; padding: 11px 17px; border-bottom: 1px solid var(--border); align-items: center; }
+.newbar .lbl { color: var(--text-3); font-size: 13px; margin-right: 4px; }
+.chip { height: 28px; padding: 0 11px 0 9px; border-radius: var(--radius-md); border: 1px dashed var(--border-strong); background: none; color: var(--text-2); display: inline-flex; align-items: center; gap: 6px; font-size: 13px; font-weight: 500; }
+.chip:hover { background: var(--hover); color: var(--text-1); border-style: solid; }
+
+/* Project home header */
+.phead { display: flex; gap: 15px; align-items: flex-start; margin-bottom: 22px; }
+.phead .pico { width: 39px; height: 39px; border-radius: var(--radius-xl); font-size: 17px; }
+.layout-b .phead { padding: 22px 17px 17px; margin: 0; border-bottom: 1px solid var(--border); }
+.meta-line { display: flex; gap: 17px; color: var(--text-3); font-size: 13px; margin-top: 9px; }
+.meta-line span { display: inline-flex; gap: 6px; align-items: center; }
+
+/* ---------- Document screen ---------- */
+.split { flex: 1; min-height: 0; display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
+.doc { overflow: auto; border-right: 1px solid var(--border); }
+.doc .col { max-width: 691px; margin: 0 auto; padding: 43px 43px 69px; font-size: 16px; line-height: 1.65; color: var(--text-2); }
+.doc h1 { font-size: 30px; line-height: 39px; font-weight: 600; letter-spacing: -0.02em; margin: 0 0 6px; color: var(--text-1); }
+.doc h2 { font-size: 18px; line-height: 28px; font-weight: 600; margin: 30px 0 6px; color: var(--text-1); }
+.doc p { margin: 0 0 11px; }
+.doc code { font: 14px ui-monospace, Menlo, monospace; background: var(--active); padding: 1px 5px; border-radius: var(--radius-sm); color: var(--text-1); }
+.doc .props { display: flex; gap: 17px; font-size: 13px; color: var(--text-3); margin-bottom: 26px; line-height: 17px; }
+.subdocs { border: 1px solid var(--card-border); border-radius: var(--radius-xl); overflow: hidden; margin: 9px 0 17px; font-size: 14px; line-height: 22px; }
+.subdocs .li { padding: 0 13px; height: 39px; }
+.subdocs .li:last-child { border-bottom: 0; }
+.subdocs .add { color: var(--text-3); }
+.task { display: flex; gap: 11px; align-items: flex-start; }
+.task i { width: 15px; height: 15px; border: 1.5px solid var(--text-4); border-radius: var(--radius-sm); margin-top: 5px; flex: none; }
+.canvas { position: relative; background-color: var(--main); background-image: radial-gradient(var(--dot) 1px, transparent 1.2px); background-size: 22px 22px; overflow: hidden; }
+.canvas svg.dg { position: absolute; inset: 0; width: 100%; height: 100%; }
+.toolrow { position: absolute; left: 50%; bottom: 17px; transform: translateX(-50%); display: flex; gap: 2px; padding: 4px; background: var(--pop); border-radius: var(--radius-lg); box-shadow: var(--shadow-pop); }
+.seg { display: flex; padding: 2px; border-radius: var(--radius-md); background: var(--active); }
+.seg button { height: 26px; padding: 0 11px; border: 0; background: none; border-radius: var(--radius-sm); color: var(--text-3); font-size: 13px; font-weight: 500; }
+.seg button[aria-pressed="true"] { background: var(--pop); color: var(--text-1); box-shadow: 0 0 0 1px var(--border); }
+.saved { display: inline-flex; align-items: center; gap: 6px; color: var(--text-3); font-size: 13px; }
+.saved i { width: 6px; height: 6px; border-radius: 50%; background: var(--ok); }
+
+/* ---------- Command menu ---------- */
+.scrim { position: fixed; inset: 0; background: var(--scrim); display: flex; justify-content: center; align-items: flex-start; padding-top: 14vh; z-index: 10; }
+.cmd { width: 648px; max-width: calc(100vw - 26px); background: var(--pop); border-radius: var(--radius-lg); box-shadow: var(--shadow-pop); overflow: hidden; }
+.cmd .in { display: flex; align-items: center; gap: 11px; height: 52px; padding: 0 17px; border-bottom: 1px solid var(--border); font-size: 16px; }
+.cmd .in .ph { color: var(--text-1); flex: 1; }
+.cmd .in .caret { display: inline-block; width: 1px; height: 19px; background: var(--foreground); vertical-align: -4px; margin-left: 1px; }
+.cmd .ctx { display: inline-flex; gap: 6px; align-items: center; height: 24px; padding: 0 9px; border-radius: var(--radius-sm); background: var(--active); color: var(--text-2); font-size: 13px; }
+.cmd ul { list-style: none; margin: 0; padding: 6px; max-height: 454px; overflow: auto; }
+.cmd .g { font-size: 13px; color: var(--text-3); padding: 9px 11px 4px; font-weight: 500; }
+.cmd .o { display: flex; align-items: center; gap: 11px; height: 39px; padding: 0 11px; border-radius: var(--radius-md); color: var(--text-2); }
+.cmd .o[aria-selected="true"] { background: var(--active); color: var(--text-1); }
+.cmd .o .lab { flex: 1; }
+.cmd .o .lab mark { background: none; color: var(--text-1); font-weight: 600; }
+.cmd .o .hint { color: var(--text-4); font-size: 13px; }
+.cmd .foot { display: flex; gap: 17px; padding: 9px 15px; border-top: 1px solid var(--border); color: var(--text-3); font-size: 13px; }
+.cmd .foot span { display: inline-flex; gap: 6px; align-items: center; }
+
+/* ---------- Mobile (390) ---------- */
+.mtop { display: none; }
+@media (max-width: 720px) {
+  .app { grid-template-columns: 1fr; }
+  .app > .side { display: none; }
+  .layout-b .mainwrap { padding: 0; }
+  .layout-b .main { border: 0; border-radius: 0; }
+  .layout-a .main { border-left: 0; }
+  .mtop { display: flex; align-items: center; gap: 4px; height: 52px; padding: 0 6px; border-bottom: 1px solid var(--border); flex: none; }
+  .mtop .ttl { flex: 1; font-weight: 600; font-size: 16px; padding-left: 4px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .mtop .ibtn { width: 44px; height: 44px; }
+  .mh { display: none; }
+  .wrap { padding: 17px 17px 43px; }
+  .toolbar { margin: 0 -16px 17px; padding: 0 17px; overflow-x: auto; }
+  .toolbar .search, .toolbar .sp { display: none; }
+  .cards { grid-template-columns: 1fr 1fr; gap: 9px; margin-bottom: 22px; }
+  .card { padding: 13px; gap: 11px; min-height: 60px; }
+  .card small, .card kbd { display: none; }
+  .ft thead, .ft colgroup { display: none; }
+  table.ft { table-layout: auto; }
+  .ft td.n { width: 100%; }
+  .meta-line { flex-wrap: wrap; gap: 4px 13px; }
+  .meta-line span { white-space: nowrap; }
+  .ft col.c-loc, .ft col.c-made, .ft col.c-more { width: 0 !important; }
+  .ft td.loc-td, .ft td.made-td, .ft td.more-td { display: none; }
+  .ft td.n { height: auto; padding: 11px 13px 11px 0; white-space: normal; }
+  .ft td.edit-td { width: 86px; display: table-cell; text-align: right; padding-right: 0; font-size: 13px; }
+  .ft .mloc { display: block; color: var(--text-3); font-size: 13px; line-height: 17px; margin-top: 2px; }
+  .li { padding: 0 13px; height: 48px; }
+  .li .meta.made { display: none; }
+  .grp { padding: 0 13px; }
+  .newbar { padding: 11px 13px; overflow-x: auto; }
+  .newbar .lbl { display: none; }
+  .chip { flex: none; }
+  .phead { margin-bottom: 17px; }
+  .layout-b .phead { padding: 17px 13px; }
+  .split { grid-template-columns: 1fr; }
+  .canvas { display: none; }
+  .doc { border-right: 0; }
+  .doc .col { padding: 22px 17px 52px; }
+  .doc h1 { font-size: 26px; line-height: 35px; }
+  .mseg { display: flex; padding: 9px 13px; border-bottom: 1px solid var(--border); gap: 9px; align-items: center; }
+  .mseg .crumbs { flex: 1; font-size: 13px; }
+  .scrim.cmdscrim { padding-top: 9px; }
+  .cmd ul { max-height: 60vh; }
+  .cmd .foot { display: none; }
+  .drawer { position: fixed; inset: 0 auto 0 0; width: 324px; background: var(--frame); border-right: 1px solid var(--border); z-index: 11; display: flex; flex-direction: column; padding: 9px 9px 13px; box-shadow: var(--shadow-pop); }
+  .drawer .row { height: 44px; }
+  .drawer .row kbd, .drawer .ws-tools .ibtn.k { display: none; }
+}
+@media (min-width: 721px) { .mseg { display: none; } }
+@media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+</style>
+</head>
+<body>
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <defs>
+    <symbol id="i-doc" viewBox="0 0 16 16"><path d="M4 1.75h5.5L12.5 4.75v9.5h-8.5z"/><path d="M6.5 8h4M6.5 10.75h4"/></symbol>
+    <symbol id="i-canvas" viewBox="0 0 16 16"><rect x="2" y="2.5" width="5" height="4" rx="1"/><rect x="9" y="9.5" width="5" height="4" rx="1"/><path d="M4.5 6.5v4.5h4.5"/></symbol>
+    <symbol id="i-flow" viewBox="0 0 16 16"><circle cx="3.5" cy="8" r="1.75"/><circle cx="12.5" cy="3.5" r="1.75"/><circle cx="12.5" cy="12.5" r="1.75"/><path d="M5.25 8h2.5M7.75 3.5v9M7.75 3.5h3M7.75 12.5h3"/></symbol>
+    <symbol id="i-tpl" viewBox="0 0 16 16"><rect x="2" y="2" width="5" height="5" rx="1"/><rect x="9" y="2" width="5" height="5" rx="1"/><rect x="2" y="9" width="5" height="5" rx="1"/><path d="M11.5 9.5v4M9.5 11.5h4"/></symbol>
+    <symbol id="i-all" viewBox="0 0 16 16"><path d="M2.5 4.5h11M2.5 8h11M2.5 11.5h11"/></symbol>
+    <symbol id="i-clock" viewBox="0 0 16 16"><circle cx="8" cy="8" r="5.75"/><path d="M8 5v3.25l2 1.25"/></symbol>
+    <symbol id="i-box" viewBox="0 0 16 16"><rect x="2" y="3" width="12" height="3" rx="1"/><path d="M3 6v6.5h10V6M6.5 9h3"/></symbol>
+    <symbol id="i-plus" viewBox="0 0 16 16"><path d="M8 3v10M3 8h10"/></symbol>
+    <symbol id="i-search" viewBox="0 0 16 16"><circle cx="7" cy="7" r="4.5"/><path d="M10.5 10.5l3 3"/></symbol>
+    <symbol id="i-chev" viewBox="0 0 16 16"><path d="M6 3.5l4.5 4.5L6 12.5"/></symbol>
+    <symbol id="i-down" viewBox="0 0 16 16"><path d="M4 6l4 4 4-4"/></symbol>
+    <symbol id="i-gear" viewBox="0 0 16 16"><circle cx="8" cy="8" r="2"/><path d="M8 1.75v2M8 12.25v2M1.75 8h2M12.25 8h2M3.6 3.6l1.4 1.4M11 11l1.4 1.4M3.6 12.4L5 11M11 5l1.4-1.4"/></symbol>
+    <symbol id="i-more" viewBox="0 0 16 16"><circle cx="3.5" cy="8" r=".9" fill="currentColor"/><circle cx="8" cy="8" r=".9" fill="currentColor"/><circle cx="12.5" cy="8" r=".9" fill="currentColor"/></symbol>
+    <symbol id="i-menu" viewBox="0 0 16 16"><path d="M2.5 4.5h11M2.5 8h11M2.5 11.5h11"/></symbol>
+    <symbol id="i-new" viewBox="0 0 16 16"><path d="M9 2.25H4.25a2 2 0 0 0-2 2v7.5a2 2 0 0 0 2 2h7.5a2 2 0 0 0 2-2V7"/><path d="M12.25 1.75l2 2L9 9H7V7z"/></symbol>
+    <symbol id="i-folder" viewBox="0 0 16 16"><path d="M1.75 4.25a1 1 0 0 1 1-1h3.5l1.5 1.5h5.5a1 1 0 0 1 1 1v6.5a1 1 0 0 1-1 1h-10.5a1 1 0 0 1-1-1z"/></symbol>
+    <symbol id="i-play" viewBox="0 0 16 16"><path d="M5 3.5v9l7-4.5z"/></symbol>
+    <symbol id="i-sun" viewBox="0 0 16 16"><circle cx="8" cy="8" r="3"/><path d="M8 1.5v1.5M8 13v1.5M1.5 8H3M13 8h1.5"/></symbol>
+    <symbol id="i-export" viewBox="0 0 16 16"><path d="M8 2v8M5 5l3-3 3 3M3 10.5v2.5h10v-2.5"/></symbol>
+    <symbol id="i-sort" viewBox="0 0 16 16"><path d="M4 4.5h8M5.5 8h5M7 11.5h2"/></symbol>
+    <symbol id="i-x" viewBox="0 0 16 16"><path d="M4 4l8 8M12 4l-8 8"/></symbol>
+  </defs>
+</svg>
+<div id="root"></div>
+<script>
+const P = new URLSearchParams(location.search);
+/* layout=mix: the chosen combination. Sidebar, dashboard and project home use B; the document/diagram screen uses A's frame. */
+const mix = P.get('layout') === 'mix';
+const layout = mix || P.get('layout') === 'b' ? 'b' : 'a';
+const theme = P.get('theme') === 'light' ? 'light' : 'dark';
+const screen = P.get('screen') || 'home';
+document.documentElement.dataset.theme = theme;
+const mobile = matchMedia('(max-width: 720px)').matches;
+
+const ic = (id, cls = '') => `<svg class="i ${cls}" aria-hidden="true"><use href="#i-${id}"/></svg>`;
+const KIND = { doc: ['doc', '문서'], canvas: ['canvas', '캔버스'], flow: ['flow', '파이프라인 계획'] };
+
+/* Sample data: made up; no real names. */
+const PROJECTS = [
+  { id: 'pay', name: '결제 시스템', letter: '결', desc: '결제 요청부터 정산까지 흐름을 정리해요.', docs: [
+    { t: '로그인 로직', k: 'doc', made: '10월 28일', edit: '3분 전', kids: [
+      { t: '토큰 갱신', k: 'doc', made: '11월 2일', edit: '3분 전' },
+      { t: '세션 만료 처리', k: 'canvas', made: '11월 2일', edit: '어제' } ] },
+    { t: '데이터 수집 로직', k: 'doc', made: '10월 30일', edit: '1시간 전', kids: [
+      { t: '이벤트 스키마', k: 'canvas', made: '11월 5일', edit: '2시간 전' } ] },
+    { t: '결제 흐름', k: 'canvas', made: '10월 21일', edit: '어제' },
+    { t: '결제 개선 파이프라인', k: 'flow', made: '11월 10일', edit: '20분 전', run: true } ] },
+  { id: 'onb', name: '온보딩 개편', letter: '온', docs: [
+    { t: '첫 화면 흐름', k: 'canvas', made: '11월 1일', edit: '어제' },
+    { t: '안내 문구 정리', k: 'doc', made: '11월 3일', edit: '3일 전' } ] },
+  { id: 'inf', name: '인프라', letter: '인', docs: [
+    { t: '배포 구조', k: 'canvas', made: '9월 14일', edit: '11월 7일' },
+    { t: '로그 보관 정책', k: 'doc', made: '9월 20일', edit: '10월 30일' } ] },
+];
+const LOOSE = [ { t: '아이디어 메모', k: 'doc', made: '11월 11일', edit: '방금' }, { t: '화이트보드 스케치', k: 'canvas', made: '11월 9일', edit: '4일 전' } ];
+const MODELS = [
+  { n: 'Claude', on: true, st: '연결됨', lim: '5시간 한도', pct: 42 },
+  { n: 'Codex', on: true, st: '연결됨', lim: '5시간 한도', pct: 81 },
+  { n: 'Gemini', on: false, st: '연결 안 됨' },
+];
+
+const proj = PROJECTS[0];
+const activeDoc = 'token';
+
+function picon(p, size = '') { return `<span class="pico" aria-hidden="true">${p.letter}</span>`; }
+
+/* ---------- Sidebar ---------- */
+function sideViews(cur) {
+  const v = [['all', '모든 파일', 'all', 'A'], ['recent', '최근', 'clock', 'R'], ['box', '보관함', 'box', 'B']];
+  return `<ul class="nav">${v.map(([id, l, i, k]) => `<li><button class="row" ${cur === id ? 'aria-current="page"' : ''}>${ic(i)}<span class="lab">${l}</span><kbd>${k}</kbd></button></li>`).join('')}</ul>`;
+}
+function sideTree(p, depth, curDoc) {
+  return p.map((d, j) => {
+    const id = d.t === '토큰 갱신' ? 'token' : '';
+    const pad = 9 + 22 + depth * 15;
+    const has = d.kids && d.kids.length;
+    const open = has && d.t === '로그인 로직';
+    return `<li><button class="row sub" style="padding-left:${pad}px" ${id && id === curDoc ? 'aria-current="page"' : ''} ${has ? `aria-expanded="${open}"` : ''}>${ic(KIND[d.k][0], 'sm')}<span class="lab">${d.t}</span>${has && !open ? `<span class="cnt num">${d.kids.length}</span>` : ''}</button></li>` + (open ? sideTree(d.kids, depth + 1, curDoc) : '');
+  }).join('');
+}
+function sideProjects(cur, curDoc) {
+  return `<div class="sec"><span class="lab">프로젝트</span><button class="ibtn" aria-label="새 프로젝트">${ic('plus', 'sm')}</button></div>
+  <ul class="nav">${PROJECTS.map(p => {
+    const open = p.id === 'pay';
+    return `<li><button class="row" aria-expanded="${open}" ${cur === p.id ? 'aria-current="page"' : ''}>${picon(p)}<span class="lab">${p.name}</span>${ic('chev', 'chev')}</button>${open ? `<ul class="nav">${sideTree(p.docs, 0, curDoc)}</ul>` : ''}</li>`;
+  }).join('')}</ul>`;
+}
+function modelsA() {
+  return `<div class="models" role="group" aria-label="모델 연결">
+    <div class="sec" style="margin-top:0"><span class="lab">모델 연결</span></div>
+    ${MODELS.map(m => `<button class="model" aria-label="${m.n} ${m.st}${m.on ? `, ${m.lim} ${m.pct}% 사용` : ', 연결하기'}">
+      <span class="dot" style="background:var(${m.on ? '--ok' : '--idle'})"></span><span class="nm">${m.n}</span>
+      ${m.on ? `<span class="st num">${m.pct}%</span><span class="meter"><i class="${m.pct > 75 ? 'hi' : ''}" style="width:${m.pct}%"></i></span>` : `<span class="connect">연결하기</span>`}
+    </button>`).join('')}
+    <button class="row">${ic('gear')}<span class="lab">설정</span><kbd>,</kbd></button>
+  </div>`;
+}
+function modelsB() {
+  return `<div class="models" role="group" aria-label="모델 연결">
+    <button class="mstrip" aria-label="모델 연결: Claude 42%, Codex 81%, Gemini 연결 안 됨">
+      ${MODELS.map(m => `<span><i class="dot" style="background:var(${m.on ? (m.pct > 75 ? '--warn' : '--ok') : '--idle'})"></i>${m.n}${m.on ? ` <span class="num">${m.pct}%</span>` : ''}</span>`).join('')}
+    </button>
+    <button class="row">${ic('gear')}<span class="lab">설정</span><kbd>,</kbd></button>
+  </div>`;
+}
+function sidebar(cur, curDoc, cls = 'side') {
+  const wsTools = layout === 'b'
+    ? `<div class="ws-tools"><button class="ibtn k" aria-label="검색 (Ctrl K)">${ic('search')}</button><button class="ibtn boxed" aria-label="새 파일 (N)">${ic('new')}</button></div>`
+    : `<div class="ws-tools"><button class="ibtn k" aria-label="검색 (Ctrl K)">${ic('search')}</button></div>`;
+  const close = cls === 'drawer' ? `<button class="ibtn" aria-label="메뉴 닫기">${ic('x')}</button>` : '';
+  return `<nav class="${cls}" aria-label="사이드바">
+    <div style="display:flex;align-items:center;gap:4px"><button class="ws"><span class="ws-mark" aria-hidden="true">D</span><span class="ws-name">drawing-ws</span></button>${wsTools}${close}</div>
+    <div class="scroll" style="margin-top:6px">${sideViews(cur)}${sideProjects(cur, curDoc)}</div>
+    <div class="grow"></div>
+    ${layout === 'a' ? modelsA() : modelsB()}
+    ${layout === 'a' ? `<button class="btn-primary">${ic('plus')}새 파일<kbd>N</kbd></button>` : ''}
+  </nav>`;
+}
+
+/* ---------- Dashboard / file table ---------- */
+function flat() {
+  const out = [];
+  for (const p of PROJECTS) {
+    const walk = (ds, path) => ds.forEach(d => { out.push({ ...d, p, path }); if (d.kids) walk(d.kids, path.concat(d.t)); });
+    walk(p.docs, []);
+  }
+  LOOSE.forEach(d => out.push({ ...d, p: null, path: [] }));
+  const order = ['방금', '3분 전', '20분 전', '1시간 전', '2시간 전', '어제', '3일 전', '4일 전', '10월 30일', '11월 7일'];
+  return out.sort((a, b) => (order.indexOf(a.edit) + 99) % 99 - (order.indexOf(b.edit) + 99) % 99);
+}
+function locCell(d) {
+  if (!d.p) return `<span class="loc none">미분류</span>`;
+  return `<span class="loc">${picon(d.p)}${d.p.name}${d.path.length ? `<span style="color:var(--text-3)"> / ${d.path.join(' / ')}</span>` : ''}</span>`;
+}
+function fileTable(rows, opts = {}) {
+  const tree = !!opts.tree;
+  return `<table class="ft">
+    <colgroup><col><col class="c-loc" style="width:${tree ? 130 : 280}px"><col class="c-made" style="width:130px"><col style="width:130px"><col class="c-more" style="width:48px"></colgroup>
+    <thead><tr><th scope="col">이름</th><th scope="col">${tree ? '하위 문서' : '위치'}</th><th scope="col">만든 때</th><th scope="col">고친 때 ${ic('down', 'sm')}</th><th scope="col"><span class="sr">메뉴</span></th></tr></thead>
+    <tbody>${rows.map((d, i) => {
+      const depth = d.depth || 0;
+      const has = d.kids && d.kids.length;
+      const tw = tree ? `<button class="tw ${has ? '' : 'ph'}" aria-label="${d.t} 펼치기" aria-expanded="${!!d.open}">${ic('chev')}</button>` : '';
+      return `<tr class="r ${opts.sel === i ? 'sel' : ''}"><td class="n"><div class="nm" style="padding-left:${depth * 24}px">${tw}<span class="kind">${ic(KIND[d.k][0])}</span><span>${d.t}</span>${d.run ? '<span class="badge run">실행 중</span>' : ''}</div>${tree ? '' : `<span class="mloc" hidden>${d.p ? d.p.name : '미분류'}</span>`}</td>
+      <td class="loc-td">${tree ? (has ? `<span class="num">${d.kids.length}개</span>` : '<span style="color:var(--text-4)">—</span>') : locCell(d)}</td>
+      <td class="made-td num">${d.made}</td><td class="edit-td num">${d.edit}</td>
+      <td class="more-td"><button class="ibtn more" aria-label="${d.t} 메뉴">${ic('more')}</button></td></tr>`;
+    }).join('')}</tbody></table>`;
+}
+function cards(scoped) {
+  const c = [
+    ['doc', '새 문서', scoped ? '결제 시스템 안에 만들어요' : '글로 먼저 정리해요', 'D', true],
+    ['canvas', '새 캔버스', '다이어그램을 바로 그려요', 'C'],
+    ['flow', '새 파이프라인 계획', '에이전트 작업을 계획해요', 'P'],
+    ['tpl', '템플릿에서 만들기', '자주 쓰는 틀로 시작해요', 'T'],
+  ];
+  return `<div class="cards">${c.map(([i, t, s, k, b]) => `<button class="card"><span class="ic">${ic(i)}</span><span><b>${t}</b><small>${s}</small></span><kbd>${k}</kbd></button>`).join('')}</div>`;
+}
+const TABS = ['전체', '최근', '프로젝트별', '미분류'];
+function tabs(sel = 0) {
+  return `<div class="tabs" role="tablist" aria-label="필터">${TABS.map((t, i) => `<button class="tab" role="tab" aria-selected="${i === sel}">${t}</button>`).join('')}</div>`;
+}
+const searchBox = `<div class="search" role="search">${ic('search')}<span>파일 찾기</span><kbd>/</kbd></div>`;
+
+function mobileTop(title) {
+  return `<div class="mtop"><button class="ibtn" aria-label="메뉴 열기">${ic('menu')}</button><span class="ttl">${title}</span><button class="ibtn" aria-label="찾기">${ic('search')}</button><button class="ibtn" aria-label="새 파일">${ic('new')}</button></div>`;
+}
+
+function homeA() {
+  return `<header class="mh"><div class="crumbs"><b>모든 파일</b></div><span class="sp"></span><span style="color:var(--text-3);font-size:13px;display:inline-flex;gap:6px;align-items:center">명령 <kbd>Ctrl</kbd><kbd>K</kbd></span></header>
+  ${mobileTop('모든 파일')}
+  <div class="body"><div class="wrap">
+    ${cards(false)}
+    <div class="toolbar">${tabs(0)}<span class="sp" style="flex:1"></span>${searchBox}</div>
+    ${fileTable(flat())}
+  </div></div>`;
+}
+function homeB() {
+  const groups = PROJECTS.map(p => ({ p, rows: (function f(ds, depth) { return ds.flatMap(d => [{ ...d, depth }].concat(d.kids && d.t === '로그인 로직' ? f(d.kids, depth + 1) : [])); })(p.docs, 0) }));
+  const li = (d) => `<div class="li" style="padding-left:${17 + d.depth * 24}px">${d.kids ? `<button class="tw" aria-expanded="${d.t === '로그인 로직'}" aria-label="${d.t} 펼치기">${ic('chev')}</button>` : '<span class="tw ph"></span>'}<span class="kind">${ic(KIND[d.k][0])}</span><span class="ttl">${d.t}${d.kids && d.t !== '로그인 로직' ? `<em class="num">하위 ${d.kids.length}</em>` : ''}${d.run ? '<span class="badge run">실행 중</span>' : ''}</span><span class="meta made num">${d.made}</span><span class="meta num">${d.edit}</span></div>`;
+  return `<header class="mh"><div class="crumbs"><b>모든 파일</b></div>${tabs(2)}<span class="sp"></span><button class="ibtn" aria-label="정렬과 보기">${ic('sort')}</button><button class="btn" aria-label="찾기 (/)">${ic('search', 'sm')}찾기<kbd>/</kbd></button></header>
+  ${mobileTop('모든 파일')}
+  <div class="body"><div class="wrap">
+    <div class="newbar"><span class="lbl">새로 만들기</span>${[['doc', '문서', 'D'], ['canvas', '캔버스', 'C'], ['flow', '파이프라인 계획', 'P'], ['tpl', '템플릿', 'T']].map(([i, t, k]) => `<button class="chip">${ic(i, 'sm')}${t}</button>`).join('')}</div>
+    ${groups.map(g => `<section aria-label="${g.p.name}"><div class="grp">${picon(g.p)}${g.p.name}<span class="c num">${g.rows.length}</span><span class="sp"></span><button class="ibtn" aria-label="${g.p.name}에 새 문서">${ic('plus', 'sm')}</button></div>${g.rows.map(li).join('')}</section>`).join('')}
+    <section aria-label="미분류"><div class="grp"><span class="pico none" aria-hidden="true">${ic('folder', 'sm')}</span>미분류<span class="c num">${LOOSE.length}</span></div>${LOOSE.map(d => li({ ...d, depth: 0 })).join('')}</section>
+  </div></div>`;
+}
+function projRows() {
+  const out = [];
+  const walk = (ds, depth) => ds.forEach(d => { const open = d.t === '로그인 로직'; out.push({ ...d, depth, open }); if (d.kids && open) walk(d.kids, depth + 1); });
+  walk(proj.docs, 0);
+  return out;
+}
+function projectA() {
+  return `<header class="mh"><div class="crumbs"><span>프로젝트</span><span class="sep">/</span><b>${proj.name}</b></div><span class="sp"></span><button class="ibtn" aria-label="프로젝트 메뉴">${ic('more')}</button></header>
+  ${mobileTop(proj.name)}
+  <div class="body"><div class="wrap">
+    <div class="phead">${picon(proj)}<div><h1 class="t">${proj.name}</h1><p class="subt">${proj.desc}</p>
+      <div class="meta-line"><span>${ic('doc', 'sm')}8개 문서</span><span>${ic('flow', 'sm')}파이프라인 1개 실행 중</span><span>${ic('folder', 'sm')}결제-시스템/</span></div></div></div>
+    ${cards(true)}
+    <div class="toolbar"><div class="tabs" role="tablist" aria-label="필터"><button class="tab" role="tab" aria-selected="true">문서</button><button class="tab" role="tab" aria-selected="false">최근</button><button class="tab" role="tab" aria-selected="false">파이프라인</button></div><span class="sp" style="flex:1"></span>${searchBox.replace('파일 찾기', '이 프로젝트에서 찾기')}</div>
+    ${fileTable(projRows(), { tree: true })}
+  </div></div>`;
+}
+function projectB() {
+  const rows = projRows();
+  return `<header class="mh"><div class="crumbs"><span>프로젝트</span><span class="sep">/</span><b>${proj.name}</b></div><div class="tabs" role="tablist"><button class="tab" role="tab" aria-selected="true">문서</button><button class="tab" role="tab" aria-selected="false">파이프라인</button><button class="tab" role="tab" aria-selected="false">개요</button></div><span class="sp"></span><button class="ibtn" aria-label="찾기">${ic('search')}</button><button class="btn solid">${ic('plus', 'sm')}새 문서</button></header>
+  ${mobileTop(proj.name)}
+  <div class="body"><div class="wrap">
+    <div class="phead">${picon(proj)}<div><h1 class="t">${proj.name}</h1><p class="subt">${proj.desc}</p><div class="meta-line"><span class="num">8개 문서</span><span>파이프라인 1개 실행 중</span></div></div></div>
+    ${rows.map(d => `<div class="li" style="padding-left:${17 + d.depth * 24}px">${d.kids ? `<button class="tw" aria-expanded="${d.open}" aria-label="${d.t} 펼치기">${ic('chev')}</button>` : '<span class="tw ph"></span>'}<span class="kind">${ic(KIND[d.k][0])}</span><span class="ttl">${d.t}${d.kids && !d.open ? `<em class="num">하위 ${d.kids.length}</em>` : ''}${d.run ? '<span class="badge run">실행 중</span>' : ''}</span><span class="meta made num">${d.made}</span><span class="meta num">${d.edit}</span></div>`).join('')}
+    <div class="li" style="color:var(--text-3)"><span class="tw ph"></span>${ic('plus')}<span class="ttl">새 문서</span></div>
+  </div></div>`;
+}
+
+/* ---------- Document ---------- */
+function docScreen() {
+  const crumbs = `<div class="crumbs">${picon(proj)}<span>${proj.name}</span><span class="sep">/</span><span>로그인 로직</span><span class="sep">/</span><b>토큰 갱신</b></div>`;
+  const seg = `<div class="seg" role="group" aria-label="보기"><button aria-pressed="false">문서</button><button aria-pressed="true">둘 다</button><button aria-pressed="false">캔버스</button></div>`;
+  return `<header class="mh">${crumbs}<span class="sp"></span><span class="saved"><i></i>저장됨</span>${seg}<button class="ibtn" aria-label="내보내기">${ic('export')}</button><button class="ibtn" aria-label="파일 메뉴">${ic('more')}</button></header>
+  ${mobileTop('토큰 갱신')}
+  <div class="mseg">${crumbs.replace('<b>토큰 갱신</b>', '<b>토큰 갱신</b>')}<div class="seg" role="group" aria-label="보기"><button aria-pressed="true">문서</button><button aria-pressed="false">캔버스</button></div></div>
+  <div class="split">
+    <div class="doc"><div class="col">
+      <h1>토큰 갱신</h1>
+      <div class="props"><span>결제 시스템 / 로그인 로직</span><span>고친 때 3분 전</span></div>
+      <p>접근 토큰이 끝나기 5분 전에 갱신 요청을 보내요. 갱신 토큰은 한 번만 쓸 수 있어요.</p>
+      <h2>순서</h2>
+      <p>클라이언트가 <code>/auth/refresh</code>를 부르면 서버가 새 토큰 두 개를 돌려줘요.</p>
+      <div class="task"><i></i><span>동시에 두 번 갱신하면 어떻게 할지 정하기</span></div>
+      <div class="task"><i></i><span>실패하면 로그인 화면으로 보내기</span></div>
+      <h2>하위 문서</h2>
+      <div class="subdocs">
+        <div class="li"><span class="kind">${ic('doc')}</span><span class="ttl">재시도 정책</span><span class="meta num">어제</span></div>
+        <div class="li"><span class="kind">${ic('canvas')}</span><span class="ttl">갱신 시퀀스</span><span class="meta num">2시간 전</span></div>
+        <div class="li add">${ic('plus')}<span class="ttl">하위 문서 추가</span></div>
+      </div>
+    </div></div>
+    <div class="canvas" aria-label="캔버스">
+      <svg class="dg" viewBox="0 0 600 700" preserveAspectRatio="xMidYMid meet" aria-hidden="true" style="color:var(--text-2)">
+        <g fill="none" stroke="currentColor" stroke-width="1.5" font-family="Pretendard Proto, Pretendard Variable, system-ui" font-size="15">
+          <rect x="70" y="140" width="150" height="56" rx="8"/><rect x="380" y="140" width="150" height="56" rx="8"/><rect x="380" y="330" width="150" height="56" rx="8"/><rect x="70" y="330" width="150" height="56" rx="8" stroke-dasharray="5 4"/>
+          <path d="M220 168h150M455 196v124M380 358H230"/><path d="M364 162l8 6-8 6M449 312l6 8 6-8M238 352l-8 6 8 6"/>
+        </g>
+        <g fill="currentColor" font-family="Pretendard Proto, Pretendard Variable, system-ui" font-size="15" text-anchor="middle">
+          <text x="145" y="173">클라이언트</text><text x="455" y="173">인증 서버</text><text x="455" y="363">토큰 저장소</text><text x="145" y="363">로그인 화면</text>
+          <text x="295" y="158" font-size="13" opacity=".7">갱신 요청</text><text x="305" y="348" font-size="13" opacity=".7">실패</text>
+        </g>
+      </svg>
+      <div class="toolrow" aria-hidden="true">${['canvas', 'doc', 'flow', 'tpl'].map(i => `<span class="ibtn">${ic(i)}</span>`).join('')}</div>
+    </div>
+  </div>`;
+}
+
+/* ---------- Command menu ---------- */
+function cmd() {
+  const o = (i, lab, hint, sel) => `<li class="o" role="option" aria-selected="${!!sel}">${ic(i)}<span class="lab">${lab}</span><span class="hint">${hint}</span></li>`;
+  return `<div class="scrim cmdscrim"><div class="cmd" role="dialog" aria-modal="true" aria-label="명령 메뉴">
+    <div class="in" role="combobox" aria-expanded="true" aria-controls="cmdlist">${ic('search')}<span class="ph">로그<span class="caret"></span></span><span class="ctx">${picon(proj)}결제 시스템</span></div>
+    <ul id="cmdlist" role="listbox" aria-label="결과">
+      <li class="g" role="presentation">문서</li>
+      ${o('doc', '<mark>로그</mark>인 로직', '결제 시스템', true)}
+      ${o('doc', '<mark>로그</mark> 보관 정책', '인프라')}
+      <li class="g" role="presentation">프로젝트</li>
+      ${o('folder', '결제 시스템으로 이동', '<kbd>G</kbd> <kbd>P</kbd>')}
+      <li class="g" role="presentation">동작</li>
+      ${o('plus', '결제 시스템에 새 문서', '<kbd>D</kbd>')}
+      ${o('flow', '새 파이프라인 계획', '<kbd>P</kbd>')}
+      ${o('gear', 'Gemini 연결하기', '연결 안 됨')}
+      ${o('sun', '라이트 테마로 바꾸기', '')}
+    </ul>
+    <div class="foot"><span><kbd>↑</kbd><kbd>↓</kbd>이동</span><span><kbd>↵</kbd>열기</span><span><kbd>esc</kbd>닫기</span></div>
+  </div></div>`;
+}
+
+/* ---------- Compose ---------- */
+let cur = 'all', curDoc = '', mainHtml;
+if (screen === 'project') { cur = 'pay'; mainHtml = layout === 'a' ? projectA() : projectB(); }
+else if (screen === 'doc') { cur = ''; curDoc = 'token'; mainHtml = docScreen(); }
+else { mainHtml = layout === 'a' ? homeA() : homeB(); }
+if (mobile) mainHtml = mainHtml.replace(/<span class="mloc" hidden>/g, '<span class="mloc">');
+
+const frame = mix && screen === 'doc' ? 'a' : layout;
+document.getElementById('root').innerHTML = `<div class="app layout-${frame}${mix ? ' layout-mix' : ''}">
+  ${sidebar(cur, curDoc)}
+  <div class="mainwrap"><main class="main">${mainHtml}</main></div>
+  ${screen === 'cmd' ? cmd() : ''}
+  ${screen === 'nav' ? `<div class="scrim" style="padding:0"></div>${sidebar(cur, curDoc, 'drawer')}` : ''}
+</div>`;
+if (P.get('focus') === '1') document.querySelector('.card, .chip')?.classList.add('show-focus');
+</script>
+</body>
+</html>

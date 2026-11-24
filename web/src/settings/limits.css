@@ -1,0 +1,65 @@
+/* 설정 modal (#624): a native modal <dialog>. Scrolling over the backdrop or inside it must not scroll the page;
+   the root is never locked with overflow: hidden. */
+dialog.settings-dialog:modal,
+dialog.settings-confirm:modal,
+dialog.settings-dialog .settings-dialog-body {
+  overscroll-behavior: contain;
+}
+dialog.settings-dialog::backdrop,
+dialog.settings-confirm::backdrop {
+  overflow: hidden;
+  overscroll-behavior: contain;
+  background: oklch(0 0 0 / 0.4);
+}
+form.limits-form input:user-invalid {
+  border-color: var(--destructive);
+}
+/* Switches in 설정 (#889): the native checkbox (role and keyboard stay; `switch` gives Safari its own) drawn as the
+   refresh's 36×20 pill. Off is the strong ink line, on is the primary colour; the knob slides only with motion on. */
+dialog.settings-dialog input[type="checkbox"][switch] {
+  appearance: none;
+  flex: none;
+  width: 36px;
+  height: 20px;
+  margin: 0;
+  padding: 2px;
+  border-radius: 999px;
+  background: var(--line-strong);
+  cursor: pointer;
+  transition: background-color 150ms var(--ease-out);
+}
+dialog.settings-dialog input[type="checkbox"][switch]::before {
+  content: "";
+  display: block;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: var(--card);
+  box-shadow: 0 1px 2px rgb(0 0 0 / 0.2);
+  @media (prefers-reduced-motion: no-preference) {
+    transition: translate 150ms var(--ease-out);
+  }
+}
+dialog.settings-dialog input[type="checkbox"][switch]:checked {
+  background: var(--primary);
+}
+dialog.settings-dialog input[type="checkbox"][switch]:checked::before {
+  translate: 16px 0;
+  background: var(--primary-foreground);
+}
+dialog.settings-dialog input[type="checkbox"][switch]:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+dialog.settings-dialog input[type="checkbox"][switch]:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: 2px;
+}
+/* A settings row (#889): what it does on the left, its control on the right, a hairline above. */
+dialog.settings-dialog .settings-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 0;
+  border-top: 1px solid var(--border);
+}

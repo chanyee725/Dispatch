@@ -1,0 +1,1 @@
+{"name":"spike-yjs","private":true,"type":"module","scripts":{"start":"node run.mjs"},"dependencies":{"yjs":"^13.6.33"}}

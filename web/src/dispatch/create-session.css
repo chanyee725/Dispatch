@@ -1,0 +1,9 @@
+/* 새 세션 dialog (#587): a native modal <dialog>; keep scroll inside it and off the page behind. */
+dialog.create-session-dialog:modal {
+  overscroll-behavior: contain;
+}
+dialog.create-session-dialog::backdrop {
+  overflow: hidden;
+  overscroll-behavior: contain;
+  background: oklch(0 0 0 / 0.4);
+}

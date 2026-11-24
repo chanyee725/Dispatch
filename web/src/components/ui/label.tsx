@@ -1,7 +1,7 @@
-"use client"
+// shadcn/ui (MIT) new-york Label, adapted: relative imports. Added for the Dispatch screens (E19).
 
 import * as React from "react"
-import { cn } from "@/lib/utils"
+import { cn } from "../../lib/utils"
 import { Label as LabelPrimitive } from "radix-ui"
 
 function Label({

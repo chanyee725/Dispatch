@@ -1,0 +1,32 @@
+// @ts-nocheck -- vendored from eraser-diagrams (MIT); checked upstream under its own tsconfig, see README.md in shared/vendor/eraser-layout.
+import type { Direction, Port, PositionProps } from './types.ts';
+import { type Point } from './routing/types.ts';
+
+/** Midpoint of the entity box's `face`, snapped outward to whole pixels. */
+export function getFaceCenterPoint(entity: PositionProps, face: Direction): Point {
+  switch (face) {
+    case 'up': {
+      return [Math.round(entity.x + entity.width / 2), Math.floor(entity.y)];
+    }
+    case 'down': {
+      return [Math.round(entity.x + entity.width / 2), Math.ceil(entity.y + entity.height)];
+    }
+    case 'left': {
+      return [Math.floor(entity.x), Math.round(entity.y + entity.height / 2)];
+    }
+    case 'right': {
+      return [Math.ceil(entity.x + entity.width), Math.round(entity.y + entity.height / 2)];
+    }
+  }
+}
+
+export function directionToPort(direction: Direction): Port {
+  switch (direction) {
+    case 'up':
+      return 'top';
+    case 'down':
+      return 'bottom';
+    default:
+      return direction;
+  }
+}

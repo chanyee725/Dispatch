@@ -1,0 +1,21 @@
+{
+  "description": "Atelier hooks: inside an Atelier session that has run too long, remind it to hand over (issue #29); in a main Claude Code session in a project with a live Atelier server, once it writes more than 3 files (past the quickfix lane), remind it to hand normal and risky work to a lead, again every 30 minutes (issues #31, #33, #769). Neither blocks a tool. The /agents mod (agents.tsx, issue #755) shows Atelier agent teams in a pane and the status line, read only.",
+  "modules": ["./agents.tsx"],
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Edit|Write|MultiEdit|NotebookEdit|Bash",
+        "hooks": [
+          { "type": "command", "command": "node \"${CLAUDE_PLUGIN_ROOT}/hooks/main-delegates.mjs\"", "timeout": 5 }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "hooks": [
+          { "type": "command", "command": "node \"${CLAUDE_PLUGIN_ROOT}/hooks/long-session.mjs\"", "timeout": 5 }
+        ]
+      }
+    ]
+  }
+}

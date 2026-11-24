@@ -1,12 +1,23 @@
-import path from "node:path";
-import react from "@vitejs/plugin-react";
-import tailwindcss from "@tailwindcss/vite";
-import { defineConfig } from "vite";
+import { defineConfig } from 'vite';
+import react from '@vitejs/plugin-react';
+import tailwindcss from '@tailwindcss/vite';
+import { fileURLToPath } from 'node:url';
 
-// Builds into ../public, which the Dispatch server serves. `npm run dev` proxies the API to a running server.
+const root = fileURLToPath(new URL('.', import.meta.url));
+const outDir = fileURLToPath(new URL('../public', import.meta.url));
+
 export default defineConfig({
+  root,
   plugins: [react(), tailwindcss()],
-  resolve: { alias: { "@": path.resolve(import.meta.dirname, "src") } },
-  build: { outDir: "../public", emptyOutDir: true },
-  server: { proxy: { "/api": `http://127.0.0.1:${process.env.DISPATCH_PORT || 4317}` } },
+  publicDir: false,
+  build: {
+    outDir,
+    emptyOutDir: true,
+    chunkSizeWarningLimit: 4096,
+  },
+  server: {
+    host: '127.0.0.1',
+    // changeOrigin: the server rejects Host headers other than its own port.
+    proxy: { '/api': { target: `http://127.0.0.1:${process.env.DRAW_PORT ?? 4330}`, changeOrigin: true } },
+  },
 });

@@ -1,0 +1,1 @@
+{"name":"spike-excalidraw","private":true,"type":"module","scripts":{"build":"vite build"},"dependencies":{"@excalidraw/excalidraw":"^0.18.1","react":"^19","react-dom":"^19"},"devDependencies":{"vite":"^6","@vitejs/plugin-react":"^4"}}

@@ -1,154 +1,67 @@
 # Changelog
 
-Every release is tagged `vX.Y.Z` and published on [GitHub Releases](https://github.com/chanyee725/Dispatch/releases). The plugin version in `.claude-plugin/plugin.json` matches the tag.
+이 파일은 사용자가 체감하는 변화를 적어요. 형식은 [Keep a Changelog](https://keepachangelog.com/ko/1.1.0/) 를 따라요.
 
-## 0.18.0 — 2026-11-13
+## [Unreleased]
 
-### Added
+## [0.1.0] - 2026-11-21
 
-- **Fable 5.2 model** (`claude-fable-5-2`). Same context window and effort levels as Fable 5.1; sessions on it are no longer rejected as an unknown model.
+첫 릴리즈예요. 아래는 묶음 요약이고, 그 밑에 자세한 변경이 있어요.
 
-## 0.17.1 — 2026-11-13
+### Highlights
 
-### Fixed
-
-- **Sessions know who they are** (#45). The system prompt now opens with `[나는 누구인가] 당신은 <이름>(<역할>)이다. 세션 id <id>.` and, when the project has open leads, lists each as `- <이름>(<역할>), id <id>`, marking the session itself `(당신)`. A lead can now tell that a message addressed to its name is its own, and knows the other leads in the project. The list is taken when the session starts (the prompt says so) and holds only name, role and id: no account details or conversation, and nothing new is stored. There is no separate merge-owner role in Dispatch; the note says merges are done by leads, as before.
-
-## 0.17.0 — 2026-11-13
-
-### Added
-
-- **Finished teammates are removed automatically** (설정 → 끝난 팀원 자동 정리, on by default; #39). Leads' rules alone missed `stop_session(remove: true)`, so finished teammates piled up holding worktrees and team slots. Now, once a teammate (any session with a lead; never a lead) has ended its turn, its report has reached the lead, and it waits on no permission request or question, the server stops and removes it after a grace period (설정 → 자동 정리 유예 시간, default 120 s, 10–3600). A message to it, a new turn or a permission request in that time cancels the timer. The lead is told `[Dispatch] <이름>(<역할>) 세션을 정리했어요(브랜치 …)` mid-turn when it is running, otherwise with its next message, so it is not woken for it. Worktrees follow 세션을 지우면 작업 폴더도 지우기: one with uncommitted changes, files git ignores (other than build noise such as `node_modules`), or a `git status` that fails stays, and the notice says so (removing a session by hand keeps the old check). Any transcript event after the report, such as a queued message starting another turn, also keeps the teammate. The branch always stays. A teammate that stopped with an error is never removed; its lead is told at once. The timer lives in memory only (after a restart nothing is armed until the next report).
-- Auto-remove keeps a worktree whose HEAD is detached or on no branch (a teammate that ran `git switch --detach`/`git checkout <sha>` and committed): removing the worktree would delete its own reflog and leave those commits dangling. The lead is told `분리된 HEAD라 worktree를 남겼어요 (커밋 <짧은 sha>)`; a failed check keeps the worktree too. Removing by hand is unchanged.
-- Team settings `autoRemoveDone` and `autoRemoveGraceSec` (`POST /api/settings`).
-- The lead's prompt and the team rules assume the cleanup: to reuse a teammate, send its next instruction in the turn its report arrives. The server cannot know whether a lead still plans follow-ups for a teammate, so that part stays a rule.
-
-## 0.16.0 — 2026-11-13
+- 문서 + 무한 캔버스: 파일 하나(`*.dpx.json`)에 글과 캔버스가 함께 있어요. 문서에서 `/`로 다이어그램을 넣으면 캔버스에도 생겨요.
+- 다이어그램 코드: 아키텍처, 플로우차트, 시퀀스, ERD를 코드로 쓰고, 코드를 고치면 그림이 바로 바뀌어요. 노드에 코드 위치를 붙여요.
+- 계획과 실행: 문서와 단계 다이어그램으로 계획을 세우고 `시작하기` 한 번으로 에이전트 팀이 돌아요. 단계별 진행과 남은 시간(ETA)이 보드에 나와요.
+- 세션 보드: 프로젝트별 Claude Code, Codex, Gemini 세션과 사용량 한도를 앱 안에서 봐요. 팀에는 PR 담당과 병합 담당이 따로 있어요.
+- 플러그인: 스킬 15개(`atelier-*`)를 Claude Code와 Codex에서 GitHub 저장소로 바로 설치해요.
+- 로컬 전용: 서버는 127.0.0.1에만 열리고 밖으로 요청을 보내지 않아요.
 
 ### Added
 
-- **modern-web-guidance for web work** (#35). When the `modern-web-guidance` Claude Code plugin (`modern-web-guidance@googlechrome`) is installed, implementer, designer and reviewer sessions get a `[Modern Web Guidance]` prompt section: for HTML, CSS and client-side JS, run the `modern-web-guidance:modern-web-guidance` skill (Codex and Gemini sessions: `npx -y modern-web-guidance@latest`), search → retrieve → check the code against the guide, and end the report or PR with a `### Modern Web Guidance` section. The lead is told to put that in web briefs and to ask for the section before merging. Project rules (CLAUDE.md / AGENTS.md) win over the guides; search queries stay generic, with no project, file or people names. Server, test and build work doesn't use it, and tester and docs sessions get nothing. Codex and Gemini sessions only try `npx` with network access and skip it at once on failure (no retry, approval request or sandbox loosening), noting "가이드 조회 불가(네트워크 없음)" in the section, which the lead counts as filled. Without the plugin nothing is added. The team rules (`skills/dispatch-team/reference/rules.md`) say the same.
+- 저장소 루트에 Claude Code와 Codex용 marketplace를 두었어요. `/plugin marketplace add chanyee725/Atelier`, `codex plugin marketplace add chanyee725/Atelier`로 설치해요. (#1037)
+- README 맨 위에 데모 영상(GIF·MP4)을 넣고, 다시 찍는 스크립트 `scripts/record-demo.mjs`를 두었어요. (#1037)
+- 팀에 PR 담당과 병합 담당이 생겼어요. 같은 이슈에 팀이 둘 생기지 않아요. (#1031)
+- 대시보드와 작업 보드에 단계 진행과 예상 남은 시간이 나와요. (#1028)
+
+- 다이어그램 노드에 `badge:`로 우상단 배지를 달고(`badgeColor:`로 색), `shape: divider`로 라벨이 가운데 들어간 구분선을 그어요. 진행판 단계 배지도 같은 모양이에요. (#115)
+- 아키텍처와 플로우차트 블록의 노드를 캔버스에서 끌어 옮길 수 있어요. 가까운 줄에 맞춰 붙고(Alt로 끔), 방향키로 1칸(Shift는 10칸) 옮겨요. `레이아웃 초기화`로 자동 배치로 돌아가요. 옮긴 배치는 파일에 저장돼요(파일 형식 v3).
+- 캔버스에서 `/`로 다이어그램, 도형, 화살표, 선, 텍스트, 프레임을 넣어요.
+- 코드 편집기 위쪽에서 방향, 색 모드, 스타일, 글꼴, 글자 크기, 연결선을 목록으로 골라요.
+- 코드 편집기 자동완성: `[ ]` 안의 속성 이름과 값, 아이콘 이름, 색 이름을 추천해요.
+- `typeface rough` 손글씨 글꼴(Shantell Sans)을 같이 넣었어요. 밖으로 요청을 보내지 않아요.
+- 다이어그램 아이콘을 Lucide(일반)와 Simple Icons(기술 로고)로 바꿨어요. `postgres`, `k8s`, `redis`는 로고로, `aws-ec2` 같은 클라우드 이름은 가장 가까운 일반 아이콘으로 그려요. 클라우드 공식 아이콘은 없고, 모르는 이름은 점선 상자예요.
+- 내보내기 메뉴에서 PNG 크기(1배·2배·3배), 투명 배경, 라이트/다크를 고를 수 있어요. 캔버스, 이미지 복사, 문서 안 다이어그램 내보내기에 함께 적용돼요. PDF는 아직 없어요. (#36)
+- 버전 기록: 저장할 때 이전 버전을 5분에 한 번 이내로 남기고(파일마다 최근 50개), `버전 기록`에서 미리 보고 되돌려요.
+- 최근에 지운 파일: 지운 파일과 폴더를 30일 동안 보관하고 버전 기록과 함께 되살려요.
+- 사이드바에서 파일과 폴더를 끌어 옮기고, 더블클릭이나 F2로 이름을 바꿔요.
+- 문서에 목차 버튼, 제목 링크 복사(`#` 버튼), `+` 연결을 추가했어요. `+`로 파일·제목·다이어그램을 연결하면 눌러서 이동해요. 파일 이름을 바꾸거나 옮기면 그 파일로 가는 연결은 아직 따라가지 못하고 끊겨요. (#31)
+- 문서에서 `/`로 캔버스의 프레임을 골라 넣을 수 있어요. 읽기 전용 미리보기를 누르면 캔버스의 그 프레임으로 가요. 프레임 이름을 바꾸면 따라 바뀌고, 지우면 "찾을 수 없어요"라고 알려줘요. 이름 없는 프레임은 번호로 보여요. (#32)
+- 편집기 화면: 파일을 만들고, 색이 입혀진 코드 편집기에서 다이어그램 코드를 쓰면 자동으로 저장돼요. 문서/둘 다/캔버스 보기, 드래그하는 분할선, 라이트/다크 테마, 종류별 예시 코드, 줄 표시 문법 오류가 있어요. (E4)
+- 다이어그램 코드 파서: 아키텍처, 플로우차트, 시퀀스, ERD 코드를 읽고 오류 위치를 알려줘요. (E2)
+- 작업 폴더 안의 파일(`*.dpx.json`)과 폴더를 만들고 읽고 저장하고 옮기고 지우는 서버 API. 오래된 revision으로 저장하면 거절하고, 밖에서 바뀐 파일은 알려줘요. (E1)
 
 ### Changed
 
-- The `installed_plugins.json` lookup used for the `i-have-adhd` reply style moved to `server/plugins.js` (`pluginDir`) and is shared by both features.
-
-## 0.15.2 — 2026-11-13
-
-### Fixed
-
-- **Usage limits: a second update in the same millisecond is no longer dropped** (#43). The merge used a strict `>` on the timestamp, so two `setClaude`/`setGemini` calls with the same timestamp kept the first value. A tie now goes to the incoming value, and a write keeps its own value over the file's on a tie. An older value still never overwrites a newer one.
-
-## 0.15.1 — 2026-11-13
+- 큰 파일(앱 셸, 스토어, 파이프라인, 허브, 캔버스, 레이아웃)을 작은 모듈로 나누고, 안 쓰는 코드·내보내기·라우트를 정리했어요. 동작은 같아요. (#994–#1020)
+- 이름만 대소문자가 다른 폴더는 하나로 합쳐 써요. (#1026)
+- 아키텍처에서 아이콘이 있는 노드를 상자 카드(왼쪽 아이콘, 제목·부제 2줄, 그림자)로 그려요. 예전 모양은 `nodeStyle icon` 한 줄로 골라요. `subtitle:` 속성으로 두 번째 줄을 써요. (#114)
+- 프로젝트 방향을 draw.io 라이브 뷰어에서 문서와 캔버스를 함께 쓰는 로컬 다이어그램 도구로 바꿨어요.
+- `npm start -- <workspace-dir>` 로 작업 폴더를 지정해요. (E0)
+- 다른 탭이나 밖에서 파일을 바꾸거나 지우면 목록이 바로 바뀌어요. 열어 둔 파일이 지워지면 닫고 알려줘요. 저장하지 않은 변경이 없으면 바뀐 내용을 다시 불러와요.
+- 캔버스 다이어그램이 그려지지 않으면 어느 블록인지, 마지막으로 그린 모습인지 아직 그린 적이 없는지 알려줘요.
 
 ### Fixed
 
-- **main-delegates hook covers Bash and repeats** (#33). It now also runs on `Bash`, and speaks only when the command looks like a file write: a `>`/`>>` redirect (not `2>&1`, `>/dev/null` and the like), `sed -i`, `perl -i`, `tee`, `cp`/`mv`/`rm`/`mkdir`/`touch`…, `find -delete`, a mutating `git` subcommand (`add`, `commit`, `apply`, `checkout`, `reset`, `stash`…), or a python/node one-liner that writes a file. Read-only commands (`ls`, `cat`, `grep`, `git status/log/diff`…) stay silent. Instead of once per session it repeats the note when 30 minutes have passed since the last one. The marker's mtime holds that time; it stores no command text.
+- 다크 모드에서 진한 색 상자의 글자가 잘 보이는 색으로 나와요. 다크로 내보낸 SVG에는 배경이 들어가요.
+- 한 줄 그룹(`G { A > B: hi }`)이 바로 닫혀요.
+- Markdown 내보내기가 `~~~`와 들여쓴 줄을 이스케이프해요. 블록 내보내기 이름의 번호는 종류별로 세요.
+- 범례도 제목처럼 글꼴 설정을 따라요.
 
-## 0.15.0 — 2026-11-13
+### Removed
 
-### Added
+- draw.io 파일 감시, 변경 기록, Dispatch 에이전트 피드, 라이브 커서와 draw.io 뷰어를 없앴어요. git 기록에 남아 있어요.
 
-- **The main session delegates** (#31). The `dispatch` and `dispatch-team` skills now say it: the Claude Code session that talks to the user does not implement, fix or investigate code itself; it hands every task to a Dispatch lead, writes briefs, verifies before merge, comments on PRs and merges. A different stream (another area or repo, or a lead whose context is heavy or shows `longRun`) gets a new lead, and small review should-fixes go back to the owning lead. The team rules tell leads the same about should-fixes.
-- **Plugin hook** `hooks/main-delegates.mjs` (PreToolUse on `Edit|Write|MultiEdit|NotebookEdit`): outside Dispatch sessions, when the edited file sits in a project with a live Dispatch server (`~/.dispatch/servers/*.json`, pid check only, no network), it adds that rule to the model's context once per session. It never blocks the edit, does nothing inside Dispatch sessions, and stays silent on any error.
+### Notes
 
-## 0.14.0 — 2026-11-13
-
-### Added
-
-- **Session length guard** (설정 → 오래 쓴 세션 교체 기준, default 15M tokens, 0 turns it off; #29). Turn rotation keeps each call's context small, but a session kept for hundreds of turns still re-reads its work on every call: a lead in another project processed 29M tokens over 189 turns. Past the budget a session gets `longRun` and a 확인 필요 warning, and Dispatch says once who should act: a teammate's lead is told to stop it and give the rest to a fresh teammate; a lead is told to write a handover and ask for a fresh lead (mid-turn when it is running, otherwise with its next message, so an idle lead is not woken for it). The lead's `list_sessions` shows `mtok` and `long`.
-- The lead's rules say so too: replace a long teammate instead of adding work to it, and hand over when told.
-- **Plugin hook** `hooks/long-session.mjs` (PostToolUse): inside a Dispatch session that is over the guard, it adds the same note to the model's context once, as a backstop. Outside Dispatch sessions it does nothing and sends no request. Claude sessions get `DISPATCH_URL` and `DISPATCH_SESSION` in their environment for it.
-
-## 0.13.0 — 2026-11-12
-
-### Added
-
-- **Context guard** (설정 → 컨텍스트 넘김 기준, default 70 %, 0 turns it off). Turn-count rotation only runs between turns, so a teammate kept in one long turn by its lead's mid-turn follow-ups filled 87 % of its window with no warning and 0 turns counted. Now, once a session's context crosses the guard: a running Claude session is told once, mid-turn, to commit, summarise what is done and left, and end the turn; the session gets `ctxHigh` and a 확인 필요 warning; and its next message starts a fresh CLI session with the usual handoff note, whatever its turn count. The lead's `list_sessions` / `get_session` show `ctxPct`.
-
-## 0.12.0 — 2026-11-12
-
-### Added
-
-- Top bar: **Fable** shows its own weekly limit next to Claude's 5-hour and weekly bars. The CLI reports it as `seven_day_overage_included` on Fable turns only, so the bar shows "—" until the first Fable turn and then keeps its last value between them. It is saved with the other Claude numbers in `~/.dispatch/limits.json`, and 확인 필요 shows a "Fable 주간 한도" row at 75 % or more (red at the weekly guard). `GET /api/limits` gains `fable: { windows } | null`.
-
-## 0.11.0 — 2026-11-05
-
-### Added
-
-- 세션 board: cards are ordered by urgency (실패 > 사람 기다림 > 멈춤 > 작업 중 > 쉼 > 완료, longest in its state first, then start time and id, so they move only when a state changes), every card shows "N분째" in its current state, and finished sessions hide behind a **완료 N개 보기** toggle (#6).
-- Alerts (#10): the tab title carries the 확인 필요 count (`(2) Dispatch`), and 설정 → 알림 turns on browser notifications for four cases only — waiting on a person for 3 minutes, a stuck flag, an error exit, a Claude limit at 90 % — once per session and reason until it clears. Notifications carry the session name and a one-line reason; only the on/off choice is stored.
-- **카드 ⇄ 타임라인** toggle on the 세션 board (#10): one row per session in role order over the last two hours, stretches coloured and shaped by state (사람 기다림 orange, stuck hatched, failures as red ticks); a row opens the session sheet. The server keeps each session's state changes (time and state code only, last 200) and serves them at `GET /api/timeline`.
-
-## 0.10.1 — 2026-11-05
-
-### Fixed
-
-- 확인 필요 strip: a task whose board stage disagrees with its owner (`stage-mismatch`) was hidden whenever the target session had any row — waiting, silent, or the lead it falls back to when no owner session matches (#18). It now folds only into the found owner's repeat-fail row and shows otherwise.
-
-## 0.10.0 — 2026-11-05
-
-### Added
-
-- **모니터링 theme** next to system / light / dark (sidebar, bottom left): dark-first, flat panels with thin borders, tight radius, and a status palette (`--ok/--warn/--bad/--idle`) kept apart from the role lane colours. Reusable `Panel`, `Metric` and `StateMark` components for dense screens.
-- **상시 화면 (TV)**: top-bar button or `#tv` in the address bar. Always dark, a big state grid under the 확인 필요 strip, no auto-scroll, state shown as shape + colour + label. `Esc` closes it.
-- Session sheet: a run of two or more tool calls folds into one line ("도구 호출 3개 · Bash 2, Read"). The raw input and output show only when you open it.
-
-### Changed
-
-- The always-on grid is ordered by state, then start time and id, so tiles move only when a state changes.
-
-## 0.9.0 — 2026-11-05
-
-### Added
-
-- **확인 필요 strip** at the top of 세션, in place of the five KPI cards (#3): sessions waiting on a person, stuck or failed, tasks past their estimate (worded by the server's over-eta flag once it fires), tasks whose board stage disagrees with what the owner is doing (`stage-mismatch`, folded into the owner's row when that session is already flagged), tasks whose merge check failed, and Claude limits at 75 % or more — urgent from the usage-limit guard threshold in 설정, and gone once the window has reset. Each row shows shape + label, the reason, how long, and opens the session (limit rows open 사용량). The KPIs shrink to one summary line.
-
-### Changed
-
-- **Node.js 22.6+ is required** (was 20+, now end-of-life). `npm test` loads TypeScript helpers from `web/` directly; `scripts/setup.sh` checks the new minimum.
-
-## 0.8.0 — 2026-11-05
-
-### Added
-
-- **Burn rate per session** (#9): every Claude session carries `burn` ($/h over the last 30 minutes) and `burnWarn` — a spike at 3× the team median, or a long-lived session on a large context, with "start a fresh lead" advice for a lead. The rate is recomputed every minute, so an idle session falls back to 0 without any activity of its own.
-- **사용량 page**: a **지금 시간당** card, the top 10 sessions by cost with their rate and warning, and outlier days (2× the usual day) marked with the sessions that spent the most that day. Only numbers are stored per day (session id, name, role, cost).
-- **Stuck detection per session and per task** (#5): a session is flagged when the same check command (test, build, lint, typecheck, e2e) fails 3 times in a row or a running turn is silent for 10 minutes; a board task when its stage runs past 1.5× its eta or the board says 계획/구현 while the owner is looping on tests. One event per flag, not per failure. Thresholds are the `stuckFails`, `stuckSilentMinutes`, `stuckEtaRatio` and `stuckMismatchMinutes` team settings (`0` = off). Only a hash of the command and the counts are stored.
-
-### Fixed
-
-- A check piped into a filter (`npm test 2>&1 | tail -20`) exited with the filter's 0 and counted as a pass, wiping the failure count. Commands whose exit code hides the result (a pipe without `pipefail`, or `||`) are now left uncounted.
-- The same check run in another directory (`cd web && npm test` vs `cd server && npm test`) shared one count; `cd` now stays in the command hash.
-- A repeat-fail flag stayed up after a different command of the same kind passed; it now clears.
-- `stuckMismatchMinutes: 0` left the "board says 구현 but tests keep failing" flag on; it now turns off both mismatch checks.
-
-## 0.7.0 — 2026-11-05
-
-The first tagged release. It collects the 0.5.2 – 0.7.0 work, most of it found by running a real team for a day and reading where its time and tokens went.
-
-### Added
-
-- **설정 page** (sidebar, bottom left): per-project team settings saved in `.dispatch/state.json` — turns before a lead or another role continues in a fresh CLI session, teammates per lead, default model per role, sharing `node_modules` into worktrees, dropping a removed session's clean worktree, the reply-style guide, and the usage-limit guard. The `DISPATCH_ROTATE_TURNS*` and `DISPATCH_REPLY_STYLE` env vars now only seed the defaults.
-- **Live activity on the task board**: under each task, what its owner is doing right now and for how long ("Remy · e2e 실행 · 4분째"), amber once a check has run 5 minutes or anything else 10.
-- **"N분 지연"** on overdue tasks instead of a bare "지연".
-- **끝난 세션 정리** button in the top bar: removes finished sessions in one click (`POST /api/sessions/clear-done`).
-- **Short random session names** (Juno, Cal, Sam …, up to six letters) instead of "관리자 #93". Reports carry the role: `[Juno(구현자) 보고 · dispatch/impl-95]`.
-- `stop_session` takes `remove: true`, and the lead is told to remove sessions it will not reuse. Removing a session also removes its worktree when nothing uncommitted is left (branches stay).
-- New worktrees get the project's `node_modules` as hard links (about 0.4 s for 46k files, no extra disk; APFS clone on macOS).
-- Every report a lead receives ends with its open board tasks (id, stage, owner, time left) so it updates the board in the same turn.
-- Branch graph: merge and branch-off markers, relative times, roomier rows.
-
-### Changed
-
-- The lead defaults to **Sonnet 5.5**; it mostly does bookkeeping.
-- Lead prompt: one task per implementer, merge as soon as review has no must-fix (should-fixes become proposals), batch messages, no polling, hand off after about ten merges.
-- Teammates never end a turn with an "OK, waiting" acknowledgement — each final answer wakes the lead.
-- Team rules: advance the integration branch with a real merge in the project folder, never by moving the ref.
-
-### Fixed
-
-- A lead that called `send_message` with `message` instead of `text` sent an empty message and got `ok`; the whole team then waited on each other. Tool calls with an empty required argument (also inside `create_sessions` items) are now refused with the accepted argument names, and `/message` rejects empty text.
-- A removed session reappeared in the UI until reload (its process's late exit update re-added it).
-- The board piled up stale and duplicate tasks: removing a lead now removes its tasks, a lead cannot close work by creating a new task as done, and a renamed duplicate is pointed out.
-- A lead merged into its own `dispatch/lead-n` branch and reported done. The lead prompt now names the project folder and the merge command.
+- 실행 전에 `npm run build` 가 필요해요. 빌드 없이 실행하면 페이지 대신 안내 메시지가 나와요.

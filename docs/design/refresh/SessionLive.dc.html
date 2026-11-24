@@ -1,0 +1,140 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<title>세션 라이브 보기</title>
+<script src="./support.js"></script>
+<link rel="stylesheet" href="./tokens.css">
+</head>
+<body>
+<x-dc>
+<helmet>
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+body{margin:0}
+</style>
+</helmet>
+<div class="at" data-theme="{{theme}}" style="min-height: 920px; display: flex; flex-wrap: wrap; padding: 0 8px 8px 0">
+  <div style="flex: 0 0 240px">
+    <dc-import name="Sidebar" active="board" theme="{{theme}}" hint-size="240px,920px"></dc-import>
+  </div>
+
+  <main style="flex: 999 1 560px; min-width: 0; margin-top: 8px; background: var(--panel); border-radius: 12px; display: flex; flex-direction: column">
+    <header style="display: flex; align-items: center; gap: 8px; min-height: 52px; padding: 6px 12px 6px 20px; flex-wrap: wrap">
+      <a href="SessionBoard.dc.html" class="mut" style="font-size: 12px">세션 보드</a><span class="mut">/</span>
+      <h1 style="margin: 0; font-size: 15px; font-weight: 600">Yuki</h1>
+      <span class="chip" style="color: var(--r-impl)">구현자</span>
+      <span class="dot on" style="background: var(--accent)"></span><span style="font-size: 12px; font-weight: 500">작업 중</span>
+      <span class="mut num" style="font-size: 12px">Opus 5.5 · auto · 27분</span>
+      <span style="flex-grow: 1"></span>
+      <button class="btn">잠깐 멈추기</button>
+      <button class="btn">끝내기</button>
+    </header>
+
+    <div style="flex-grow: 1; display: flex; flex-wrap: wrap; gap: 16px; padding: 4px 20px 20px">
+      <section class="card" style="flex: 1 1 220px; max-width: 260px; align-self: flex-start; padding: 14px 16px; display: flex; flex-direction: column; gap: 12px">
+        <h2 class="h">단계</h2>
+        <sc-for list="{{steps}}" as="s" hint-placeholder-count="5">
+          <div style="display: flex; gap: 10px; align-items: flex-start">
+            <span class="num" style="flex: none; width: 20px; height: 20px; border-radius: 50%; font-size: 11px; font-weight: 600; display: flex; align-items: center; justify-content: center; color: {{s.fg}}; background: {{s.bg}}; box-shadow: inset 0 0 0 1px var(--line2)">{{s.n}}</span>
+            <div style="min-width: 0; display: flex; flex-direction: column">
+              <span style="font-weight: {{s.w}}; color: {{s.tc}}">{{s.title}}</span>
+              <span class="mut num" style="font-size: 12px">{{s.sub}}</span>
+            </div>
+          </div>
+        </sc-for>
+        <div class="track on"></div>
+        <div class="mut num" style="font-size: 12px">5단계 중 3단계 · 남은 시간 약 15분</div>
+      </section>
+
+      <section class="card" style="flex: 999 1 380px; min-width: 0; display: flex; flex-direction: column">
+        <div style="display: flex; align-items: center; gap: 10px; padding: 14px 16px 10px">
+          <h2 class="h">지금 하는 일</h2>
+          <span class="mut" style="font-size: 12px">화면에만 보이고 저장하지 않아요</span>
+        </div>
+        <div style="flex-grow: 1; display: flex; flex-direction: column; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px">
+          <sc-for list="{{log}}" as="l" hint-placeholder-count="9">
+            <div style="display: grid; grid-template-columns: 52px 52px minmax(0, 1fr) auto; gap: 10px; align-items: center; min-height: 32px; padding: 0 16px; border-top: 1px solid var(--line); background: {{l.bg}}">
+              <span class="mut num">{{l.t}}</span>
+              <span style="font-weight: 600; color: {{l.kc}}">{{l.kind}}</span>
+              <span class="ell" style="color: {{l.tc}}">{{l.text}}</span>
+              <span class="num" style="color: {{l.rc}}">{{l.res}}</span>
+            </div>
+          </sc-for>
+        </div>
+        <div style="padding: 12px 16px; border-top: 1px solid var(--line); display: flex; flex-direction: column; gap: 8px">
+          <p style="margin: 0; max-width: 65ch">레인 순서를 develop에서 갈라진 시각으로 정했어요. 지금은 머지된 브랜치가 develop으로 돌아오는 곡선을 그리고 있어요.</p>
+        </div>
+        <form style="display: flex; gap: 8px; padding: 12px 16px; border-top: 1px solid var(--line)">
+          <label for="msg" style="position: absolute; width: 1px; height: 1px; overflow: hidden">Yuki에게 보낼 메시지</label>
+          <input id="msg" type="text" placeholder="Yuki에게 메시지 보내기" style="flex-grow: 1; min-width: 0; height: 36px; padding: 0 12px; border-radius: 6px; border: 1px solid var(--line2); background: var(--panel); color: var(--text); font: inherit">
+          <button type="button" class="btn pri" style="height: 36px">보내기</button>
+        </form>
+      </section>
+
+      <div style="flex: 1 1 240px; max-width: 300px; display: flex; flex-direction: column; gap: 16px">
+        <section class="card" style="display: flex; flex-direction: column">
+          <div style="display: flex; align-items: center; gap: 10px; padding: 14px 16px 10px">
+            <h2 class="h">바뀐 파일</h2><span class="num mut" style="font-size: 12px">4</span>
+          </div>
+          <sc-for list="{{files}}" as="f" hint-placeholder-count="4">
+            <div style="display: flex; align-items: center; gap: 8px; min-height: 34px; padding: 0 16px; border-top: 1px solid var(--line); font-size: 12px">
+              <span class="ell" style="flex-grow: 1; font-family: ui-monospace, SFMono-Regular, Menlo, monospace">{{f.path}}</span>
+              <span class="num" style="color: var(--ok)">{{f.add}}</span>
+              <span class="num" style="color: var(--bad)">{{f.del}}</span>
+            </div>
+          </sc-for>
+        </section>
+        <section class="card" style="padding: 14px 16px; display: flex; flex-direction: column; gap: 7px">
+          <h2 class="h">세션 정보</h2>
+          <div class="num" style="display: flex; justify-content: space-between; gap: 8px"><span class="sub">브랜치</span><span class="ell">feat/877-commit-graph</span></div>
+          <div class="num" style="display: flex; justify-content: space-between"><span class="sub">PR</span><span>#882 리뷰 중</span></div>
+          <div class="num" style="display: flex; justify-content: space-between"><span class="sub">컨텍스트</span><span>63%</span></div>
+          <div class="num" style="display: flex; justify-content: space-between"><span class="sub">토큰</span><span>412,880</span></div>
+          <div class="num" style="display: flex; justify-content: space-between"><span class="sub">비용</span><span>$2.14</span></div>
+          <div class="num" style="display: flex; justify-content: space-between"><span class="sub">관리자</span><span>Chan</span></div>
+        </section>
+      </div>
+    </div>
+  </main>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"theme":{"editor":"enum","options":["light","dark"],"default":"light"},"$preview":{"width":1440,"height":920}}'>
+class Component extends DCLogic {
+  renderVals() {
+    const done = { fg: 'var(--card)', bg: 'var(--text2)', w: 400, tc: 'var(--text2)' };
+    const now = { fg: 'var(--accent-fg)', bg: 'var(--accent)', w: 600, tc: 'var(--text)' };
+    const todo = { fg: 'var(--text3)', bg: 'transparent', w: 400, tc: 'var(--text3)' };
+    const row = (t, kind, text, res, o) => ({ t, kind, text, res, kc: 'var(--text2)', tc: 'var(--text)', rc: 'var(--text3)', bg: 'transparent', ...(o || {}) });
+    return {
+      theme: this.props.theme ?? 'light',
+      steps: [
+        { n: '1', title: '레인 계산 함수', sub: '끝남 · 8분', ...done },
+        { n: '2', title: '그래프 API', sub: '끝남 · 6분', ...done },
+        { n: '3', title: '커밋 그래프 화면', sub: '진행 중 · 13분', ...now },
+        { n: '4', title: '테스트와 타입 검사', sub: '기다리는 중', ...todo },
+        { n: '5', title: 'PR 올리기', sub: '기다리는 중', ...todo },
+      ],
+      log: [
+        row('11:42', 'Read', 'web/src/branches/graph.ts', '212줄'),
+        row('11:42', 'Read', 'shared/branches.ts', '64줄'),
+        row('11:44', 'Edit', 'web/src/branches/graph.ts', '+38 −6'),
+        row('11:47', 'Bash', 'npm run typecheck', '통과', { rc: 'var(--ok)' }),
+        row('11:49', 'Edit', 'web/src/branches/CommitGraph.tsx', '+52 −9'),
+        row('11:52', 'Bash', 'node --test test/branches/lanes.test.js', '1개 실패', { rc: 'var(--bad)' }),
+        row('11:53', 'Edit', 'server/branches/lanes.js', '+7 −3'),
+        row('11:54', 'Bash', 'node --test test/branches/lanes.test.js', '통과', { rc: 'var(--ok)' }),
+        row('방금', 'Edit', 'web/src/branches/CommitGraph.tsx', '쓰는 중', { bg: 'var(--sunken)', kc: 'var(--text)' }),
+      ],
+      files: [
+        { path: 'web/src/branches/CommitGraph.tsx', add: '+96', del: '−14' },
+        { path: 'web/src/branches/graph.ts', add: '+38', del: '−6' },
+        { path: 'server/branches/lanes.js', add: '+61', del: '−3' },
+        { path: 'test/branches/lanes.test.js', add: '+44', del: '0' },
+      ],
+    };
+  }
+}
+</script>
+</body>
+</html>

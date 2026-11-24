@@ -1,0 +1,17 @@
+{
+  "$schema": "https://www.schemastore.org/claude-code-marketplace.json",
+  "name": "atelier",
+  "description": "Atelier: documents, diagrams, plans and agent teams in one local app.",
+  "owner": {
+    "name": "chanyee725",
+    "url": "https://github.com/chanyee725"
+  },
+  "plugins": [
+    {
+      "name": "atelier",
+      "description": "Skills and hooks to start Atelier in a project, run a team or a quickfix in git worktrees, write plans, documents and diagrams, and watch status and limits.",
+      "source": "./",
+      "category": "productivity"
+    }
+  ]
+}

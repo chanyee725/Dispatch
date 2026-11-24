@@ -1,0 +1,26 @@
+{
+  "name": "atelier",
+  "version": "0.1.0",
+  "description": "Atelier skills: start Atelier in a project, run teams, sessions and plans, write documents, diagrams and canvases, manage files and questions, and watch status, limits and settings.",
+  "author": {
+    "name": "chanyee725",
+    "url": "https://github.com/chanyee725"
+  },
+  "homepage": "https://github.com/chanyee725/Atelier",
+  "repository": "https://github.com/chanyee725/Atelier",
+  "keywords": ["multi-agent", "team", "worktree", "diagrams", "canvas", "documents"],
+  "skills": "./skills/",
+  "interface": {
+    "displayName": "Atelier",
+    "shortDescription": "Local docs, diagrams and agent teams",
+    "longDescription": "Drive a local Atelier server (127.0.0.1) from Codex: documents, diagram-as-code, free-form canvas, plans and their runs, agent sessions and teams, questions in documents, version history, usage and settings.",
+    "developerName": "chanyee725",
+    "category": "Productivity",
+    "capabilities": ["Interactive", "Read", "Write"],
+    "defaultPrompt": [
+      "아틀리에 켜줘",
+      "이 흐름을 캔버스에 그려줘",
+      "지금 세션들 뭐 하고 있어?"
+    ]
+  }
+}
