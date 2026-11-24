@@ -1,9 +1,9 @@
 {
-  "name": "atelier",
-  "version": "0.1.0",
+  "name": "dispatch",
+  "version": "1.0.0",
   "private": true,
   "type": "module",
-  "description": "Local diagramming tool: document + infinite canvas per file, with agent teams",
+  "description": "Dispatch: a local app to run and watch agent sessions and teams (Claude Code, Codex, Gemini)",
   "engines": {
     "node": ">=22.18"
   },

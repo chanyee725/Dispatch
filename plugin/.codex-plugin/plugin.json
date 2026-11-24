@@ -1,25 +1,36 @@
 {
-  "name": "atelier",
-  "version": "0.1.0",
-  "description": "Atelier skills: start Atelier in a project, run teams, sessions and plans, write documents, diagrams and canvases, manage files and questions, and watch status, limits and settings.",
+  "name": "dispatch",
+  "version": "1.0.0",
+  "description": "Dispatch skills: start Dispatch in a project, run teams, quickfixes and single sessions, and watch status, limits and settings.",
   "author": {
     "name": "chanyee725",
     "url": "https://github.com/chanyee725"
   },
-  "homepage": "https://github.com/chanyee725/Atelier",
-  "repository": "https://github.com/chanyee725/Atelier",
-  "keywords": ["multi-agent", "team", "worktree", "diagrams", "canvas", "documents"],
+  "homepage": "https://github.com/chanyee725/Dispatch",
+  "repository": "https://github.com/chanyee725/Dispatch",
+  "keywords": [
+    "multi-agent",
+    "team",
+    "worktree",
+    "orchestration",
+    "codex",
+    "gemini"
+  ],
   "skills": "./skills/",
   "interface": {
-    "displayName": "Atelier",
-    "shortDescription": "Local docs, diagrams and agent teams",
-    "longDescription": "Drive a local Atelier server (127.0.0.1) from Codex: documents, diagram-as-code, free-form canvas, plans and their runs, agent sessions and teams, questions in documents, version history, usage and settings.",
+    "displayName": "Dispatch",
+    "shortDescription": "Local agent sessions and teams",
+    "longDescription": "Drive a local Dispatch server (127.0.0.1) from Codex: agent sessions and teams in git worktrees, the task board, chat, usage, limits and settings.",
     "developerName": "chanyee725",
     "category": "Productivity",
-    "capabilities": ["Interactive", "Read", "Write"],
+    "capabilities": [
+      "Interactive",
+      "Read",
+      "Write"
+    ],
     "defaultPrompt": [
-      "아틀리에 켜줘",
-      "이 흐름을 캔버스에 그려줘",
+      "디스패치 켜줘",
+      "팀 꾸려서 이 이슈 진행해줘",
       "지금 세션들 뭐 하고 있어?"
     ]
   }

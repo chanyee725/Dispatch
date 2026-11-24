@@ -1,22 +1,20 @@
 {
-  "name": "atelier",
-  "version": "0.1.0",
-  "description": "Atelier skills and hooks: start Atelier in a project, run teams, sessions and plans, write documents, diagrams and canvases, manage files and questions, and watch status, limits and settings.",
+  "name": "dispatch",
+  "version": "1.0.0",
+  "description": "Dispatch skills and hooks: start Dispatch in a project, run teams, quickfixes and single sessions, and watch status, limits and settings.",
   "author": {
     "name": "chanyee725",
     "url": "https://github.com/chanyee725"
   },
-  "homepage": "https://github.com/chanyee725/Atelier",
-  "repository": "https://github.com/chanyee725/Atelier",
+  "homepage": "https://github.com/chanyee725/Dispatch",
+  "repository": "https://github.com/chanyee725/Dispatch",
   "keywords": [
     "multi-agent",
     "team",
     "worktree",
-    "diagrams",
+    "orchestration",
     "codex",
-    "gemini",
-    "canvas",
-    "documents"
+    "gemini"
   ],
   "types": "./types/index.d.ts"
 }

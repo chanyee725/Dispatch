@@ -1,0 +1,14 @@
+{
+  "name": "dispatch",
+  "version": "1.0.0",
+  "description": "Dispatch: a local web app (127.0.0.1) that runs Claude Code, Codex and Gemini sessions and whole teams in one project — a lead that plans, assigns, reviews and merges, one git worktree per session, a session board, chat, usage and limits. Skills to start it, run a team, a quickfix or one session, and read status and settings.",
+  "author": {
+    "name": "chanyee725",
+    "url": "https://github.com/chanyee725"
+  },
+  "homepage": "https://github.com/chanyee725/Dispatch",
+  "repository": "https://github.com/chanyee725/Dispatch",
+  "keywords": ["multi-agent", "team", "worktree", "orchestration", "codex", "gemini"],
+  "skills": "./plugin/skills/",
+  "hooks": "./plugin/hooks/hooks.json"
+}
