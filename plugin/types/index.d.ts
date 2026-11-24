@@ -43,6 +43,6 @@ export type AgentsView =
 
 declare module 'claude-code' {
   interface PluginState {
-    atelier: { agentsView: Shaped<AgentsView>; agentsRepo: Shaped<string | null> }
+    dispatch: { agentsView: Shaped<AgentsView>; agentsRepo: Shaped<string | null> }
   }
 }

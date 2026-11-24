@@ -1,17 +1,17 @@
 ---
-name: atelier-team
-description: Start an Atelier team for normal or risky work — a lead (관리자) who plans, assigns and merges, plus implementers and 1 or 2 reviewers. Use for "팀 꾸려서 진행해", "Atelier로 팀 돌려", a feature that spans several files, or risky work (auth, data, delete, structure). For a 1–3 file change use atelier-quickfix.
+name: dispatch-team
+description: Start a Dispatch team for normal or risky work — a lead (관리자) who plans, assigns and merges, plus implementers and 1 or 2 reviewers. Use for "팀 꾸려서 진행해", "Dispatch로 팀 돌려", a feature that spans several files, or risky work (auth, data, delete, structure). For a 1–3 file change use dispatch-quickfix.
 ---
 
-# Atelier team
+# Dispatch team
 
-`<skill-dir>` is this file's folder. The server must run (`atelier-setup`).
+`<skill-dir>` is this file's folder. The server must run (`dispatch`).
 
 ## Pick the lane
 
 | Lane | When | Team | Merge |
 |---|---|---|---|
-| quickfix | 1–3 files: UI position, copy, CSS, test updates | use `atelier-quickfix` | — |
+| quickfix | 1–3 files: UI position, copy, CSS, test updates | use `dispatch-quickfix` | — |
 | normal | one feature | lead + impl + 1 fresh reviewer | the lead merges |
 | risky | auth, data, delete, structure | lead + impl + 2 reviewers | the main session confirms, then the lead merges |
 
@@ -36,6 +36,6 @@ description: Start an Atelier team for normal or risky work — a lead (관리�
 
 ## Main session
 
-The session talking to the user may do a quickfix itself (`atelier-quickfix`). Normal and risky work goes to a lead. A different stream (another area, or a lead that shows `longRun`) gets a new lead. The plugin hook `main-delegates` reminds you when you edit more than 3 files in a project with a live server.
+The session talking to the user may do a quickfix itself (`dispatch-quickfix`). Normal and risky work goes to a lead. A different stream (another area, or a lead that shows `longRun`) gets a new lead. The plugin hook `main-delegates` reminds you when you edit more than 3 files in a project with a live server.
 
 The server refuses new Claude sessions at the limit guard (`settings.guard`); relay its message. Tasks carry no secrets.

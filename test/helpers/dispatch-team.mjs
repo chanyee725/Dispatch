@@ -1,4 +1,4 @@
-// atelier-team script tests (team.test.js, relay.test.js): a stub Atelier server and a temp plugin tree holding the
+// dispatch-team script tests (team.test.js, relay.test.js): a stub Dispatch server and a temp plugin tree holding the
 // real team.sh, relay.sh and rules.md. No real server or agent CLI runs.
 import http from 'node:http';
 import { spawn } from 'node:child_process';
@@ -8,7 +8,7 @@ import { join } from 'node:path';
 
 const SRC = new URL('../../plugin/', import.meta.url).pathname;
 
-// A stub Atelier: GET /api/state and /api/tasks answer from `sessions` and `tasks`; POST /api/sessions records the
+// A stub Dispatch: GET /api/state and /api/tasks answer from `sessions` and `tasks`; POST /api/sessions records the
 // body and adds the made sessions (idle, the lead able to spawn), so a second run sees the first run's team. Like the
 // hub, it refuses children past the default maxChildren (MAX_CHILDREN) of one parent.
 export const MAX_CHILDREN = 8;
@@ -52,12 +52,12 @@ export async function stubServer({ sessions = [], tasks = [], settings, failTeam
 
 // A temp plugin tree with the real team.sh, relay.sh and rules.md and a start.sh that does nothing.
 export function pluginTree() {
-  const dir = mkdtempSync(join(tmpdir(), 'atelier-team-'));
-  const skill = join(dir, 'plugin/skills/atelier-team');
+  const dir = mkdtempSync(join(tmpdir(), 'dispatch-team-'));
+  const skill = join(dir, 'plugin/skills/dispatch-team');
   mkdirSync(join(skill, 'scripts'), { recursive: true });
   mkdirSync(join(skill, 'reference'));
   mkdirSync(join(dir, 'plugin/scripts'));
-  for (const f of ['scripts/team.sh', 'scripts/relay.sh', 'reference/rules.md']) copyFileSync(join(SRC, 'skills/atelier-team', f), join(skill, f));
+  for (const f of ['scripts/team.sh', 'scripts/relay.sh', 'reference/rules.md']) copyFileSync(join(SRC, 'skills/dispatch-team', f), join(skill, f));
   writeFileSync(join(dir, 'plugin/scripts/start.sh'), '#!/bin/sh\nexit 0\n');
   chmodSync(join(dir, 'plugin/scripts/start.sh'), 0o755);
   return { dir, scripts: join(skill, 'scripts'), cleanup: () => rmSync(dir, { recursive: true, force: true }) };

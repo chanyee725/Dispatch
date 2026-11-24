@@ -1,15 +1,15 @@
 // Saved chat history in the sidebar (#968): the list from GET /api/chats (titles and times only; the server keeps
-// them masked in .atelier/chat/), plus delete and clear-all. Memory only here: nothing is kept in storage.
+// them masked in .dispatch/chat/), plus delete and clear-all. Memory only here: nothing is kept in storage.
 import { useSyncExternalStore } from 'react';
 
 export type ChatSummary = { id: string; title: string; createdAt: number; updatedAt: number; sessionId: string | null; count: number };
 
 /** Fired after a conversation is saved (ChatDock save) to make the list reload; heard by the store below. */
-export const HISTORY_CHANGED = 'atelier:chat-history-changed';
+export const HISTORY_CHANGED = 'dispatch:chat-history-changed';
 /** Asks the chat dock to resume a conversation: detail = { cliSessionId } (sent by openChatSession in web/src/chat/index.ts, heard by ChatDock). */
-export const OPEN_CHAT_SESSION = 'atelier:open-chat-session';
+export const OPEN_CHAT_SESSION = 'dispatch:open-chat-session';
 /** Asks the chat dock to open on its current conversation (sent by openChat in web/src/chat/index.ts, for `#chat`). */
-export const OPEN_CHAT = 'atelier:open-chat';
+export const OPEN_CHAT = 'dispatch:open-chat';
 
 async function call<T>(method: string, url: string): Promise<T> {
   const res = await fetch(url, { method, headers: method === 'GET' ? {} : { 'x-drawing': '1', 'x-drawing-client': 'app' } });

@@ -184,7 +184,7 @@ test('claude not installed: login answers 400 and installed turns false', async 
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const enabledOnDisk = (root) => {
-  const file = join(root, '.atelier', 'state.json');
+  const file = join(root, '.dispatch', 'state.json');
   return existsSync(file) ? JSON.parse(readFileSync(file, 'utf8')).settings?.enabled?.claude : undefined;
 };
 

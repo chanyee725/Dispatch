@@ -1,4 +1,4 @@
-// 설정 > 일반: 대화 기록 모두 지우기 (#968). Removes every saved chat under .atelier/chat/ after one confirmation.
+// 설정 > 일반: 대화 기록 모두 지우기 (#968). Removes every saved chat under .dispatch/chat/ after one confirmation.
 import { useId, useState } from 'react';
 import { askConfirm } from '../appDialog';
 import { toastResult } from '../activity/actionToast';

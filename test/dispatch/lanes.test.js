@@ -77,11 +77,12 @@ test("run times: merged tasks feed a per-lane median; capped; none yet is null",
   assert.equal(hub.etaHint("quickfix"), null);
 });
 
-test("agent prompts call the tool Atelier, carry the lanes and the merge hand-off, and drop emphasis", async () => {
+test("agent prompts call the tool Dispatch, carry the lanes and the merge hand-off, and drop emphasis", async () => {
   const { ROLES: roles, SPAWN_PROMPT, CHILD_PROMPT } = await import("../../server/dispatch/roles.js");
   const all = [SPAWN_PROMPT, CHILD_PROMPT, ...roles.map(r => r.prompt)].join("\n");
-  assert.doesNotMatch(all, /Dispatch|Drawing|IMPORTANT|NEVER|반드시/);
-  assert.match(SPAWN_PROMPT, /아틀리에\(Atelier\)/);
+  // The tool is named once as 디스패치(Dispatch); no other product name (the internal Drawing) and no emphasis.
+  assert.doesNotMatch(all.replaceAll("디스패치(Dispatch)", ""), /Dispatch|Drawing|IMPORTANT|NEVER|반드시/);
+  assert.match(SPAWN_PROMPT, /디스패치\(Dispatch\)/);
   for (const lane of ["quickfix", "normal", "risky"]) assert.match(SPAWN_PROMPT, new RegExp(`- ${lane}:`));
   // The merge steps moved to the merge role (#1031); the lead hands PRs and merges off.
   const merge = roles.find(r => r.id === "merge").prompt;

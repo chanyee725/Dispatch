@@ -48,7 +48,7 @@ export const NEW_LEAD_NOTE =
   'You are the 관리자 (lead) of this issue. Create your teammates yourself with create_sessions as the task says. ' +
   'Each teammate\'s finished turn reaches you automatically as a "[name 보고 · branch]" message, so end your turn when you are waiting for a report instead of sleeping or polling.';
 
-/** POST /api/sessions body for a new lead on the issue; `rules` is the atelier-team rules file team.sh uses too. */
+/** POST /api/sessions body for a new lead on the issue; `rules` is the dispatch-team rules file team.sh uses too. */
 export function newLeadBody(issue: IssueRef, team: TeamPick, rules: string, folder?: string | null) {
   return {
     commonPrompt: `${rules.trim()}\n\n${NEW_LEAD_NOTE}\n\nTask from the user:\n${issueTask(issue, team)}`,

@@ -273,7 +273,7 @@ export function ChatDock({ folder }: { folder: string | null }) {
         const name = sessions.find(x => x.id === leadId)?.name ?? '관리자';
         return `${name}에게 보냈어요. 곧 팀원을 만들어요.`;
       }
-      const { default: rules } = await import('../../../plugin/skills/atelier-team/reference/rules.md?raw');
+      const { default: rules } = await import('../../../plugin/skills/dispatch-team/reference/rules.md?raw');
       await api('POST', '/api/sessions', newLeadBody(issue, team, rules, folder));
       return '새 관리자를 만들었어요. 곧 팀원을 만들어요.';
     }, setStart);

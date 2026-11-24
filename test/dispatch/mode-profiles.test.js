@@ -1,5 +1,5 @@
 // Harness profiles per mode × role (#748): built-in grid, validation, fallback with a note, and the
-// GET/PUT /api/mode-profiles routes writing ~/.atelier/drawing.json. No CLI is started.
+// GET/PUT /api/mode-profiles routes writing ~/.dispatch/drawing.json. No CLI is started.
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
@@ -154,7 +154,7 @@ function scratch() {
   git("commit", "-qm", "init");
   const ws = join(root, "ws");
   mkdirSync(ws);
-  return { dir, root, ws, file: join(dir, "home", ".atelier", "drawing.json") };
+  return { dir, root, ws, file: join(dir, "home", ".dispatch", "drawing.json") };
 }
 
 test("server: GET/PUT /api/mode-profiles write only changed cells to drawing.json, validate, need x-drawing and reset", async () => {

@@ -1,11 +1,11 @@
 {
-  "name": "atelier",
+  "name": "dispatch",
   "interface": {
-    "displayName": "Atelier"
+    "displayName": "Dispatch"
   },
   "plugins": [
     {
-      "name": "atelier",
+      "name": "dispatch",
       "source": {
         "source": "local",
         "path": "./"

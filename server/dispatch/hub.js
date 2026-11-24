@@ -37,7 +37,7 @@ export class Hub extends EventEmitter {
     this.roles = roles;
     // The port is known only once the server listens: a number or a getter.
     this.portOf = typeof port === "function" ? port : () => port;
-    // Claude limits and the Gemini quota are account-wide: shared by every server via ~/.atelier/limits.json.
+    // Claude limits and the Gemini quota are account-wide: shared by every server via ~/.dispatch/limits.json.
     this.shared = limits || new SharedLimits();
     this.shared.on("change", () => { this.emit("limits", this.currentLimits()); this.checkTickets(); });
     this.live = new Map(); // id -> { proc, transcript, perms, seenMsgIds }

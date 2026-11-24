@@ -9,7 +9,7 @@ import { claimWorkspace } from '../server/lock.js';
 import { execFileSync } from 'node:child_process';
 
 // Scratch folders only (never a real project): a workspace and a fake "home" with folders to browse.
-// `defaults: true` turns ~/.atelier/drawing.json on for the test; HOME is the scratch home, never the real one.
+// `defaults: true` turns ~/.dispatch/drawing.json on for the test; HOME is the scratch home, never the real one.
 async function withApp(fn, { defaults = false, moduleList = modules, deps = {}, ...opts } = {}) {
   const ws = await realpath(await mkdtemp(join(tmpdir(), 'draw-lf-ws-')));
   const home = await realpath(await mkdtemp(join(tmpdir(), 'draw-lf-home-')));
@@ -112,7 +112,7 @@ test('workspaces: picking a folder adds it to drawing.json and switches the serv
       assert.deepEqual((await call('GET', '/api/workspace/projects')).body.projects, []);
 
       // Metadata only: `~/…` path and folder name; both folders listed, the last one opened remembered.
-      const saved = JSON.parse(await readFile(join(home, '.atelier', 'drawing.json'), 'utf8'));
+      const saved = JSON.parse(await readFile(join(home, '.dispatch', 'drawing.json'), 'utf8'));
       assert.deepEqual(saved.workspaces, [{ path: ws, name: basename(ws) }, { path: '~/code/app', name: 'app' }]);
       assert.equal(saved.lastWorkspace, '~/code/app');
 
@@ -121,7 +121,7 @@ test('workspaces: picking a folder adds it to drawing.json and switches the serv
       assert.equal(back.status, 200);
       const names = (await call('GET', '/api/workspace/projects')).body.projects.map((n) => n.name);
       assert.deepEqual(names, ['a']);
-      assert.equal(JSON.parse(await readFile(join(home, '.atelier', 'drawing.json'), 'utf8')).lastWorkspace, ws);
+      assert.equal(JSON.parse(await readFile(join(home, '.dispatch', 'drawing.json'), 'utf8')).lastWorkspace, ws);
 
       // Removing takes it off the list only; the open folder cannot be removed.
       assert.equal((await call('DELETE', `/api/workspaces?path=${encodeURIComponent(ws)}`)).body.code, 'current');

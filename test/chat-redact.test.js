@@ -100,7 +100,7 @@ test("name rules: any-case name fields, Korean contact keys, by, surname before 
   masked("구현자가 고쳤어요", "구현자가 고쳤어요");
   masked("문서가 있어요, 정상입니다", "문서가 있어요, 정상입니다");
   // Two-part absolute paths outside the system roots stay on purpose (see chat-redact.js).
-  masked("GET /api/file in /work/atelier", "GET /api/file in /work/atelier");
+  masked("GET /api/file in /work/dispatch", "GET /api/file in /work/dispatch");
 });
 
 test("inline images become a placeholder", () => {

@@ -38,8 +38,8 @@ const stamp = createHash("sha1")
   .update(untracked.filter(Boolean).map(f => { try { const st = statSync(path.join(root, f)); return `${f}:${st.size}:${st.mtimeMs}`; } catch { return f; } }).join("\n"))
   .digest("hex");
 const key = createHash("sha1").update(root).digest("hex").slice(0, 12);
-const passFile = path.join(tmpdir(), `atelier-stop-pass-${key}`);
-const blockFile = path.join(tmpdir(), `atelier-stop-block-${key}-${String(input.session_id || "x").replace(/[^\w-]/g, "")}`);
+const passFile = path.join(tmpdir(), `dispatch-stop-pass-${key}`);
+const blockFile = path.join(tmpdir(), `dispatch-stop-block-${key}-${String(input.session_id || "x").replace(/[^\w-]/g, "")}`);
 if (existsSync(passFile) && readFileSync(passFile, "utf8") === stamp) process.exit(0);
 
 function testFiles(dir) {

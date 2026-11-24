@@ -31,7 +31,7 @@ This replaces the first version of E554 (PR #723), which linked a folder into th
 1. Refusals before anything changes (stable `code` next to an English, path-free `error`):
    - project mode → 403 `project_mode` (the routes are also closed there);
    - an agent session that is `running`, `starting` or `waiting` → 409 `sessions_running`;
-   - another Atelier server holds the folder's workspace lock → 409 `in_use`;
+   - another Dispatch server holds the folder's workspace lock → 409 `in_use`;
    - a switch already running → 409 `switching`.
 2. Open pages get an SSE `workspace-switch` event `{ workspace: <folder name> }`; then the event streams are closed.
 3. Every module is closed and set up again with the new `ctx.workspaceDir` (modules never see the folder change under
@@ -96,7 +96,7 @@ The web UI below was removed in #778 (the sidebar shows one project's name inste
 - Switching is refused while any agent session is busy; the user waits for it to end (or stops it) first.
 - A switch drops every open page's state (it reloads at `/`), including unsaved edits that have not reached the
   server yet; the editor saves continuously, so this is a short window.
-- One server per folder: a folder another Atelier server has open cannot be opened here (`in_use`).
+- One server per folder: a folder another Dispatch server has open cannot be opened here (`in_use`).
 - The folder list is per computer (`~/.dispatch/drawing.json`), not per workspace.
 
 ## CLAUDE.md (proposed, pending the user's approval)

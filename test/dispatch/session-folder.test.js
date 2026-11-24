@@ -79,7 +79,7 @@ test('POST /api/sessions: folder must be an existing top folder; it shows in the
     assert.equal(state.sessions.find((s) => s.id === ok.body.sessions[0].id).folder, 'alpha');
     // Stored in state.json (metadata only, no transcript text).
     await d.store.flush();
-    const disk = JSON.parse(readFileSync(join(d.root, '.atelier', 'state.json'), 'utf8'));
+    const disk = JSON.parse(readFileSync(join(d.root, '.dispatch', 'state.json'), 'utf8'));
     assert.equal(disk.sessions[ok.body.sessions[0].id].folder, 'alpha');
   } finally { await t.stop(); }
 });

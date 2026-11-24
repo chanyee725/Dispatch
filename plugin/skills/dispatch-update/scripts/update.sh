@@ -6,14 +6,14 @@
 #   update.sh --no-restart unpack only
 #
 # Only the given project (default: the git project of the current folder) is restarted, found by
-# <project>/.atelier/server.pid and server.port (.dispatch before its one-time move). Other projects: run restart.sh in each of them.
+# <project>/.dispatch/server.pid and server.port (.dispatch before its one-time move). Other projects: run restart.sh in each of them.
 #
 # DRAWING_INSTALL_BASE overrides ~/.dispatch/drawing.
 # Uses gh (already logged in) for the download. Unpacks into ~/.dispatch/drawing/<ver>/ and points
 # ~/.dispatch/drawing/current at it. Older versions are kept; delete them by hand when you like.
 set -euo pipefail
 
-repo="chanyee725/Drawing"
+repo="chanyee725/Dispatch"
 # DRAWING_INSTALL_BASE = where releases are unpacked. (DRAWING_HOME, read by start.sh, is a Drawing
 # checkout; it is set below for the restart only.)
 base="${DRAWING_INSTALL_BASE:-$HOME/.dispatch/drawing}"
@@ -99,21 +99,21 @@ if $restart; then
   [ ! -f "$port_file" ] || port="$(cat "$port_file")"
   if is_our_project_server "$pid" "$project"; then
     if [[ "$port" =~ ^[0-9]+$ ]]; then
-      DRAWING_HOME="$base/$ver" DISPATCH_PORT="$port" DRAW_PORT="$port" "$base/current/plugin/skills/atelier-setup/scripts/restart.sh" "$project" | sed 's/^/    /'
+      DRAWING_HOME="$base/$ver" DISPATCH_PORT="$port" DRAW_PORT="$port" "$base/current/plugin/skills/dispatch/scripts/restart.sh" "$project" | sed 's/^/    /'
     else
-      DRAWING_HOME="$base/$ver" "$base/current/plugin/skills/atelier-setup/scripts/restart.sh" "$project" | sed 's/^/    /'
+      DRAWING_HOME="$base/$ver" "$base/current/plugin/skills/dispatch/scripts/restart.sh" "$project" | sed 's/^/    /'
     fi
     ok "restarted the server of $project; cut-off turns resume on their own"
   else
     ok "no running server for $project"
   fi
   echo "  Other projects keep running the old code: run restart.sh in each of them:"
-  echo "    $base/current/plugin/skills/atelier-setup/scripts/restart.sh <project>"
+  echo "    $base/current/plugin/skills/dispatch/scripts/restart.sh <project>"
 fi
 
 step "Done"
 echo "Plugin folder: $base/current/plugin"
 echo "If the plugin is not installed from this folder yet, in Claude Code run:"
 echo "  /plugin marketplace add $base/current/plugin"
-echo "  /plugin install atelier@atelier"
-echo "(already installed: /plugin marketplace update atelier, then /plugin update atelier@atelier)"
+echo "  /plugin install dispatch@dispatch"
+echo "(already installed: /plugin marketplace update dispatch, then /plugin update dispatch@dispatch)"

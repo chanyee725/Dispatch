@@ -2,7 +2,7 @@
 // workspaces, and switching this one server between them without a restart. Each folder keeps its own
 // <folder>/.drawing/ data; agent sessions run in the git project that holds the open folder.
 //
-// The list and the last-opened folder live in ~/.atelier/drawing.json (`workspaces`, `lastWorkspace`, E555),
+// The list and the last-opened folder live in ~/.dispatch/drawing.json (`workspaces`, `lastWorkspace`, E555),
 // written only through UserDefaults.update. Metadata only: a path and a folder name, nothing else.
 import { realpath, stat } from 'node:fs/promises';
 import { homedir } from 'node:os';

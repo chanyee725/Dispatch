@@ -1,5 +1,5 @@
 // The Dispatch state file: writes run one at a time, and close() writes the last state and stops writing,
-// so a child that exits after shutdown cannot race the next server on the same .atelier/state.json (E205).
+// so a child that exits after shutdown cannot race the next server on the same .dispatch/state.json (E205).
 import { test, after } from "node:test";
 import assert from "node:assert/strict";
 import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";

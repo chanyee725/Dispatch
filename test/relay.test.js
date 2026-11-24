@@ -1,5 +1,5 @@
-// atelier-team relay.sh (#823): start the next team first, then remove the old lead's teammates and the lead last.
-// A stub HTTP server stands in for Atelier and DISPATCH_TEAM_SH for team.sh; no real server or CLI runs.
+// dispatch-team relay.sh (#823): start the next team first, then remove the old lead's teammates and the lead last.
+// A stub HTTP server stands in for Dispatch and DISPATCH_TEAM_SH for team.sh; no real server or CLI runs.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import http from 'node:http';
@@ -7,9 +7,9 @@ import { spawn } from 'node:child_process';
 import { mkdtempSync, writeFileSync, readFileSync, existsSync, rmSync, chmodSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { stubServer, pluginTree, runScript } from './helpers/atelier-team.mjs';
+import { stubServer, pluginTree, runScript } from './helpers/dispatch-team.mjs';
 
-const RELAY = new URL('../plugin/skills/atelier-team/scripts/relay.sh', import.meta.url).pathname;
+const RELAY = new URL('../plugin/skills/dispatch-team/scripts/relay.sh', import.meta.url).pathname;
 
 const SESSIONS = [
   { id: 'lead-a', name: 'Dino', canSpawn: true, parent: null },
@@ -35,7 +35,7 @@ async function withStub(fn) {
     res.end('{}');
   });
   await new Promise((r) => server.listen(0, '127.0.0.1', r));
-  const dir = mkdtempSync(join(tmpdir(), 'atelier-relay-'));
+  const dir = mkdtempSync(join(tmpdir(), 'dispatch-relay-'));
   try {
     return await fn({ port: server.address().port, dir, removed });
   } finally {
@@ -79,11 +79,11 @@ test('relay.sh keeps the old team when the new team does not start', () =>
     assert.deepEqual(removed, []);
   }));
 
-test('relay.sh with an empty task only removes the old team; port comes from .atelier/server.port', () =>
+test('relay.sh with an empty task only removes the old team; port comes from .dispatch/server.port', () =>
   withStub(async ({ port, dir, removed }) => {
     const { mkdirSync } = await import('node:fs');
-    mkdirSync(join(dir, '.atelier'));
-    writeFileSync(join(dir, '.atelier', 'server.port'), `${port}\n`);
+    mkdirSync(join(dir, '.dispatch'));
+    writeFileSync(join(dir, '.dispatch', 'server.port'), `${port}\n`);
     const r = await run([dir, 'Ruby', 'small', ''], { DISPATCH_PORT: '', DISPATCH_TEAM_SH: fakeTeam(dir, 0) });
     assert.equal(r.status, 0, r.stderr);
     assert.equal(existsSync(join(dir, 'team-args')), false, 'no new team for an empty task');

@@ -1,6 +1,6 @@
 # User defaults: `~/.dispatch/drawing.json`
 
-Issue #724 (E555). One human-editable file holds the user's defaults for every Atelier server on this
+Issue #724 (E555). One human-editable file holds the user's defaults for every Dispatch server on this
 computer. CLAUDE.md already lets the server write under `~/.dispatch/`, so the file lives there.
 
 ## What goes in it
@@ -38,7 +38,7 @@ Metadata only: no tokens, API keys, emails, names or transcripts.
 ## Format rules
 
 - Keys are written in the order above, unknown keys after them in the order the file had them. Unknown keys are
-  never dropped, so a newer or older Atelier, or a hand edit, survives a save.
+  never dropped, so a newer or older Dispatch, or a hand edit, survives a save.
 - 2-space indent and a trailing newline; written atomically (temp file + rename), mode 0600, folder 0700.
 - A value with the wrong type is skipped on read and named in `problems` (GET /api/user-defaults); the other
   values still apply. The bad value stays in the file until the user fixes it or saves that key again.

@@ -1,9 +1,9 @@
-// atelier-team team.sh presets and per-role models (#825). team.sh runs from a temp plugin tree with a fake
+// dispatch-team team.sh presets and per-role models (#825). team.sh runs from a temp plugin tree with a fake
 // start.sh against a stub HTTP server that records POST /api/sessions bodies; no real server or CLI runs.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { join } from 'node:path';
-import { stubServer, pluginTree, runScript, MAX_CHILDREN } from './helpers/atelier-team.mjs';
+import { stubServer, pluginTree, runScript, MAX_CHILDREN } from './helpers/dispatch-team.mjs';
 
 async function runTeam(preset, env, { task = 'Issue #1', ...state } = {}) {
   const stub = await stubServer(state);

@@ -128,7 +128,7 @@ export const DEFAULT_INTERVAL: IntervalId = '5m';
 export const intervalOf = (id: string | null | undefined): Interval =>
   INTERVALS.find(i => i.id === id) ?? INTERVALS.find(i => i.id === DEFAULT_INTERVAL)!;
 
-export const INTERVAL_KEY = 'atelier.timeline.interval';
+export const INTERVAL_KEY = 'dispatch.timeline.interval';
 type Store = Pick<Storage, 'getItem' | 'setItem'>;
 /** The remembered interval; blocked or missing storage and unknown values fall back to the default. */
 export function readInterval(store: Store | undefined): IntervalId {
@@ -148,7 +148,7 @@ export function writeInterval(store: Store | undefined, id: IntervalId) {
 }
 
 /** Whether the viewer folded the 타임라인 card down to its title row; blocked or missing storage reads as open. */
-export const FOLDED_KEY = 'atelier.timeline.folded';
+export const FOLDED_KEY = 'dispatch.timeline.folded';
 export function readFolded(store: Pick<Storage, 'getItem'> | undefined): boolean {
   try {
     return store?.getItem(FOLDED_KEY) === '1';

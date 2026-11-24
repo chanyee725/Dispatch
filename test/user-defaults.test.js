@@ -1,4 +1,4 @@
-// E555 (#724): the user's defaults in ~/.atelier/drawing.json. Every test uses a temp HOME; the real
+// E555 (#724): the user's defaults in ~/.dispatch/drawing.json. Every test uses a temp HOME; the real
 // ~/.dispatch is never read or written. No agent CLI is started.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
@@ -18,16 +18,16 @@ const W = { 'content-type': 'application/json', 'x-drawing': '1' };
 
 function tempHome() {
   const home = mkdtempSync(join(tmpdir(), 'drawing-e555-home-'));
-  const file = join(home, '.atelier', 'drawing.json');
+  const file = join(home, '.dispatch', 'drawing.json');
   const put = (text) => {
-    mkdirSync(join(home, '.atelier'), { recursive: true });
+    mkdirSync(join(home, '.dispatch'), { recursive: true });
     writeFileSync(file, typeof text === 'string' ? text : JSON.stringify(text));
   };
   return { home, file, put, read: () => readFileSync(file, 'utf8'), done: () => rmSync(home, { recursive: true, force: true }) };
 }
 
-test('defaultsFile: ~/.atelier/drawing.json under HOME; DRAWING_USER_DEFAULTS=off turns the file off', () => {
-  assert.equal(defaultsFile({ HOME: '/h' }), '/h/.atelier/drawing.json');
+test('defaultsFile: ~/.dispatch/drawing.json under HOME; DRAWING_USER_DEFAULTS=off turns the file off', () => {
+  assert.equal(defaultsFile({ HOME: '/h' }), '/h/.dispatch/drawing.json');
   assert.equal(defaultsFile({ HOME: '/h', DRAWING_USER_DEFAULTS: 'off' }), null);
 });
 
@@ -148,13 +148,13 @@ test('server: drawing.json wins over state.json; 설정 changes are written back
   const h = tempHome();
   const { root, ws } = scratchRepo();
   // The old places: team settings in the project's state.json, a PR switch nowhere.
-  mkdirSync(join(root, '.atelier'), { recursive: true });
-  writeFileSync(join(root, '.atelier', 'state.json'), JSON.stringify({ settings: { team: { rotateLead: 7, maxChildren: 3 } } }));
+  mkdirSync(join(root, '.dispatch'), { recursive: true });
+  writeFileSync(join(root, '.dispatch', 'state.json'), JSON.stringify({ settings: { team: { rotateLead: 7, maxChildren: 3 } } }));
   h.put({ version: 1, theme: 'dark', prStatus: false, team: { rotateLead: 2 }, guard: { five: 0.5 }, extra: { kept: true } });
   const s = await start(ws, h.file, fakeDeps(root));
   try {
     const snap = await (await fetch(`${s.base}/api/user-defaults`)).json();
-    assert.equal(snap.file, '~/.atelier/drawing.json');
+    assert.equal(snap.file, '~/.dispatch/drawing.json');
     assert.equal(snap.error, null);
     assert.equal(snap.values.theme, 'dark');
     // PR tracking: no workspace value, so the user's default (off) applies.
@@ -274,7 +274,7 @@ test('npm start with no arguments uses the default workspace and port from drawi
   try {
     const deadline = Date.now() + 20_000;
     while (!log.includes(`http://127.0.0.1:${port}/`) && Date.now() < deadline && child.exitCode === null) await new Promise((r) => setTimeout(r, 100));
-    assert.match(log, new RegExp(`Atelier: http://127\\.0\\.0\\.1:${port}/ +\\(workspace ${ws.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}`));
+    assert.match(log, new RegExp(`Dispatch: http://127\\.0\\.0\\.1:${port}/ +\\(workspace ${ws.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}`));
     const info = await (await fetch(`http://127.0.0.1:${port}/api/info`)).json();
     assert.ok(info.workspace);
   } finally {

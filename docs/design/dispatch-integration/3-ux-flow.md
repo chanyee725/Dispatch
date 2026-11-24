@@ -1,10 +1,10 @@
 # 3. UX flow: plan → approve → run → record
 
-Part of the Dispatch → Atelier merge (issue #87). This file covers screens and the order a person moves through them. Data model and server moves are decided in the sibling design files; here only the fields the screens need are named.
+Part of the Dispatch → Drawing merge (issue #87). This file covers screens and the order a person moves through them. Data model and server moves are decided in the sibling design files; here only the fields the screens need are named.
 
 ## Recommendation (decide these first)
 
-1. **A pipeline is an ordinary Atelier file** with one extra `pipeline` field. Document = the plan in words, canvas = the step diagram, `pipeline` = the machine-readable steps and their run status. No separate "pipeline page". Same file before, during and after the run, so the record is just the file.
+1. **A pipeline is an ordinary Drawing file** with one extra `pipeline` field. Document = the plan in words, canvas = the step diagram, `pipeline` = the machine-readable steps and their run status. No separate "pipeline page". Same file before, during and after the run, so the record is just the file.
 2. **The lead writes the plan through a new MCP tool `write_plan`, not by editing JSON on disk.** The server validates the steps, builds the document and the flowchart block from them, and saves through the normal revisioned write. The lead may not create teammates until the user presses **시작하기** (server-enforced, not a prompt rule).
 3. **One button, one gate.** The person edits the file freely while it is `계획`. **시작하기** freezes the approved revision and hands it to the lead. Edits after that are notes, not new instructions, until the person presses **계획 다시 열기**.
 4. **Running state lives in a 4th view tab `실행`** next to 문서 / 둘 다 / 캔버스, plus a one-line status strip under the top bar in every view. Canvas nodes are coloured by step status, so 캔버스 also shows progress at a glance.
@@ -228,7 +228,7 @@ The file opens on `문서` with a summary block the server writes at `완료`:
 ## Open questions
 
 1. Is approval per plan only, or should some steps (merge into `develop`, push) need a second 확인 in the run? Current Dispatch rules already route push through the person.
-2. Where do the run's Dispatch screens go for projects that are not Atelier workspaces: keep Dispatch's own board, or require every run to start from a Atelier file?
+2. Where do the run's Dispatch screens go for projects that are not Drawing workspaces: keep Dispatch's own board, or require every run to start from a Drawing file?
 3. Should the record show cost in dollars, or tokens only? Dollars help, but the same file may be shared with people who should not see spend.
-4. Can the person write a plan by hand and start it without a lead (Atelier creates the lead with the plan as its task)? Recommended yes, after step 3 of the build order.
+4. Can the person write a plan by hand and start it without a lead (Drawing creates the lead with the plan as its task)? Recommended yes, after step 3 of the build order.
 5. Pipeline file location: free anywhere with a dot badge (recommended), or a fixed `pipelines/` folder the sidebar shows as its own section?

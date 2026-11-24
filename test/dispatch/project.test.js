@@ -185,13 +185,13 @@ test('claimLock: processes racing to replace one stale lock end with exactly one
   }
 });
 
-test('claimWorkspace / claimProject: a symlinked .drawing or .atelier is refused and nothing is written through it', async () => {
+test('claimWorkspace / claimProject: a symlinked .drawing or .dispatch is refused and nothing is written through it', async () => {
   const { root, ws } = scratchRepo();
   const outside = realpathSync(mkdtempSync(join(tmpdir(), 'drawing-e13-out-')));
   try {
     symlinkSync(outside, join(ws, '.drawing'));
     await assert.rejects(claimWorkspace(ws), { name: 'LockPathError' });
-    symlinkSync(outside, join(root, '.atelier'));
+    symlinkSync(outside, join(root, '.dispatch'));
     assert.deepEqual(await claimProject(root), { ok: false, reason: 'unsafe', port: null });
     assert.deepEqual(readdirSync(outside), [], 'no lock or temp file outside the workspace');
 
@@ -240,24 +240,24 @@ test('claimWorkspace: a live server answering /api/info for this folder holds it
   }
 });
 
-test('claimProject: a standalone Dispatch on .atelier/server.port turns Dispatch off and nothing is written', async () => {
+test('claimProject: a standalone Dispatch on .dispatch/server.port turns Dispatch off and nothing is written', async () => {
   const { root } = scratchRepo();
   const home = process.env.HOME;
   const shown = home && root.startsWith(home) ? root.replace(home, '~') : root;
   const standalone = await fakeServer({ '/api/state': { project: { path: shown } } });
   const elsewhere = await fakeServer({ '/api/state': { project: { path: '/somewhere/else' } } });
   try {
-    mkdirSync(join(root, '.atelier'));
-    writeFileSync(join(root, '.atelier', 'server.port'), `${standalone.port}\n`);
+    mkdirSync(join(root, '.dispatch'));
+    writeFileSync(join(root, '.dispatch', 'server.port'), `${standalone.port}\n`);
     assert.deepEqual(await claimProject(root), { ok: false, reason: 'standalone', port: standalone.port });
-    assert.deepEqual(readdirSync(join(root, '.atelier')), ['server.port']);
+    assert.deepEqual(readdirSync(join(root, '.dispatch')), ['server.port']);
 
     // The remembered port now serves another project, or nothing: not ours to worry about.
-    writeFileSync(join(root, '.atelier', 'server.port'), `${elsewhere.port}\n`);
+    writeFileSync(join(root, '.dispatch', 'server.port'), `${elsewhere.port}\n`);
     const ok = await claimProject(root);
     assert.equal(ok.ok, true);
     await ok.lock.release();
-    writeFileSync(join(root, '.atelier', 'server.port'), `${await freePort()}\n`);
+    writeFileSync(join(root, '.dispatch', 'server.port'), `${await freePort()}\n`);
     const ok2 = await claimProject(root);
     assert.equal(ok2.ok, true);
     await ok2.lock.release();
@@ -268,13 +268,13 @@ test('claimProject: a standalone Dispatch on .atelier/server.port turns Dispatch
   }
 });
 
-test('claimProject: another live Drawing server holding .atelier/drawing.lock turns Dispatch off', async () => {
+test('claimProject: another live Drawing server holding .dispatch/drawing.lock turns Dispatch off', async () => {
   const { root } = scratchRepo();
   const child = liveChild();
   const drawing = await fakeServer({ '/api/state': { project: { path: root } } });
   try {
-    mkdirSync(join(root, '.atelier'));
-    writeFileSync(join(root, '.atelier', 'drawing.lock'), JSON.stringify({ pid: child.pid, port: drawing.port }));
+    mkdirSync(join(root, '.dispatch'));
+    writeFileSync(join(root, '.dispatch', 'drawing.lock'), JSON.stringify({ pid: child.pid, port: drawing.port }));
     assert.deepEqual(await claimProject(root), { ok: false, reason: 'other-drawing', port: drawing.port });
     child.kill();
     await new Promise((r) => child.on('exit', r));
@@ -316,7 +316,7 @@ async function startServer(ws, home) {
   const code = await new Promise((resolve) => {
     const timer = setTimeout(() => resolve('timeout'), 10_000);
     child.on('exit', (c) => { clearTimeout(timer); resolve(c); });
-    child.stdout.on('data', () => { if (out.includes('Atelier: http://')) { clearTimeout(timer); resolve(null); } });
+    child.stdout.on('data', () => { if (out.includes('Dispatch: http://')) { clearTimeout(timer); resolve(null); } });
   });
   const stop = async () => {
     if (child.exitCode !== null) return;
@@ -341,12 +341,12 @@ test('real server: a second server on the same workspace refuses; a second works
     // listening() records the port in both locks shortly after the URL line.
     const want = { pid: a.child.pid, port: a.port };
     assert.deepEqual(await lockOnceSet(join(ws, '.drawing', 'server.lock')), want);
-    assert.deepEqual(await lockOnceSet(join(root, '.atelier', 'drawing.lock')), want);
+    assert.deepEqual(await lockOnceSet(join(root, '.dispatch', 'drawing.lock')), want);
 
     const b = await startServer(ws, home);
     servers.push(b);
     assert.equal(b.code, 1);
-    assert.match(b.output(), new RegExp(`Another Atelier server is already running for this workspace: http://127.0.0.1:${a.port}/`));
+    assert.match(b.output(), new RegExp(`Another Dispatch server is already running for this workspace: http://127.0.0.1:${a.port}/`));
 
     const c = await startServer(docs, home);
     servers.push(c);
@@ -358,13 +358,13 @@ test('real server: a second server on the same workspace refuses; a second works
     assert.match(status.message, /다른 Drawing 서버/);
     assert.equal((await fetch(`${c.base}/api/state`)).status, 404);
     assert.equal((await fetch(`${c.base}/api/workspace/projects`)).status, 200, 'drawing still works');
-    const extra = c.output().split('\n').filter((l) => !l.startsWith('Atelier: '));
+    const extra = c.output().split('\n').filter((l) => !l.startsWith('Dispatch: '));
     assert.ok(!extra.some((l) => l.includes(root)), 'no project path in the log besides the workspace line');
 
     // Stopping the first server frees both locks.
     await a.stop();
     assert.equal(existsSync(join(ws, '.drawing', 'server.lock')), false);
-    assert.equal(existsSync(join(root, '.atelier', 'drawing.lock')), false);
+    assert.equal(existsSync(join(root, '.dispatch', 'drawing.lock')), false);
     const d = await startServer(ws, home);
     servers.push(d);
     assert.equal(d.code, null, d.output());
@@ -389,7 +389,7 @@ test('real server: outside git Dispatch is off with a reason, and a stale lock f
     assert.equal(status.reason, 'not-git');
     assert.match(s.output(), /Dispatch off: not-git/);
     assert.equal((await fetch(`${s.base}/api/state`)).status, 404);
-    assert.equal(existsSync(join(ws, '.atelier')), false);
+    assert.equal(existsSync(join(ws, '.dispatch')), false);
   } finally {
     await s?.stop();
     rmSync(ws, { recursive: true, force: true });
@@ -401,10 +401,10 @@ test('claimProject: a live .break holder that never lets go turns Dispatch off i
   const { root } = scratchRepo();
   const child = liveChild();
   try {
-    mkdirSync(join(root, '.atelier'));
+    mkdirSync(join(root, '.dispatch'));
     // A stale lock (dead pid) forces a break; a live process holds .break the whole time.
-    writeFileSync(join(root, '.atelier', 'drawing.lock'), JSON.stringify({ pid: 2 ** 22 + 12345 }));
-    writeFileSync(join(root, '.atelier', 'drawing.lock.break'), JSON.stringify({ pid: child.pid }));
+    writeFileSync(join(root, '.dispatch', 'drawing.lock'), JSON.stringify({ pid: 2 ** 22 + 12345 }));
+    writeFileSync(join(root, '.dispatch', 'drawing.lock.break'), JSON.stringify({ pid: child.pid }));
     assert.deepEqual(await claimProject(root), { ok: false, reason: 'lock-busy', port: null });
   } finally {
     child.kill();
@@ -415,13 +415,13 @@ test('claimProject: a live .break holder that never lets go turns Dispatch off i
 test('claimProject: a dead .break holder is cleared and the stale lock is taken', async () => {
   const { root } = scratchRepo();
   try {
-    mkdirSync(join(root, '.atelier'));
-    writeFileSync(join(root, '.atelier', 'drawing.lock'), JSON.stringify({ pid: 2 ** 22 + 12345 }));
-    writeFileSync(join(root, '.atelier', 'drawing.lock.break'), JSON.stringify({ pid: 2 ** 22 + 54321 }));
+    mkdirSync(join(root, '.dispatch'));
+    writeFileSync(join(root, '.dispatch', 'drawing.lock'), JSON.stringify({ pid: 2 ** 22 + 12345 }));
+    writeFileSync(join(root, '.dispatch', 'drawing.lock.break'), JSON.stringify({ pid: 2 ** 22 + 54321 }));
     const res = await claimProject(root);
     assert.equal(res.ok, true);
     await res.lock.release();
-    assert.equal(existsSync(join(root, '.atelier', 'drawing.lock.break')), false);
+    assert.equal(existsSync(join(root, '.dispatch', 'drawing.lock.break')), false);
   } finally {
     rmSync(root, { recursive: true, force: true });
   }

@@ -7,7 +7,7 @@ User decision (2026-11-15):
 1. The agent features merged from Dispatch (pipeline runs, session board, model connection, limits) use one model: `claude-fable-5-2` through the Claude CLI. Roles (lead, impl, review, test, design, docs) stay; every role runs Fable 5.2.
 2. The app shows sessions per project, not as one flat list. Session board, connection status, limits and run records are grouped by project, matching the projects-first sidebar and dashboard (E42).
 
-Scope is the Atelier app (`server/dispatch`, `server/pipeline`, `server/runs`, `shared/dispatch`, `web/src`). The `plugin/skills/dispatch*` copies and the separate Dispatch tool our dev team runs on are out of scope.
+Scope is the Dispatch app (`server/dispatch`, `server/pipeline`, `server/runs`, `shared/dispatch`, `web/src`). The `plugin/skills/dispatch*` copies and the separate Dispatch tool our dev team runs on are out of scope.
 
 ## A. Fable 5.2 only
 

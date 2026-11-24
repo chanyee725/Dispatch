@@ -98,7 +98,7 @@ test("limit tickets keep leadLast and team[].last in memory only", async () => {
   // Memory still has them for the resume message.
   assert.equal(store.data.tickets.t1.leadLast, "secret lead reply");
   await store.flush();
-  const disk = readFileSync(path.join(root, ".atelier", "state.json"), "utf8");
+  const disk = readFileSync(path.join(root, ".dispatch", "state.json"), "utf8");
   assert.doesNotMatch(disk, /secret/);
   assert.equal(JSON.parse(disk).tickets.t1.team[0].branch, "feat/x");
 });

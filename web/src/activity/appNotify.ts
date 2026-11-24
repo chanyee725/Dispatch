@@ -58,7 +58,7 @@ export function notifyApp(e: AppEvent) {
   if (typeof document !== 'undefined' && document.visibilityState !== 'visible') {
     if (!alertsOn()) return;
     try {
-      const n = new Notification('Atelier', { body: t.text, tag: `app:${t.key}` });
+      const n = new Notification('Dispatch', { body: t.text, tag: `app:${t.key}` });
       n.onclick = () => {
         window.focus();
         openTarget(t);

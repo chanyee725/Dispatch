@@ -71,7 +71,7 @@ export async function codexLimits(dir = CODEX_SESSIONS, now = Date.now()) {
 /* ---------------- Gemini usage windows (#878) ---------------- */
 // `agy -p /usage --output-format json` answers the /usage slash command without a model turn (0 tokens):
 // { command: { name: "usage", data: { groups: [{ name, buckets: [{ id, window, remaining_fraction, reset_time }] }] } } }.
-// Only the "Gemini Models" group is kept (Atelier runs Gemini models through agy); only the numbers are read.
+// Only the "Gemini Models" group is kept (Dispatch runs Gemini models through agy); only the numbers are read.
 
 const GEMINI_WINDOW_LABELS = { weekly: "주간", daily: "일간", "5h": "5시간", five_hour: "5시간", monthly: "월간" };
 
@@ -134,7 +134,7 @@ export const isQuotaError = text => /RESOURCE_EXHAUSTED|quota reached|code 429/i
 
 /* ---------------- Shared Claude / Gemini limits ---------------- */
 // Claude windows and the Gemini quota are account-wide, so every Dispatch server on this machine
-// reads and writes one file, ~/.atelier/limits.json (paths.js), next to drawing.json. Only numbers
+// reads and writes one file, ~/.dispatch/limits.json (paths.js), next to drawing.json. Only numbers
 // and reset times go in it — no account, email or token. Keys this server does not know are kept
 // untouched on write.
 
@@ -220,7 +220,7 @@ export class SharedLimits extends EventEmitter {
   }
 
   /**
-   * Holds ~/.atelier/limits.json.lock (O_EXCL create) around read → merge → rename, so two servers
+   * Holds ~/.dispatch/limits.json.lock (O_EXCL create) around read → merge → rename, so two servers
    * writing at once cannot replace a newer value with an older one. A lock older than STALE_MS is
    * left over from a crashed server and is taken over; if the lock cannot be had within WAIT_MS the
    * write goes ahead anyway and refresh() repairs the file on its next tick.

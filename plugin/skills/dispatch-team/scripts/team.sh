@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Create an Atelier team for a task.
+# Create a Dispatch team for a task.
 #   team.sh <project-dir> <small|risky|standard|ui|full> "<task>"
 # Starts or reuses the server (plugin scripts/start.sh), connects Claude when the CLI is logged in,
 # and creates the preset's sessions with the shared team rules prepended to the task.
@@ -18,7 +18,7 @@ here="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")" && pwd)"
 skill="$(dirname "$here")"
 plugin_root="$(dirname "$(dirname "$skill")")"
 start_sh="$plugin_root/scripts/start.sh"
-setup_sh="$(dirname "$skill")/atelier-setup/scripts/setup.sh"
+setup_sh="$(dirname "$skill")/dispatch/scripts/setup.sh"
 
 project="${1:?usage: team.sh <project-dir> <small|risky|standard|ui|full> \"<task>\"}"
 preset="${2:?preset: small | risky | standard | ui | full}"
@@ -156,4 +156,4 @@ if ! team_lines="$(post "$(mk "$team_items" "Your lead is the 관리자 session.
   exit 1
 fi
 printf '%s\n%s\n' "$lead_line" "$team_lines" | cut -f1-3
-echo "Atelier: $url"
+echo "Dispatch: $url"

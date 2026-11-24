@@ -1,6 +1,6 @@
 # 5. Design system review: a Linear-like direction
 
-Status: draft for review (design only, no code changed). Scope: the Atelier web app after Dispatch is merged in
+Status: draft for review (design only, no code changed). Scope: the Drawing web app after Dispatch is merged in
 (#87). Written from the repo, the Dispatch clone (`web/`, read only) and the WIP `748f6a4` on `feat/shadcn-ui`
 (read with `git show`). No external sites were opened; anything said about Linear is general knowledge of its
 public look, not measured values.
@@ -25,7 +25,7 @@ public look, not measured values.
 
 ## 1. What exists today
 
-| Area | Atelier (`web/`) | Dispatch (`Dispatch/web/`) |
+| Area | Drawing (`web/`) | Dispatch (`Dispatch/web/`) |
 |---|---|---|
 | Tokens | 9 hex vars, light/dark (`web/src/index.css:4-27`) | shadcn oklch set + status/role colours (`index.css:9-71`), plus a dark "monitor" theme (`index.css:134-157`) |
 | Theme switch | `data-theme` light/dark (`web/src/theme.ts:3,19`) | `.dark` class, choice system/light/dark/monitor (`store.ts:4`) |
@@ -36,12 +36,12 @@ public look, not measured values.
 
 Observations:
 
-- Atelier already has the right bones (thin borders, muted text; its accent colour goes away) but no scale: sizes are
+- Drawing already has the right bones (thin borders, muted text; its accent colour goes away) but no scale: sizes are
   scattered (`h-8`, `h-12`, `text-sm`, 14/15/13/12px) and shadows are ad hoc (`index.css:136,174`).
 - Dispatch's monitor theme is already the closest thing to Linear in either repo: dark, flat panels, thin
   borders, small radius (`Dispatch/web/src/index.css:134-147`). Its status colours (`--ok/--warn/--bad/--idle`)
   and role lanes (`--role-*`) are worth keeping as semantic tokens.
-- About 120 inline `var(--…)` uses across 14 files in Atelier (`grep var\(-- web/src`); a rename must keep
+- About 120 inline `var(--…)` uses across 14 files in Drawing (`grep var\(-- web/src`); a rename must keep
   aliases or touch all of them at once.
 
 ## 2. What "Linear-like" means here
@@ -132,7 +132,7 @@ x-height is close to Inter's, so mixing should hold.
 
 ```
 ┌──────────────┬───────────────────────────────────────────────────────────────────────┐
-│ ▣ Atelier  ⌄ │ ☰  결제 흐름 설계            ● 저장됨     [문서|둘 다|캔버스]   ⌘K  ⤓  ⋯ │ 44px
+│ ▣ Drawing  ⌄ │ ☰  결제 흐름 설계            ● 저장됨     [문서|둘 다|캔버스]   ⌘K  ⤓  ⋯ │ 44px
 │ ⌕ 검색    ⌘K │───────────────────────────────────────┬───────────────────────────────│
 │              │  # 결제 흐름                           │  · · · · · · · · · · · · · ·  │
 │ 파일          │  결제 요청은 API 게이트웨이를 지나요.     │  · ┌───────┐ · · ┌───────┐ · │
@@ -241,7 +241,7 @@ Also kept from before:
 | Option | Fit to Linear look | Effort | Keyboard / a11y | Risk | Verdict |
 |---|---|---|---|---|---|
 | **A. shadcn/ui + our tokens** | High: tokens drive everything; `cmdk` gives the menu | Medium: Dispatch already has 15 `ui/*` sources (`Dispatch/web/src/components/ui/`) | Radix: focus, roving, typeahead done | Low; code is vendored (MIT), we own it | **Recommended** |
-| B. Keep hand-made CSS, only add tokens | Medium | Low now, high later (menus, dialogs, focus by hand) | We maintain it all; today's palette is a custom listbox (`CommandPalette.tsx:86-115`) | Drift between Atelier and Dispatch | Only as a stopgap |
+| B. Keep hand-made CSS, only add tokens | Medium | Low now, high later (menus, dialogs, focus by hand) | We maintain it all; today's palette is a custom listbox (`CommandPalette.tsx:86-115`) | Drift between Drawing and Dispatch | Only as a stopgap |
 | C. Radix Themes | Medium; its own look, harder to make dense | Low | Good | Second styling system next to Tailwind | No |
 | D. Ark UI / React Aria + Tailwind | High (headless) | High: no ready sources | Very good | New stack for both apps | No, unless Radix blocks us |
 | E. Mantine / MUI / Chakra | Low: heavy default look, runtime CSS | Medium | Good | Bundle size, fights Tailwind | No |
@@ -250,7 +250,7 @@ Decisions inside option A:
 
 - **One Radix import style.** Dispatch uses the unified `radix-ui` package (`ui/dialog.tsx:4`); the WIP adds
   four `@radix-ui/react-*` packages (`748f6a4:package.json`). Pick `radix-ui` so sources copy across unchanged.
-- **Icons: `lucide-react`** (ISC, already in both). Atelier already builds lucide icons for diagrams
+- **Icons: `lucide-react`** (ISC, already in both). Drawing already builds lucide icons for diagrams
   (`package.json` → `lucide-static`). No Linear icon look-alikes.
 - **Fonts as files:** `@fontsource-variable/inter` (OFL) and `pretendard` (OFL), imported from CSS so Vite
   bundles them; no request leaves 127.0.0.1.

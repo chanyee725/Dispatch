@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Restart the Dispatch server for a project (to load new server code). Sessions cut off mid-turn
-# are resumed automatically, and session metadata survives in .atelier/state.json.
+# are resumed automatically, and session metadata survives in .dispatch/state.json.
 set -euo pipefail
 here="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")" && pwd)"
 # shellcheck source=../../../scripts/server-check.sh

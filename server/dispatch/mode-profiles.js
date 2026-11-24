@@ -1,6 +1,6 @@
 // Harness profiles per mode (issue #748): for each kind of work (mode) and each role, which provider CLI,
 // model, effort and permission mode a new session runs with. The user's changes live in
-// ~/.atelier/drawing.json under `modeProfiles` (only the cells and hints they changed); the built-in grid
+// ~/.dispatch/drawing.json under `modeProfiles` (only the cells and hints they changed); the built-in grid
 // below follows the model strengths the user chose (issue #748 comment, 2026-11-19).
 //
 // Stored shape: { cells: { <mode>: { <role>: { provider, model, effort, perm } } }, hints: { <model id or provider>: text } }.

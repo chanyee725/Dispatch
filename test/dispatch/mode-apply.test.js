@@ -95,7 +95,7 @@ test("a user cell from drawing.json is used; an unknown mode is ignored", async 
   assert.equal(u.model, "claude-haiku-5-5");
   assert.equal(u.mode, undefined);
   await hub.store.flush();
-  const disk = readFileSync(path.join(root, ".atelier", "state.json"), "utf8");
+  const disk = readFileSync(path.join(root, ".dispatch", "state.json"), "utf8");
   assert.match(disk, /"mode": ?"docs"/);
 });
 

@@ -1,9 +1,9 @@
 ---
-name: atelier-update
-description: Update Atelier on this machine to the latest GitHub release and restart its running servers. Use for "아틀리에 업데이트", "최신으로 맞춰", or when Atelier behaves differently on another machine.
+name: dispatch-update
+description: Update Dispatch on this machine to the latest GitHub release and restart its running servers. Use for "디스패치 업데이트", "최신으로 맞춰", or when Dispatch behaves differently on another machine.
 ---
 
-# Atelier update
+# Dispatch update
 
 `<skill-dir>` is this file's folder.
 
@@ -13,7 +13,7 @@ description: Update Atelier on this machine to the latest GitHub release and res
    Done when: it prints the unpacked version. If `gh` is missing or logged out, ask the user to run `! gh auth login`.
 2. Report the version and which servers restarted (project and port).
    Done when: `GET /api/state` answers on each restarted port. If not, read `<project>/.dispatch/server.log` and report the error.
-3. Skills and hooks update through Claude Code. Pass on the `/plugin ...` lines the script prints; the user runs them (`/plugin marketplace update atelier`, then `/plugin update atelier@atelier`).
+3. Skills and hooks update through Claude Code. Pass on the `/plugin ...` lines the script prints; the user runs them (`/plugin marketplace update dispatch`, then `/plugin update dispatch@dispatch`).
    Done when: the user has the lines.
 
-The bundle comes from `npm run pack` in the Atelier repo and is attached to a GitHub release by hand.
+The bundle comes from `npm run pack` in the Dispatch repo and is attached to a GitHub release by hand.

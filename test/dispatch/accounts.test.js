@@ -125,7 +125,7 @@ async function start() {
   git('commit', '-qm', 'init');
   const ws = join(root, 'ws');
   mkdirSync(ws);
-  const defaultsPath = join(root, 'home', '.atelier', 'drawing.json');
+  const defaultsPath = join(root, 'home', '.dispatch', 'drawing.json');
   const bin = fakeCliBin();
   dirs.push(bin.dir);
   const p = { installed: true, connected: true, busy: false, url: null, error: null };
@@ -211,7 +211,7 @@ test('API: accountLabels in /api/user-defaults; a session snapshots its label; G
     assert.ok(r.body.sessions[1].endedAt > 0);
     // On disk: metadata only.
     await d.store.flush();
-    const disk = readFileSync(join(d.root, '.atelier', 'state.json'), 'utf8');
+    const disk = readFileSync(join(d.root, '.dispatch', 'state.json'), 'utf8');
     const ledger = JSON.parse(disk).ledger;
     assert.deepEqual(ledger[kid.id].issues, [747]);
     assert.doesNotMatch(JSON.stringify(ledger), /@|"task"|"last"|"prompt"/);

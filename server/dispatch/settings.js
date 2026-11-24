@@ -1,6 +1,6 @@
 import { staticModels } from "./models.js";
 
-// Team settings a user changes from the 설정 page, saved per project in .atelier/state.json.
+// Team settings a user changes from the 설정 page, saved per project in .dispatch/state.json.
 // Environment variables still seed the defaults, so existing setups keep working until changed.
 
 const envNum = (name, fallback) => {

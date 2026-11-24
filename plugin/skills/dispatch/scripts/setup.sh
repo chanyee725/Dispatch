@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Check Claude Code / Codex CLIs and log in to the ones that need it.
 #
-#   setup.sh --install         make the Atelier checkout runnable: when public/index.html is missing, npm ci
+#   setup.sh --install         make the Dispatch checkout runnable: when public/index.html is missing, npm ci
 #                              (only when node_modules is missing) and npm run build; then show --status
 #   setup.sh --status          show install + login status only (claude, codex, and gh for issues and PRs)
 #   setup.sh claude codex      log in to the named providers (skips ones already logged in)
@@ -15,7 +15,7 @@ installed() { command -v "$1" >/dev/null 2>&1; }
 here=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)
 home=${DRAWING_HOME:-$(cd "$here/../../../.." && pwd -P)}
 if [ -z "${DRAWING_HOME:-}" ] && [ ! -f "$home/server/index.js" ]; then
-  # A plugin copy in Claude Code's or Codex's plugin cache: fall back to the installed release (atelier-update).
+  # A plugin copy in Claude Code's or Codex's plugin cache: fall back to the installed release (dispatch-update).
   inst="${DRAWING_INSTALL_BASE:-$HOME/.dispatch/drawing}/current"
   if [ -f "$inst/server/index.js" ]; then home=$(cd "$inst" && pwd -P); fi
 fi
@@ -23,18 +23,18 @@ fi
 # A release bundle ships public/ built; a git checkout needs npm ci + npm run build once (and after updates that
 # remove public/). Output goes to stderr so --install can be chained with other commands.
 install_app() {
-  [ -f "$home/server/index.js" ] || { echo "Atelier not found in $home (set DRAWING_HOME to an Atelier checkout)" >&2; return 1; }
-  if [ -f "$home/public/index.html" ]; then echo "atelier: web app already built ($home)" >&2; return 0; fi
-  [ -f "$home/package.json" ] || { echo "atelier: public/ is missing and $home is not a checkout; reinstall it" >&2; return 1; }
-  installed npm || { echo "atelier: npm is not installed (Node.js 22.18+ needed)" >&2; return 1; }
+  [ -f "$home/server/index.js" ] || { echo "Dispatch not found in $home (set DRAWING_HOME to a Dispatch checkout)" >&2; return 1; }
+  if [ -f "$home/public/index.html" ]; then echo "dispatch: web app already built ($home)" >&2; return 0; fi
+  [ -f "$home/package.json" ] || { echo "dispatch: public/ is missing and $home is not a checkout; reinstall it" >&2; return 1; }
+  installed npm || { echo "dispatch: npm is not installed (Node.js 22.18+ needed)" >&2; return 1; }
   if [ ! -d "$home/node_modules" ]; then
-    echo "atelier: installing packages (npm ci)…" >&2
+    echo "dispatch: installing packages (npm ci)…" >&2
     (cd "$home" && npm ci --no-audit --no-fund) >&2 || return 1
   fi
-  echo "atelier: building the web app (npm run build)…" >&2
+  echo "dispatch: building the web app (npm run build)…" >&2
   (cd "$home" && npm run build) >&2 || return 1
-  [ -f "$home/public/index.html" ] || { echo "atelier: build finished but public/index.html is missing" >&2; return 1; }
-  echo "atelier: web app built" >&2
+  [ -f "$home/public/index.html" ] || { echo "dispatch: build finished but public/index.html is missing" >&2; return 1; }
+  echo "dispatch: web app built" >&2
 }
 
 gh_logged_in() { gh auth status >/dev/null 2>&1; }

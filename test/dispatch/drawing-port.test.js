@@ -32,7 +32,7 @@ test("Hub still takes a plain port number", async () => {
   rmSync(root, { recursive: true, force: true });
 });
 
-test("transcripts stay in memory: nothing under .atelier/ but state.json, no reply text on disk", async () => {
+test("transcripts stay in memory: nothing under .dispatch/ but state.json, no reply text on disk", async () => {
   const { root, store, hub } = await makeHub();
   const s = { id: "a", name: "Juno", status: "idle", usage: {}, turns: 0, updatedAt: 0, last: "" };
   store.data.sessions.a = s;
@@ -41,8 +41,8 @@ test("transcripts stay in memory: nothing under .atelier/ but state.json, no rep
   s.last = "secret reply text";
   await store.flush();
   assert.equal(hub.transcript("a").length, 2);
-  assert.equal(existsSync(path.join(root, ".atelier", "transcripts")), false);
-  const disk = readFileSync(path.join(root, ".atelier", "state.json"), "utf8");
+  assert.equal(existsSync(path.join(root, ".dispatch", "transcripts")), false);
+  const disk = readFileSync(path.join(root, ".dispatch", "state.json"), "utf8");
   assert.doesNotMatch(disk, /secret/);
   assert.equal(JSON.parse(disk).sessions.a.name, "Juno");
   // Reloading gives an empty `last` and an empty transcript (a restart forgets the conversation).

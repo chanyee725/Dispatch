@@ -114,7 +114,7 @@ export interface LiveAction {
   ok?: boolean;        // set when the matching tool_result arrives; undefined while running
   endedAt?: number;
 }
-export interface LiveFile { path: string; edited: boolean; at: number; doc: boolean }  // doc: opens in Atelier
+export interface LiveFile { path: string; edited: boolean; at: number; doc: boolean }  // doc: opens in Dispatch
 export interface AgentLive {
   sid: string;
   current: LiveAction | null;   // last action with no result yet

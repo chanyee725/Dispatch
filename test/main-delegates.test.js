@@ -8,11 +8,11 @@ import { join } from "node:path";
 import { NOTE, QUICKFIX_FILES, REMIND_MS, expandHome, findServer, lockLive, looksLikeWrite, projectRoot, readPort, run, shellSkeleton } from "../plugin/hooks/main-delegates.mjs";
 
 // Temp git project with a fake Drawing server (a loopback http server answering /api/info) whose port is kept in
-// <project>/.atelier/server.port, as plugin/scripts/start.sh does (issue #367).
+// <project>/.dispatch/server.port, as plugin/scripts/start.sh does (issue #367).
 const servers = [];
 const hits = new Map(); // port -> number of /api/info requests the fake server saw
 after(() => { for (const s of servers) s.close(); });
-function serve(info = { workspace: ".atelier", mode: "project" }, status = 200) {
+function serve(info = { workspace: ".dispatch", mode: "project" }, status = 200) {
   return new Promise(ok => {
     const s = createServer((req, res) => {
       hits.set(s.address().port, (hits.get(s.address().port) ?? 0) + 1);
@@ -31,13 +31,13 @@ async function setup(portFile = "serve", lock = "live") {
   mkdirSync(join(proj, "src"), { recursive: true });
   execFileSync("git", ["init", "-q", proj]);
   if (portFile !== null) {
-    mkdirSync(join(proj, ".atelier"));
+    mkdirSync(join(proj, ".dispatch"));
     const port = portFile === "serve" ? await serve() : portFile;
-    writeFileSync(join(proj, ".atelier", "server.port"), portFile === "serve" ? `${port}\n` : port);
+    writeFileSync(join(proj, ".dispatch", "server.port"), portFile === "serve" ? `${port}\n` : port);
     if (lock !== "none") {
-      mkdirSync(join(proj, ".atelier", ".drawing"), { recursive: true });
+      mkdirSync(join(proj, ".dispatch", ".drawing"), { recursive: true });
       const body = lock === "live" ? { pid: process.pid, port: Number(port) } : lock;
-      writeFileSync(join(proj, ".atelier", ".drawing", "server.lock"), typeof body === "string" ? body : JSON.stringify(body));
+      writeFileSync(join(proj, ".dispatch", ".drawing", "server.lock"), typeof body === "string" ? body : JSON.stringify(body));
     }
   }
   const marks = mkdtempSync(join(tmpdir(), "dmd-marks-"));
@@ -45,7 +45,7 @@ async function setup(portFile = "serve", lock = "live") {
 }
 
 // Q turns the quickfix allowance off, so the first write already gets the note.
-const Q = { ATELIER_QUICKFIX_FILES: "0" };
+const Q = { DISPATCH_QUICKFIX_FILES: "0" };
 const input = (proj, extra = {}) => ({ session_id: "abc-123", cwd: proj, tool_input: { file_path: join(proj, "src", "a.js") }, ...extra });
 
 test("does nothing inside a Dispatch session", async () => {
@@ -63,10 +63,10 @@ test("valid port file + responding project server -> note", async () => {
   assert.ok(await run(Q, input(proj, { session_id: "sub", cwd: join(proj, "src") }), marks, home));
 });
 
-test("missing port file or .atelier folder -> null", async () => {
+test("missing port file or .dispatch folder -> null", async () => {
   const { home, proj, marks } = await setup(null);
   assert.equal(await run(Q, input(proj), marks, home), null);
-  mkdirSync(join(proj, ".atelier"));
+  mkdirSync(join(proj, ".dispatch"));
   assert.equal(await run(Q, input(proj), marks, home), null);
   assert.deepEqual(readdirSync(marks), []);
 });
@@ -108,7 +108,7 @@ test("subprocess: hook reads the event from stdin", async () => {
   const hook = new URL("../plugin/hooks/main-delegates.mjs", import.meta.url).pathname;
   const env = { ...process.env };
   for (const k of ["DISPATCH_SESSION", "DISPATCH_PARENT", "DISPATCH_SELF"]) delete env[k];
-  env.ATELIER_QUICKFIX_FILES = "0";
+  env.DISPATCH_QUICKFIX_FILES = "0";
   // Async spawn: the fake server lives in this process, so the event loop must stay free to answer the hook.
   const spawnHook = (stdin, e) => new Promise(done => {
     const c = execFile(process.execPath, [hook], { env: e, encoding: "utf8", timeout: 10000 }, (err, stdout) => done({ status: err ? (err.code ?? 1) : 0, stdout }));
@@ -120,7 +120,7 @@ test("subprocess: hook reads the event from stdin", async () => {
   const r = await feed(proj, sid);
   assert.equal(r.status, 0);
   assert.equal(JSON.parse(r.stdout).hookSpecificOutput.additionalContext, NOTE);
-  rmSync(join(tmpdir(), `atelier-main-${sid}`), { force: true });
+  rmSync(join(tmpdir(), `dispatch-main-${sid}`), { force: true });
   // Stale lock -> silent exit 0, once per failure cause.
   const live = await serve();
   const deadPid = await setup(String(live), { pid: 2 ** 22 + 12345, port: live });
@@ -177,10 +177,10 @@ test("match -> note, then quiet until REMIND_MS passes, never blocks", async () 
   const out = await run(Q, input(proj), marks, home);
   assert.deepEqual(out, { hookSpecificOutput: { hookEventName: "PreToolUse", additionalContext: NOTE } });
   assert.ok(!("permissionDecision" in out.hookSpecificOutput));
-  assert.ok(NOTE.startsWith("[Atelier 훅]"));
+  assert.ok(NOTE.startsWith("[Dispatch 훅]"));
   assert.equal(await run(Q, input(proj), marks, home), null);
   const files = readdirSync(marks);
-  assert.deepEqual(files, ["atelier-main-abc-123"]);
+  assert.deepEqual(files, ["dispatch-main-abc-123"]);
   const m = JSON.parse(readFileSync(join(marks, files[0]), "utf8"));
   assert.match(m.files[0], /^[0-9a-f]{12}$/);
   assert.ok(!readFileSync(join(marks, files[0]), "utf8").includes("a.js"), "no paths in the marker");
@@ -197,7 +197,7 @@ test("relative file path resolves against cwd; cwd alone counts", async () => {
 test("session id is sanitized in the marker name", async () => {
   const { home, proj, marks } = await setup();
   assert.ok(await run(Q, input(proj, { session_id: "../../evil id" }), marks, home));
-  assert.deepEqual(readdirSync(marks), ["atelier-main-______evil_id"]);
+  assert.deepEqual(readdirSync(marks), ["dispatch-main-______evil_id"]);
 });
 
 test("bad input -> null", async () => {
@@ -223,7 +223,7 @@ test("repeats the note after REMIND_MS, not before", async () => {
   // The repeat resets the clock.
   assert.equal(await run(Q, input(proj), marks, home, t0 + REMIND_MS + 2000), null);
   // An old marker on disk (e.g. from a session hours ago) does not silence the note.
-  const mark = join(marks, "atelier-main-abc-123");
+  const mark = join(marks, "dispatch-main-abc-123");
   writeFileSync(mark, JSON.stringify({ files: [], noteAt: Date.now() - 2 * REMIND_MS }));
   assert.ok(await run(Q, input(proj), marks, home));
   // An unreadable marker counts as fresh.

@@ -1,4 +1,4 @@
-# Atelier tickets
+# Dispatch tickets
 
 Goal: a local, internal-only technical diagramming tool that works and looks like Eraser.io: one file = a document and an infinite canvas side by side, diagram-as-code (Eraser-compatible syntax) auto-laid-out on the canvas, and free-form drawing on the same canvas.
 

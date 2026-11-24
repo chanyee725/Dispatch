@@ -1,7 +1,7 @@
-# 세션 보드 inside the Atelier shell (E562, issue #731)
+# 세션 보드 inside the Drawing shell (E562, issue #731)
 
 The 세션 보드 stops being a separate page (`/dispatch`, its own header and project rail) and becomes a section of
-the Atelier shell: the left sidebar stays exactly as it is, the board fills the main area like 홈 and 최근 do.
+the Drawing shell: the left sidebar stays exactly as it is, the board fills the main area like 홈 and 최근 do.
 It is a mini dashboard: sessions per project and usage on one screen. Clicking a session opens the agent live view
 (#728, `docs/design/agent-live-view.md`). Standalone Dispatch is retired; every link to it goes.
 
@@ -112,7 +112,7 @@ All from the Dispatch store already used by `/dispatch` (`web/src/dispatch/store
 | Need | Source |
 |---|---|
 | Sessions (role, model, state, step, cost, tokens, cwd, parent) | `GET /api/state` snapshot + `session`/`removed` events |
-| Project groups | `GET /api/projects` (Atelier `projectsApi.projects()`), `dispatch/lib/folder.ts` |
+| Project groups | `GET /api/projects` (Drawing `projectsApi.projects()`), `dispatch/lib/folder.ts` |
 | Limits (Claude 5h/7d/Fable, Codex) | `GET /api/limits` + `limits` event |
 | Guard thresholds | `settings` slice (`GET /api/state`), edited in 설정 › 한도 (`POST /api/settings`) |
 | Usage detail tab | `GET /api/usage` (existing `UsagePage`) |
@@ -133,19 +133,19 @@ loaded like `/dispatch` is today so the editor bundle does not grow.
 (`location.assign('/dispatch')`), `dispatch/index.tsx` own header/rail (replaced by the shell). Nothing in
 `web/src` links to the standalone Dispatch server (other port); keep it that way (no `localhost:` links).
 
-## 7. What standalone Dispatch does that Atelier lacks
+## 7. What standalone Dispatch does that Drawing lacks
 
 Server routes are at parity (same table in `server/dispatch/routes.js`). The gaps are UI and tooling:
 
-| Standalone Dispatch | Atelier today | Proposal |
+| Standalone Dispatch | Drawing today | Proposal |
 |---|---|---|
 | 끝난 세션 정리 / 모두 정리 buttons (`ClearDoneButton`, `ClearAllButton`) | API only | board ⋯ menu (this issue) |
 | Tickets: resume / close (`TaskBoard` ticket rows) | `tickets` in store, no UI | add to the existing 작업 보드 dialog (follow-up) |
 | Branch graph (`BranchGraph`, `/api/branches`) | used only for the project feed | follow-up, low priority (PR list covers most) |
 | Project switcher across Dispatch servers (`ProjectSwitcher`, one server per project) | not needed: board groups by project folder in one server | drop |
 | Change a running session's permission mode (`POST /perm`) and parent (`/parent`) | API only, no UI | 정보 tab of `SessionSheet` (follow-up) |
-| Skills `dispatch`, `dispatch-team`, `dispatch-update` start/open the standalone server | — | retarget to Atelier's server and `/#board` before retiring (separate issue) |
-| Hooks (`long-session.mjs`, `main-delegates.mjs`) and `scripts/setup.sh · update.sh` | not ported | decide per hook; session-length guard already in Atelier settings |
+| Skills `dispatch`, `dispatch-team`, `dispatch-update` start/open the standalone server | — | retarget to Drawing's server and `/#board` before retiring (separate issue) |
+| Hooks (`long-session.mjs`, `main-delegates.mjs`) and `scripts/setup.sh · update.sh` | not ported | decide per hook; session-length guard already in Drawing settings |
 | MCP `message_lead` for teammates | ported (`server/dispatch/mcp.js`) | — |
 
 ## 8. Out of scope

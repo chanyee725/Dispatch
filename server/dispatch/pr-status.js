@@ -3,7 +3,7 @@
 // No title, body, author, branch text or check names are kept. `gh` starts only through cli.js.
 //
 // Per-workspace switch: <workspace>/.drawing/settings.json { "prStatus": false } turns it off. A workspace
-// without its own value follows the user's default (`prStatus` in ~/.atelier/drawing.json), else on. Off, or a missing gh, never throws: the result says why.
+// without its own value follows the user's default (`prStatus` in ~/.dispatch/drawing.json), else on. Off, or a missing gh, never throws: the result says why.
 import { lstat, readFile, rename, rm, writeFile } from "node:fs/promises";
 import { randomUUID } from "node:crypto";
 import path from "node:path";

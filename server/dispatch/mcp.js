@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// Minimal MCP stdio server that lets a lead session drive Atelier's session hub over its local HTTP API.
+// Minimal MCP stdio server that lets a lead session drive Dispatch's session hub over its local HTTP API.
 // Spawned by Claude Code (--mcp-config), Codex (mcp_servers.dispatch) or agy with DISPATCH_URL / DISPATCH_PARENT.
 
 import { LANES } from "./lanes.js";

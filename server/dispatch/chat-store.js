@@ -1,5 +1,5 @@
 // Saved chat history for the bottom-right chat (#968): one file per conversation in
-// <project>/.atelier/chat/<YYYY-MM-DD>-<id>.json, kept out of git (git.js ensureExcluded).
+// <project>/.dispatch/chat/<YYYY-MM-DD>-<id>.json, kept out of git (git.js ensureExcluded).
 // The record is rebuilt field by field from what the caller sends and every free-text field goes
 // through chatRedact on the way to disk: there is no other write path. Images are never stored,
 // only an [이미지] placeholder; tool calls keep a short summary, not their input or output.

@@ -1,6 +1,6 @@
 # Dispatch integration 2: pipeline file format and live overlay
 
-Status: proposal (read-only design, no code yet). Background: issue #87, Dispatch is merged into Atelier.
+Status: proposal (read-only design, no code yet). Background: issue #87, Dispatch is merged into Drawing.
 A pipeline is planned as a document + diagram in a `.dpx.json` file, then run, and its sessions are watched live on
 that same diagram. This part covers the file format, step ↔ node links, the live overlay and run records.
 

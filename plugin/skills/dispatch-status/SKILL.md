@@ -1,9 +1,9 @@
 ---
-name: atelier-status
-description: Show what every Atelier agent is doing — state, time in state, ETA, stuck flags, context, the task board, and the 5-hour and weekly limits with the guard. Use for "지금 뭐 하고 있어", "진행 상황", "한도 얼마 남았어", "막힌 세션 있어".
+name: dispatch-status
+description: Show what every Dispatch agent is doing — state, time in state, ETA, stuck flags, context, the task board, and the 5-hour and weekly limits with the guard. Use for "지금 뭐 하고 있어", "진행 상황", "한도 얼마 남았어", "막힌 세션 있어".
 ---
 
-# Atelier status
+# Dispatch status
 
 `<skill-dir>` is this file's folder. Reads only; nothing changes.
 

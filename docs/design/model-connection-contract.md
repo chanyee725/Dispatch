@@ -19,7 +19,7 @@ status check).
   "installed": true,        // null = not checked yet (no CLI was started), false = `claude` not found
   "cli": "2.1.0 (Claude Code)", // `claude --version` first line, or null
   "cliLoggedIn": true,      // the CLI itself is logged in on this machine (`claude auth status`)
-  "connected": true,        // cliLoggedIn AND the user connected it in Atelier (kept in .dispatch/state.json)
+  "connected": true,        // cliLoggedIn AND the user connected it in Dispatch (kept in .dispatch/state.json)
   "method": "구독 계정 (claude.ai)", // how the CLI is logged in, or null; never an email or account name
   "busy": false,            // a `claude auth login` is running
   "url": null,              // the login URL the CLI printed while busy, else null
@@ -49,7 +49,7 @@ with no `name`/`cli`. The UI shows 연결 for it; the CLI is checked when the us
 | | | `{ ok: true, connected: false }` | CLI not logged in → `claude auth login` started; watch `providers` for `busy`, `url`, then `connected` (exit 0) or `error`. A second call while busy does nothing. |
 | | | `400 { error: "Claude CLI를 찾지 못했어요. 설치한 뒤 다시 눌러 주세요" }` | `claude` not installed; `providers.claude.installed` is `false`. |
 | `POST /api/providers/claude/cancel` | `{}` | `{ ok: true }` | Stops a running login. Ends with `busy: false, url: null, error: null` (a cancel is not an error). |
-| `POST /api/providers/claude/logout` | `{}` | `{ ok: true }` | Disconnects from Atelier only (`connected: false`); the CLI stays logged in, so 연결 again connects at once. |
+| `POST /api/providers/claude/logout` | `{}` | `{ ok: true }` | Disconnects from Dispatch only (`connected: false`); the CLI stays logged in, so 연결 again connects at once. |
 | | `{ cli: true }` | `{ ok: true }` | Also runs `claude auth logout`. |
 | `POST /api/providers/refresh` | `{}` | `providers` | Re-checks the CLI and broadcasts. |
 

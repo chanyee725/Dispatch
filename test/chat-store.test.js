@@ -1,4 +1,4 @@
-// Chat history store (#968) in a scratch git repo: files under .atelier/chat/, masked on the way
+// Chat history store (#968) in a scratch git repo: files under .dispatch/chat/, masked on the way
 // to disk, images as a placeholder, git exclude, list/read/delete/clear and the HTTP routes.
 // Every personal-looking value here is made up and built from parts.
 import { test, after } from "node:test";
@@ -15,7 +15,7 @@ const dirs = [];
 after(() => { for (const d of dirs) rmSync(d, { recursive: true, force: true }); });
 
 function repo() {
-  const root = mkdtempSync(path.join(tmpdir(), "atelier-chat-"));
+  const root = mkdtempSync(path.join(tmpdir(), "dispatch-chat-"));
   dirs.push(root);
   const git = (...a) => execFileSync("git", ["-C", root, ...a], { encoding: "utf8" });
   git("init", "-q", "-b", "develop");
@@ -58,14 +58,14 @@ test("save masks every text field, keeps an image placeholder only and names the
     { role: "user", text: `call ${MASK}, ${MASK}님` },
   ]);
 
-  const files = readdirSync(path.join(root, ".atelier", "chat"));
+  const files = readdirSync(path.join(root, ".dispatch", "chat"));
   assert.deepEqual(files, [`2026-11-20-${saved.id}.json`]);
-  const raw = readFileSync(path.join(root, ".atelier", "chat", files[0]), "utf8");
+  const raw = readFileSync(path.join(root, ".dispatch", "chat", files[0]), "utf8");
   for (const secret of [MAIL, KEY, "fakeuser", "iVBORw0KGgo", "010-0000", "김가짜", "dropped", "full output"]) assert.ok(!raw.includes(secret), secret);
   assert.deepEqual(JSON.parse(raw), saved);
 
   // Kept out of git.
-  assert.match(readFileSync(path.join(root, ".git", "info", "exclude"), "utf8"), /^\/\.atelier\/chat\/$/m);
+  assert.match(readFileSync(path.join(root, ".git", "info", "exclude"), "utf8"), /^\/\.dispatch\/chat\/$/m);
   assert.equal(git("status", "--porcelain", "--untracked-files=all"), "");
 
   // Saving again with the id replaces the file, keeps createdAt and the file name.
@@ -74,7 +74,7 @@ test("save masks every text field, keeps an image placeholder only and names the
   assert.equal(again.createdAt, T0);
   assert.equal(again.updatedAt, T0 + 86_400_000);
   assert.equal(again.title, `새 제목 Bearer ${MASK}`);
-  assert.deepEqual(readdirSync(path.join(root, ".atelier", "chat")), files);
+  assert.deepEqual(readdirSync(path.join(root, ".dispatch", "chat")), files);
 });
 
 test("list is newest first, read/remove/clear work, bad ids are refused", async () => {

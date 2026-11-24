@@ -65,17 +65,17 @@ export function etaLabel(t, now) {
 }
 
 /**
- * The status-line summary, one line: "Atelier 관리자 2 · 실행 3 · 질문 1 · 막힘 1 · 5시간 42% · 주간 13%",
- * "Atelier offline" when the server is down, undefined (no line) when this project has no server.
+ * The status-line summary, one line: "Dispatch 관리자 2 · 실행 3 · 질문 1 · 막힘 1 · 5시간 42% · 주간 13%",
+ * "Dispatch offline" when the server is down, undefined (no line) when this project has no server.
  */
 export function statusLine(view) {
   if (!view || view.kind === "none") return undefined;
-  if (view.kind === "offline") return "Atelier offline";
+  if (view.kind === "offline") return "Dispatch offline";
   const s = view.summary;
   const all = (s.leads || []).flatMap(l => [l, ...(l.team || [])]);
   const count = st => all.filter(m => m.status === st).length;
   const stuck = all.filter(m => m.stuck).length + (s.leads || []).flatMap(l => l.tasks || []).filter(t => t.stuck).length;
-  const parts = [`Atelier 관리자 ${(s.leads || []).length}`, `실행 ${count("running")}`];
+  const parts = [`Dispatch 관리자 ${(s.leads || []).length}`, `실행 ${count("running")}`];
   if (count("asking")) parts.push(`질문 ${count("asking")}`);
   if (stuck) parts.push(`막힘 ${stuck}`);
   parts.push(`5시간 ${percent(s.usage?.fiveHour?.used)}`, `주간 ${percent(s.usage?.weekly?.used)}`);
@@ -87,10 +87,10 @@ export function statusLine(view) {
  * task rows, team rows and issue/PR links. `repo` ("owner/repo" or null) turns PR numbers into links.
  */
 export function paneModel(view, repo, now) {
-  if (!view || view.kind === "none") return { kind: "none", text: "이 프로젝트에는 Atelier 서버가 없어요." };
+  if (!view || view.kind === "none") return { kind: "none", text: "이 프로젝트에는 Dispatch 서버가 없어요." };
   if (view.kind === "offline") {
     const seen = typeof view.lastAt === "number" ? ` · 마지막 응답 ${duration(now - view.lastAt)} 전` : "";
-    return { kind: "offline", text: `offline: Atelier 서버가 응답하지 않아요${seen}` };
+    return { kind: "offline", text: `offline: Dispatch 서버가 응답하지 않아요${seen}` };
   }
   const s = view.summary;
   return {

@@ -1,6 +1,6 @@
 # Third-party notices
 
-Atelier bundles parts of the following projects. Icons are copied by `scripts/build-icons.mjs` as SVG data into
+Dispatch bundles parts of the following projects. Icons are copied by `scripts/build-icons.mjs` as SVG data into
 `shared/render/icon-data.ts` (a small always-loaded set) and `shared/render/icon-packs/` (the full sets, loaded on
 demand). `shared/render/icon-packs/THIRD-PARTY.md` lists every bundled icon set with its version, icon count and
 licence or terms.
@@ -116,7 +116,7 @@ SOFTWARE.
 ## UI font
 
 Pretendard 1.3.9 (`pretendard` npm package, https://github.com/orioncactus/pretendard) is bundled with the app. The app
-itself fetches no font from outside: every font file is a local build asset served by the Atelier server.
+itself fetches no font from outside: every font file is a local build asset served by the Dispatch server.
 
 - Copyright (c) 2021-2023, Kil Hyung-jin (https://github.com/orioncactus/pretendard), with Reserved Font Name 'Pretendard'.
   (The license file says 2021; the font files' copyright record says 2023.)

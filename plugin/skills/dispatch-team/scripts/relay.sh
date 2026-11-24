@@ -8,7 +8,7 @@
 # One team per issue (#1031): when a live lead other than the old one already holds the task's issue
 # (DISPATCH_TEAM_ISSUE, else the first #<n> in the task), no team starts and that lead's name is printed; the old
 # team is still removed if it is there. So a relay run again after a server restart starts no second team.
-# Port: DISPATCH_PORT, else <project>/.atelier/server.port. DISPATCH_TEAM_SH overrides team.sh (tests).
+# Port: DISPATCH_PORT, else <project>/.dispatch/server.port. DISPATCH_TEAM_SH overrides team.sh (tests).
 set -euo pipefail
 
 here="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")" && pwd)"
@@ -16,12 +16,12 @@ project="${1:?usage: relay.sh <project-dir> <old-lead-name-or-id> <preset> \"<ta
 lead="${2:?old lead name or id}"
 preset="${3:?preset: small | risky | standard | ui | full}"
 task="${4-}"
-port="${DISPATCH_PORT:-$({ tr -dc '0-9' < "$project/.atelier/server.port"; } 2>/dev/null || true)}"
-[ -n "$port" ] || { echo "No Atelier server port for $project (set DISPATCH_PORT)" >&2; exit 1; }
+port="${DISPATCH_PORT:-$({ tr -dc '0-9' < "$project/.dispatch/server.port"; } 2>/dev/null || true)}"
+[ -n "$port" ] || { echo "No Dispatch server port for $project (set DISPATCH_PORT)" >&2; exit 1; }
 url="http://127.0.0.1:$port"
 team_sh="${DISPATCH_TEAM_SH:-$here/team.sh}"
 
-state="$(curl -sf "$url/api/state")" || { echo "Atelier is not running at $url" >&2; exit 1; }
+state="$(curl -sf "$url/api/state")" || { echo "Dispatch is not running at $url" >&2; exit 1; }
 issue=""
 if [ -n "$task" ]; then
   issue="${DISPATCH_TEAM_ISSUE:-$(printf '%s' "$task" | grep -oE '#[0-9]+' | head -n1 | tr -d '#' || true)}"

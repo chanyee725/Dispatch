@@ -1,11 +1,11 @@
 ---
-name: atelier-session
-description: Run and steer single Atelier agent sessions — start one Claude, Codex or Gemini session in its own worktree, send it a message, interrupt, stop or remove it, change its permission mode, answer its permission prompt, and read its transcript or diff. Use for "세션 하나 띄워줘", "그 세션에 이거 전해줘", "멈춰", "권한 허락해줘", "뭐 바꿨는지 보여줘". A whole team goes to atelier-team.
+name: dispatch-session
+description: Run and steer single Dispatch agent sessions — start one Claude, Codex or Gemini session in its own worktree, send it a message, interrupt, stop or remove it, change its permission mode, answer its permission prompt, and read its transcript or diff. Use for "세션 하나 띄워줘", "그 세션에 이거 전해줘", "멈춰", "권한 허락해줘", "뭐 바꿨는지 보여줘". A whole team goes to dispatch-team.
 ---
 
-# Atelier session
+# Dispatch session
 
-`<plugin-root>` is two levels above this file's folder. Every call goes through `<plugin-root>/scripts/api.sh [-C <project-root>] METHOD PATH [BODY]` (finds the port, adds `x-drawing: 1`). The server must run (`atelier-setup`). Full endpoint list: `../atelier-setup/reference/api.md`.
+`<plugin-root>` is two levels above this file's folder. Every call goes through `<plugin-root>/scripts/api.sh [-C <project-root>] METHOD PATH [BODY]` (finds the port, adds `x-drawing: 1`). The server must run (`dispatch`). Full endpoint list: `../dispatch/reference/api.md`.
 
 ## Steps
 
@@ -29,9 +29,9 @@ description: Run and steer single Atelier agent sessions — start one Claude, C
 
 - Act on sessions the user named or that you started; ask before killing or removing someone else's.
 - `kill` and `remove` cannot be undone; `remove` keeps the branch.
-- The live board of every session is `atelier-status`.
+- The live board of every session is `dispatch-status`.
 
 ## Handing a project to a lead (main session)
 
 - Once a project is handed to a lead, the main session writes no code or analysis for it. A new request goes to that lead with `POST /api/sessions/<id>/message`; the main session only asks the user and relays the answers to the lead.
-- Every handoff message names the exact server URL (port and project name) and the API guide `plugin/skills/atelier-setup/reference/api.md`, so the lead never searches widely (`find /`).
+- Every handoff message names the exact server URL (port and project name) and the API guide `plugin/skills/dispatch/reference/api.md`, so the lead never searches widely (`find /`).

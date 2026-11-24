@@ -54,7 +54,7 @@ export class HubAutoRemove {
     const info = {};
     const dropped = this.remove(id, { strict: true, info });
     const kept = worktree && (await dropped) === false && existsSync(cwd);
-    // The project-relative path (.atelier/worktrees/<slug>) is shorter for the lead and does not spell out the home folder.
+    // The project-relative path (.dispatch/worktrees/<slug>) is shorter for the lead and does not spell out the home folder.
     const rel = cwd && path.relative(this.root, cwd);
     const where = rel && !rel.startsWith("..") && !path.isAbsolute(rel) ? rel : cwd;
     const why = info.detached ? ` 분리된 HEAD라 worktree를 남겼어요${info.sha ? ` (커밋 ${info.sha})` : ""}. 작업 폴더는 ${where}예요.`

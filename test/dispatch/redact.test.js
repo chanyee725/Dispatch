@@ -81,7 +81,7 @@ test("state.json drops the question a reply ends with (ask) but memory keeps it"
   assert.equal(store.data.sessions.s1.ask, "Which branch should the secret question use?");
 
   await store.flush();
-  const disk = readFileSync(path.join(root, ".atelier", "state.json"), "utf8");
+  const disk = readFileSync(path.join(root, ".dispatch", "state.json"), "utf8");
   assert.doesNotMatch(disk, /secret question/);
 });
 
@@ -100,7 +100,7 @@ test("state.json drops prompt, error, task notes and ticket item notes", async (
   assert.equal(store.data.tickets.k.items[0].note, "secret item note");
 
   await store.flush();
-  const disk = readFileSync(path.join(root, ".atelier", "state.json"), "utf8");
+  const disk = readFileSync(path.join(root, ".dispatch", "state.json"), "utf8");
   assert.doesNotMatch(disk, /secret|custom prompt|CLI said/);
 
   // After a restart the role prompt is read from the role, and the missing fields have defaults.
@@ -144,7 +144,7 @@ test("a CLI that leaks a key and an email: masked in memory, absent from disk", 
   walk(root); // the whole workspace, not only .dispatch
   assert.ok(files.length > 0);
   for (const f of files) assert.doesNotMatch(readFileSync(f, "utf8"), /FAKE0000|example\.invalid|found \S+ for|auth failed|echo /, f); // also the surrounding transcript text
-  assert.equal(existsSync(path.join(root, ".atelier", "transcripts")), false);
+  assert.equal(existsSync(path.join(root, ".dispatch", "transcripts")), false);
 });
 
 test("permission requests reach the UI masked, while the allow answer keeps the raw input", async () => {

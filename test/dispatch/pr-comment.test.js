@@ -40,7 +40,7 @@ test("postAccounts creates the comment when the PR has none", async () => {
   assert.deepEqual(await post({ pr: 12, issue: 756, summary: SUMMARY }), { ok: true, pr: 12, comment: "created", id: 555 });
   const [list, create] = f.calls();
   assert.deepEqual(list.slice(0, 3), ["api", "--paginate", "repos/{owner}/{repo}/issues/12/comments"]);
-  assert.match(list.at(-1), /startswith\("<!-- atelier:accounts -->"\)/);
+  assert.match(list.at(-1), /startswith\("<!-- dispatch:accounts -->"\)/);
   assert.deepEqual(create.slice(0, 5), ["api", "-X", "POST", "repos/{owner}/{repo}/issues/12/comments", "-f"]);
   assert.equal(create[5], `body=${accountsCommentBody(756, SUMMARY)}`);
 });

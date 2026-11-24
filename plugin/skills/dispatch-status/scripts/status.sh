@@ -1,19 +1,19 @@
 #!/usr/bin/env bash
-# Print the live board of the Atelier server of a project: limits and guard, sessions, task board.
-#   status.sh [project-root]     port: <project>/.atelier/server.port (or an older .dispatch/), else $DRAW_PORT / $DISPATCH_PORT, else 4330
+# Print the live board of the Dispatch server of a project: limits and guard, sessions, task board.
+#   status.sh [project-root]     port: <project>/.dispatch/server.port (or the Atelier-era .atelier/), else $DISPATCH_PORT / $DRAW_PORT, else 4330
 # Reads GET /api/state and GET /api/tasks only (loopback). Prints metadata, no transcript text.
 set -euo pipefail
 
 port=""
 if [ -n "${1:-}" ]; then
-  for f in "$1/.atelier/server.port" "$1/.dispatch/server.port"; do
+  for f in "$1/.dispatch/server.port" "$1/.atelier/server.port"; do
     if [ -f "$f" ]; then port="$(tr -d '[:space:]' < "$f")"; break; fi
   done
 fi
-port="${port:-${DRAW_PORT:-${DISPATCH_PORT:-4330}}}"
+port="${port:-${DISPATCH_PORT:-${DRAW_PORT:-4330}}}"
 [[ "$port" =~ ^[0-9]+$ ]] || { echo "Bad port: $port" >&2; exit 1; }
 url="http://127.0.0.1:$port"
-state="$(curl -sf "$url/api/state")" || { echo "No Atelier server on $url" >&2; exit 1; }
+state="$(curl -sf "$url/api/state")" || { echo "No Dispatch server on $url" >&2; exit 1; }
 tasks="$(curl -sf "$url/api/tasks" || echo '{"tasks":[]}')"
 
 node -e '

@@ -13,7 +13,7 @@ export type ProviderState = {
   name?: string;
   /** `claude --version` first line. */
   cli?: string | null;
-  /** The CLI itself is logged in on this machine (independent of the Atelier connection). */
+  /** The CLI itself is logged in on this machine (independent of the Dispatch connection). */
   cliLoggedIn?: boolean;
   /** How the CLI is logged in, e.g. 구독 계정 (claude.ai). */
   method?: string | null;
@@ -88,7 +88,7 @@ export const api = {
   usage: () => call<{ days: UsageDay[] }>('GET', '/api/usage').then((r) => (Array.isArray(r.days) ? r.days : [])),
   providerLogin: (id: string) => call<{ ok: boolean; connected: boolean }>('POST', `/api/providers/${encodeURIComponent(id)}/login`, {}),
   providerCancel: (id: string) => call<{ ok: boolean }>('POST', `/api/providers/${encodeURIComponent(id)}/cancel`, {}),
-  /** Disconnects from Atelier only; the CLI's own login stays. */
+  /** Disconnects from Dispatch only; the CLI's own login stays. */
   providerLogout: (id: string) => call<{ ok: boolean }>('POST', `/api/providers/${encodeURIComponent(id)}/logout`, {}),
   /** Disconnect and also log the CLI itself out on this machine (`cli: true`, as in Dispatch). */
   providerCliLogout: (id: string) => call<{ ok: boolean }>('POST', `/api/providers/${encodeURIComponent(id)}/logout`, { cli: true }),

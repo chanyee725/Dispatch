@@ -1,8 +1,8 @@
-# E9 설계: Dispatch를 Atelier로 (파이프라인을 문서·다이어그램으로 계획하고 지켜보기)
+# E9 설계: Dispatch를 Drawing로 (파이프라인을 문서·다이어그램으로 계획하고 지켜보기)
 
 > 대체됨(#587): Codex·Gemini는 다시 돌아가요. 에이전트는 연결한 제공자(Claude `claude`, OpenAI Codex `codex`, Gemini `agy`)의 모델을 써요. Fable 5.2만 쓰던 규칙(`docs/design/fable-only-projects.md`)은 대체됐어요. 권한 모드 규칙은 CLAUDE.md를 따라요.
 
-상태: 설계안 (코드 변경 없음). 기준 커밋: Atelier `develop` 0394637, Dispatch 플러그인 0.14.0. 이슈 #87.
+상태: 설계안 (코드 변경 없음). 기준 커밋: Drawing `develop` 0394637, Dispatch 플러그인 0.14.0. 이슈 #87.
 이 문서는 다섯 하위 문서의 **결정 요약, 문서끼리 충돌 정리, 티켓, 열린 질문**이에요. 근거와 세부는 하위 문서에 있어요.
 
 | # | 하위 문서 | 다루는 것 |
@@ -15,7 +15,7 @@
 
 ## 0. 한눈에 (추천)
 
-1. **한 프로세스.** Dispatch 서버 코드를 Atelier의 기능 모듈 `server/dispatch/`로 옮겨요. API 경로는 그대로(겹치는 건 `/api/events`뿐이라 SSE 허브를 합쳐요). 포트 하나. (문서 1)
+1. **한 프로세스.** Dispatch 서버 코드를 Drawing의 기능 모듈 `server/dispatch/`로 옮겨요. API 경로는 그대로(겹치는 건 `/api/events`뿐이라 SSE 허브를 합쳐요). 포트 하나. (문서 1)
 2. **계획은 파일에, 실행 상태는 옆 파일에.** `.dpx.json`에 `plan` 섹션(형식 v4)을 더하고, 실행 중 상태는 서버만 쓰는 `.drawing/runs/<파일 경로>/<runId>.json`에 둬요. 실행 중에 서버가 `.dpx.json`을 계속 고치지 않으니 사람이 편집할 때 409가 나지 않아요. (문서 2)
 3. **실시간 표시는 그림 위에 얹는 층이에요.** 블록 SVG는 다시 그리지 않고, 노드 위치(scene) 위에 HTML/SVG 층을 띄워요. 캔버스와 문서 임베드에 같은 컴포넌트를 써요. 나중에는 이 층이 **진행판**이 돼요: 노드·연결선의 진행 효과, 전체 진행률, 에이전트별 색과 범례. (문서 2 §5, §5.1)
 4. **승인 문은 하나예요.** 관리자가 `write_plan`으로 초안을 쓰면 사람이 고치고 `시작하기`를 눌러요. 승인 전에는 서버가 `create_sessions`를 거절해요. 진행은 `실행` 탭, 상태 띠, 캔버스 노드 위에 보여요. (문서 3)
@@ -28,11 +28,11 @@
 
 | 항목 | 값 | 상태 | 닫힌 질문 |
 |---|---|---|---|
-| PR·CI 추적 | Atelier 서버 코드는 외부 요청 0건이에요. PR·CI 정보는 Dispatch 모듈이 `gh` CLI를 자식 프로세스로 띄워서만 가져와요. 작업 공간 설정으로 끌 수 있어요. 결과는 웹에 127.0.0.1 SSE로 전달돼요. 그래서 자식 프로세스 허용 목록은 `claude`, `codex`, `agy`, `git`, `gh`예요. | **임시** | 2-Q4 |
+| PR·CI 추적 | Drawing 서버 코드는 외부 요청 0건이에요. PR·CI 정보는 Dispatch 모듈이 `gh` CLI를 자식 프로세스로 띄워서만 가져와요. 작업 공간 설정으로 끌 수 있어요. 결과는 웹에 127.0.0.1 SSE로 전달돼요. 그래서 자식 프로세스 허용 목록은 `claude`, `codex`, `agy`, `git`, `gh`예요. | **임시** | 2-Q4 |
 | 승인 | 계획 승인은 1번(`시작하기`)이에요. `develop` 병합은 메인 세션(관리자)이 리뷰·확인한 뒤 하고, 추가 승인은 없어요. `main` push는 금지예요. 문서 2의 `steps[].gate: manual`은 선택 필드로만 남기고, 병합 단계에는 기본으로 걸지 않아요. | **임시** | 3-Q1 |
 | 테마 | OS 설정을 따르고, 수동으로 라이트/다크를 바꿀 수 있어요(`system` · `light` · `dark`). | **임시** | 5-Q1 |
 | WIP `748f6a4` (`feat/shadcn-ui`) | 새 브랜치를 만들고 `web/src/components/ui/*`만 가져와요. 토큰 블록, `TopBar`, 의존성 변경은 가져오지 않아요(문서 5 §8). | **확정** | 5-Q5 |
-| 대화 원문 | 메모리에만 둬요(세션당 링 버퍼 400개). 디스크에는 기록하지 않아요. 서버를 재시작하면 화면의 대화 기록이 비고, 세션 이어가기는 CLI 자체 세션 id로 해요. 세션별로 바꾼 프롬프트는 디스크에 남기지 않아서, 재시작하면 역할 기본 프롬프트로 돌아가요. | **임시** (문서 4 추천) | 1-Q1, 4-Q2(Atelier 쪽) |
+| 대화 원문 | 메모리에만 둬요(세션당 링 버퍼 400개). 디스크에는 기록하지 않아요. 서버를 재시작하면 화면의 대화 기록이 비고, 세션 이어가기는 CLI 자체 세션 id로 해요. 세션별로 바꾼 프롬프트는 디스크에 남기지 않아서, 재시작하면 역할 기본 프롬프트로 돌아가요. | **임시** (문서 4 추천) | 1-Q1, 4-Q2(Drawing 쪽) |
 | 캔버스·다이어그램 모양 | Eraser와 똑같이 맞춰요(근거 `docs/research/eraser/04-visual-design.md`, `02` styling·`connectorStyle`). Eraser 이름·로고·아이콘/일러스트/폰트 파일·코드는 복제하지 않아요. | **확정** | — |
 | 진행판 | 지금은 티켓을 남기고 계획대로 개발해요. 나중에는 작성된 다이어그램이 곧 진행판이 돼요(문서 2 §5.1). | **확정** (방향) | — |
 
@@ -41,14 +41,14 @@
 ### 2.1 구조와 이전 (문서 1, 4)
 
 - **한 프로세스 vs 둘.** 두 프로세스로 가면 서버끼리 HTTP로 중계해야 하고, `시작하기`에 넘길 API가 새로 필요하고, 포트 두 개의 짝을 맞춰야 해요. 이 기능의 핵심이 "같은 파일 위의 실행 상태"라서 이벤트를 한 곳에서 내는 한 프로세스를 골라요. 재시작 때 세션이 끊기는 문제는 Hub의 기존 이어하기(`interrupted`)로 덮어요. Hub 오류가 그림 편집까지 멈추지 않도록 라우트와 타이머마다 try/catch로 격리해요.
-- **옮길 코드.** `sessions.js`→`server/dispatch/hub.js`(port를 getter로), `mcp.js`, `git.js`, `state.js`, `burn.js`, `limits.js`, `tasks.js`, `roles.js`, `models.js`, `settings.js`, `style.js`, `auth.js`, `store.js`→`dispatch-store.js`, `index.js`의 라우트 표→`routes.js` 어댑터. Dispatch 테스트 12개는 `test/dispatch/`로 옮겨서 그대로 통과해야 해요. 웹은 `web/src/dispatch/`에 Atelier 톤으로 다시 그리고 lazy chunk로 나눠요.
-- **버릴 코드.** Dispatch 자체의 SSE·정적 서빙·body 파서(Atelier 것을 써요), 포트 4317–4330 탐색(문서 4 R5), Codex API 키 입력 라우트(키가 서버를 지나가요, 문서 4 §1.3), 원문 파일 저장.
+- **옮길 코드.** `sessions.js`→`server/dispatch/hub.js`(port를 getter로), `mcp.js`, `git.js`, `state.js`, `burn.js`, `limits.js`, `tasks.js`, `roles.js`, `models.js`, `settings.js`, `style.js`, `auth.js`, `store.js`→`dispatch-store.js`, `index.js`의 라우트 표→`routes.js` 어댑터. Dispatch 테스트 12개는 `test/dispatch/`로 옮겨서 그대로 통과해야 해요. 웹은 `web/src/dispatch/`에 Drawing 톤으로 다시 그리고 lazy chunk로 나눠요.
+- **버릴 코드.** Dispatch 자체의 SSE·정적 서빙·body 파서(Drawing 것을 써요), 포트 4317–4330 탐색(문서 4 R5), Codex API 키 입력 라우트(키가 서버를 지나가요, 문서 4 §1.3), 원문 파일 저장.
 - **CLI 실행 이음매.** 자식 프로세스는 `server/dispatch/cli.js`의 `spawnCli` 한 곳에서만 만들어요(문서 4는 `server/runs/cli.js`로 적었는데, 모듈 위치를 문서 1에 맞췄어요). `shell: true`는 쓰지 않아요. 테스트에서는 이 함수를 가짜 CLI로 바꿔 끼워요.
-- **권한 모드.** `manual` · `acceptEdits` · `auto` · `plan` 네 가지예요. 고른 모드보다 느슨하게 돌리지 않아요. 지금 Gemini는 `manual`·`acceptEdits`를 골라도 권한 확인 없이 돌아요. Atelier에서는 이 두 모드를 고르면 400으로 거절해요.
-- **가드.** 한도 가드(5시간 90 %, 주간 85 %), 컨텍스트 70 %, 턴 회전, 누적 15M 토큰 가드는 기본값 그대로 옮겨요. 한도에 걸리면 Dispatch는 "티켓"을 남기는데, Atelier에서는 그 대신 파이프라인 단계가 "한도로 멈춤(리셋 HH:MM)"으로 표시돼요. `시작하기`도 가드를 거쳐요.
+- **권한 모드.** `manual` · `acceptEdits` · `auto` · `plan` 네 가지예요. 고른 모드보다 느슨하게 돌리지 않아요. 지금 Gemini는 `manual`·`acceptEdits`를 골라도 권한 확인 없이 돌아요. Drawing에서는 이 두 모드를 고르면 400으로 거절해요.
+- **가드.** 한도 가드(5시간 90 %, 주간 85 %), 컨텍스트 70 %, 턴 회전, 누적 15M 토큰 가드는 기본값 그대로 옮겨요. 한도에 걸리면 Dispatch는 "티켓"을 남기는데, Drawing에서는 그 대신 파이프라인 단계가 "한도로 멈춤(리셋 HH:MM)"으로 표시돼요. `시작하기`도 가드를 거쳐요.
 - **쓰기 요청 보호.** `/api/` 아래의 GET이 아닌 요청은 모두 `x-drawing: 1` 헤더가 있어야 해요. 플러그인 훅과 `mcp.js`가 계속 동작하도록 `x-dispatch: 1`도 같은 뜻으로 받아요. 환경변수 이름 `DISPATCH_URL`·`DISPATCH_SESSION`은 유지해요(문서 4 G4).
-- **작업 공간과 프로젝트.** Atelier 작업 공간은 프로젝트 저장소 안의 하위 폴더(기본 `pipelines/`)이고, Dispatch 루트는 그 폴더의 git 최상위예요. git 저장소가 아니면 Dispatch 기능은 꺼지고 그림 도구만 동작해요. 같은 `.dispatch/`를 독립 Dispatch 서버가 이미 쓰고 있으면 Dispatch 모듈을 끄고 안내해요.
-- **플러그인.** 플러그인 이름 `dispatch`는 유지하고 안의 서버만 Atelier로 바꿔요. 남는 것은 스킬 3개, `hooks/long-session.mjs`, start/stop 스크립트예요. 독립 Dispatch로 Atelier를 개발하는 일은 내장 버전이 기능까지 같아진 뒤 일주일 써 본 다음에 멈춰요.
+- **작업 공간과 프로젝트.** Drawing 작업 공간은 프로젝트 저장소 안의 하위 폴더(기본 `pipelines/`)이고, Dispatch 루트는 그 폴더의 git 최상위예요. git 저장소가 아니면 Dispatch 기능은 꺼지고 그림 도구만 동작해요. 같은 `.dispatch/`를 독립 Dispatch 서버가 이미 쓰고 있으면 Dispatch 모듈을 끄고 안내해요.
+- **플러그인.** 플러그인 이름 `dispatch`는 유지하고 안의 서버만 Drawing로 바꿔요. 남는 것은 스킬 3개, `hooks/long-session.mjs`, start/stop 스크립트예요. 독립 Dispatch로 Drawing를 개발하는 일은 내장 버전이 기능까지 같아진 뒤 일주일 써 본 다음에 멈춰요.
 - **이전 순서:** 규칙 → 서버 이식 → 프로젝트 모드 → 웹 이식 → 파이프라인 실행 → 플러그인 전환 → 은퇴. 단계마다 혼자 병합할 수 있어요(티켓 §5).
 
 ### 2.2 파일 형식과 실시간 표시 (문서 2)
@@ -131,7 +131,7 @@
 
 | 줄 | 지금 | 바꿀 문구 |
 |---|---|---|
-| 3 | `Atelier: a local, internal-only diagramming tool ... The old draw.io live viewer is retired.` | 괄호 뒤에 추가: `, and runs agent pipelines planned in those documents (merged from Dispatch, issue #87; design in docs/design/dispatch-integration.md)` |
+| 3 | `Drawing: a local, internal-only diagramming tool ... The old draw.io live viewer is retired.` | 괄호 뒤에 추가: `, and runs agent pipelines planned in those documents (merged from Dispatch, issue #87; design in docs/design/dispatch-integration.md)` |
 | 11 | `The server binds to 127.0.0.1 only and makes no outbound network requests; ... It writes only inside the workspace folder it was started with.` | `The server binds to 127.0.0.1 only and its own code makes no outbound network requests (loopback only); everything (fonts, Excalidraw assets, icons) is bundled or vendored. It writes only inside the workspace folder (run records under <workspace>/.drawing/), the git project that holds it (<project>/.dispatch/ and session worktrees), and ~/.dispatch/ (shared usage limits).` |
 | 11 뒤 새 줄 | — | `- Agent sessions are the user's own CLIs (claude, codex, agy) started as child processes, only after the user connects a provider. Child processes are limited to those, git and gh (PR/CI status, can be turned off per workspace), all through server/dispatch/cli.js, never with a shell. The server never proxies their traffic or reads their credentials.` |
 | 새 줄 | — | `- Permission modes are manual, acceptEdits, auto, plan; never run a session looser than the mode chosen (refuse instead). No bypassPermissions. Usage-limit and session-length guards stay on with their defaults unless an issue says otherwise.` |
@@ -190,14 +190,14 @@
 
 ## 6. 열린 질문 (사용자 결정이 필요한 순)
 
-다섯 문서의 질문에서 중복을 지우고, §1에서 이미 정한 것(2-Q4, 3-Q1, 5-Q1, 5-Q5, 1-Q1, 4-Q2의 Atelier 쪽)은 뺐어요.
+다섯 문서의 질문에서 중복을 지우고, §1에서 이미 정한 것(2-Q4, 3-Q1, 5-Q1, 5-Q5, 1-Q1, 4-Q2의 Drawing 쪽)은 뺐어요.
 
 1. **홈 폴더 쓰기 예외.** 한도(`~/.dispatch/limits.json`)와 서버 등록 파일을 계속 홈 폴더에 쓸까요? 추천: 이전 기간에는 유지해요(독립 Dispatch와 한도를 나눠 봐야 가드가 정확해요). (1 §5, 4-Q1)
 2. **작업 공간과 worktree 위치.** 기본 작업 공간 폴더 `pipelines/`, 상태와 worktree는 `<project>/.dispatch/`로 할까요? 4번 문서 안은 모두 `<workspace>/.drawing/` 아래예요. 파이프라인 파일은 트리 아무 데나 두고 점 배지를 붙일지, 고정 섹션으로 보일지도 같이 정해요. (1-Q2, 3-Q5, 2-Q3)
-3. **플러그인 배포와 이름.** 빌드된 묶음을 릴리스에 붙일지(추천), 첫 실행 때 빌드할지? 실행 기능을 계속 "Dispatch"로 부를지? Atelier 작업 공간이 아닌 프로젝트에서도 Dispatch 화면만 쓸 수 있게 할지? (1-Q3, 1-Q4, 3-Q2)
+3. **플러그인 배포와 이름.** 빌드된 묶음을 릴리스에 붙일지(추천), 첫 실행 때 빌드할지? 실행 기능을 계속 "Dispatch"로 부를지? Drawing 작업 공간이 아닌 프로젝트에서도 Dispatch 화면만 쓸 수 있게 할지? (1-Q3, 1-Q4, 3-Q2)
 4. **기록에 비용을 달러로 보일까요?** 파일을 공유받는 사람이 지출을 보게 돼요. 토큰 수만 보이는 선택지도 있어요. (3-Q3)
 5. **단계 순서의 원본.** 다이어그램 연결선(사람이 그린 그림이 순서)과 단계 목록 `after`(관리자가 쓴 계획) 중 무엇을 기본으로 할까요? (2-Q1, §3.2)
-6. **관리자 없이 사람이 쓴 계획으로 시작할 수 있게 할까요?** 그러면 Atelier가 계획을 과제로 하는 관리자를 띄워요. 추천은 예, E20 뒤예요. (3-Q4)
+6. **관리자 없이 사람이 쓴 계획으로 시작할 수 있게 할까요?** 그러면 Drawing가 계획을 과제로 하는 관리자를 띄워요. 추천은 예, E20 뒤예요. (3-Q4)
 7. **폰트 출처 문구.** Inter·Pretendard를 npm 재배포판(OFL)으로 번들해도 될까요, 원 배포처에서 받은 파일만 쓸까요? (§3.1)
 8. **앱 화면 세부.** 강조색을 보라 하나로 할지 무채색으로 할지(5-Q2), 사이드바 220px·행 28px로 할지(5-Q3), Dispatch "모니터" 테마를 다크에 합칠지(5-Q4)?
 9. **진행판·기록 세부.** 끝난 실행의 상태를 내보내기에 넣을 수 있게 할지(2-Q5)? 보관 기준(50개·90일·256KB)을 작업 공간 설정으로 열지(2-Q6)? 파일 하나에 계획 하나로 할지(2-Q2)?
@@ -217,13 +217,13 @@
 
 §1의 임시 기본값(PR 추적, 승인 1회, 테마, 원문 메모리)은 그대로 임시예요.
 
-## 8. 독립 Dispatch가 아직 하는데 Atelier에 없는 것 (#731)
+## 8. 독립 Dispatch가 아직 하는데 Drawing에 없는 것 (#731)
 
-세션 보드(세션·타임라인·사용량·상시 화면·새 세션·설정·프로바이더 연결·한도·PR 추적)는 모두 앱 안에 있고, 앱 안에서 독립 Dispatch 화면으로 나가는 링크·버튼은 없어요. 독립 Dispatch를 끄기 전에 아래가 남아 있어요. 코드로 확인한 것이고, 목록에 없는 것은 Atelier에 이미 있어요.
+세션 보드(세션·타임라인·사용량·상시 화면·새 세션·설정·프로바이더 연결·한도·PR 추적)는 모두 앱 안에 있고, 앱 안에서 독립 Dispatch 화면으로 나가는 링크·버튼은 없어요. 독립 Dispatch를 끄기 전에 아래가 남아 있어요. 코드로 확인한 것이고, 목록에 없는 것은 Drawing에 이미 있어요.
 
 | 남은 것 | 지금 상태 | 메모 |
 |---|---|---|
-| 한 서버에서 여러 프로젝트 폴더를 함께 보기 | Atelier 서버는 작업 공간 하나(또는 프로젝트 모드의 한 저장소)만 봐요 | 세션 보드의 프로젝트 묶음은 그 작업 공간 안의 폴더 기준이에요 |
-| 독립 Dispatch 저장소의 세션 기록 이어받기 | Atelier는 `<workspace>/.drawing/`의 메타데이터만 읽어요 | 원문 저장 금지 규칙 때문에 옮기지 않아요 |
+| 한 서버에서 여러 프로젝트 폴더를 함께 보기 | Drawing 서버는 작업 공간 하나(또는 프로젝트 모드의 한 저장소)만 봐요 | 세션 보드의 프로젝트 묶음은 그 작업 공간 안의 폴더 기준이에요 |
+| 독립 Dispatch 저장소의 세션 기록 이어받기 | Drawing는 `<workspace>/.drawing/`의 메타데이터만 읽어요 | 원문 저장 금지 규칙 때문에 옮기지 않아요 |
 | `dispatch` 스킬의 설치·실행 스크립트 이름 | `plugin/skills/dispatch*`가 `DISPATCH_*` 환경변수와 `[Dispatch]` 접두어를 그대로 써요 | 열린 질문 4-Q3 (추천: 유지) |
 | 독립 Dispatch 포트의 북마크 | `/dispatch`는 `/#board`로 넘기거나 프로젝트 모드에서 같은 보드를 보여줘요 | 옛 해시(`#usage`, `#folder=`, `#tv`, `#settings`)도 받아요 |

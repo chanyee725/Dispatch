@@ -1,4 +1,4 @@
-// Pure formatting of the /atelier-agents mod pane (plugin/hooks/agents-format.mjs, #755). No CLI, no server.
+// Pure formatting of the /dispatch-agents mod pane (plugin/hooks/agents-format.mjs, #755). No CLI, no server.
 import assert from "node:assert/strict";
 import test from "node:test";
 import { asSummary, duration, etaLabel, githubRepo, paneModel, parsePort, prUrl, stageLabel, statusLine } from "../plugin/hooks/agents-format.mjs";
@@ -47,8 +47,8 @@ test("durations, stages and ETA read short", () => {
 });
 
 test("status line: summary, offline, nothing without a server", () => {
-  assert.equal(statusLine(online), "Atelier 관리자 1 · 실행 1 · 질문 1 · 막힘 2 · 5시간 42% · 주간 13%");
-  assert.equal(statusLine({ kind: "offline", port: 4321, lastAt: null }), "Atelier offline");
+  assert.equal(statusLine(online), "Dispatch 관리자 1 · 실행 1 · 질문 1 · 막힘 2 · 5시간 42% · 주간 13%");
+  assert.equal(statusLine({ kind: "offline", port: 4321, lastAt: null }), "Dispatch offline");
   assert.equal(statusLine({ kind: "none" }), undefined);
 });
 
@@ -68,7 +68,7 @@ test("pane model: usage, lead, board, team and PR links", () => {
 });
 
 test("pane model: offline and no server", () => {
-  assert.equal(paneModel({ kind: "offline", port: 1, lastAt: NOW - 3 * 60000 }, null, NOW).text, "offline: Atelier 서버가 응답하지 않아요 · 마지막 응답 3분 전");
+  assert.equal(paneModel({ kind: "offline", port: 1, lastAt: NOW - 3 * 60000 }, null, NOW).text, "offline: Dispatch 서버가 응답하지 않아요 · 마지막 응답 3분 전");
   assert.equal(paneModel({ kind: "none" }, null, NOW).kind, "none");
 });
 

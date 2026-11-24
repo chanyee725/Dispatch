@@ -24,7 +24,7 @@ const PUBLIC_DIR = fileURLToPath(new URL('../public/', import.meta.url));
  * set up again for the new folder, so modules never need to handle a changing ctx.workspaceDir themselves.
  */
 // Project mode (start.sh <project>, issues #773, #782): the whole app for one git project, its documents in
-// <project>/.atelier/. Only the workspace folder list stays closed: the server belongs to that one project.
+// <project>/.dispatch/. Only the workspace folder list stays closed: the server belongs to that one project.
 const PROJECT_MODE_BLOCKED = [
   ['POST', /^\/api\/workspaces(\/open)?$/],
   ['DELETE', /^\/api\/workspaces$/],
@@ -32,7 +32,7 @@ const PROJECT_MODE_BLOCKED = [
 
 /**
  * The git project's folder name for /api/info: the Dispatch module's project root when it runs, else in project
- * mode the folder that holds the workspace (<project>/.atelier). Folder name only, never the full path.
+ * mode the folder that holds the workspace (<project>/.dispatch). Folder name only, never the full path.
  */
 export function projectName(ctx) {
   const root = ctx.modules?.dispatch?.projectRoot;
@@ -118,7 +118,7 @@ export async function createApp(opts = {}, { publicDir = PUBLIC_DIR, moduleList 
     if (claimWorkspace) {
       try {
         const claim = await claimWorkspace(dir);
-        if (!claim.ok) throw new WorkspaceError(409, 'another Atelier server has this folder open', 'in_use');
+        if (!claim.ok) throw new WorkspaceError(409, 'another Dispatch server has this folder open', 'in_use');
         lock = claim.lock;
       } catch (err) {
         if (err instanceof WorkspaceError) throw err;
@@ -156,7 +156,7 @@ export async function createApp(opts = {}, { publicDir = PUBLIC_DIR, moduleList 
     await runListeners();
     await lock?.setPort(ctx.port).catch((err) => console.error(`Could not update the workspace lock (${err.code ?? err.name})`));
     // Folder name only: the full path can hold the user name.
-    console.log(`Atelier: switched to workspace ${basename(dir)}`);
+    console.log(`Dispatch: switched to workspace ${basename(dir)}`);
   }
 
   /** Moves the server to the workspace folder `dir` (an absolute real path). One switch at a time. */
@@ -227,7 +227,7 @@ export async function createApp(opts = {}, { publicDir = PUBLIC_DIR, moduleList 
 /**
  * Every non-GET /api request needs a custom header: a browser can't send it cross-origin without a
  * preflight this server never approves, so another site can't write here. x-drawing: 1 is
- * Atelier's own; x-dispatch: 1 is accepted for the Dispatch plugin.
+ * Dispatch's own; x-dispatch: 1 is accepted for the Dispatch plugin.
  */
 export function writeAllowed(headers) {
   return headers['x-drawing'] === '1' || headers['x-dispatch'] === '1';

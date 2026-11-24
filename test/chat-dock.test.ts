@@ -105,9 +105,9 @@ test('slash menu: opens only for one slash word; /clear is built in; skills matc
   assert.equal(slashQuery('/cl'), 'cl');
   assert.equal(slashQuery('/clear now'), null);
   assert.equal(slashQuery('hi /x'), null);
-  const skills = [{ name: 'atelier-doc', description: '문서 쓰기' }, { name: 'loop', description: 'clear a queue' }];
+  const skills = [{ name: 'dispatch-doc', description: '문서 쓰기' }, { name: 'loop', description: 'clear a queue' }];
   assert.deepEqual(slashItems('cl', skills).map(i => i.name), ['clear', 'loop']);
-  assert.deepEqual(slashItems('문서', skills).map(i => i.name), ['atelier-doc']);
+  assert.deepEqual(slashItems('문서', skills).map(i => i.name), ['dispatch-doc']);
   assert.equal(slashItems('', skills).length, 3);
   assert.equal(isClear('/clear '), true);
   assert.equal(isClear('/clearx'), false);

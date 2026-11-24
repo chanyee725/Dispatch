@@ -3,7 +3,7 @@
 상태: 설계안 (코드 변경 없음). 결정 6개는 §0, 답이 필요한 것은 §8 열린 질문.
 다음: §0을 읽고 §8의 질문에 답해요(10분). 구현 순서는 §7.
 
-기준 커밋: Atelier `develop` 0394637, Dispatch 0.14.0 작업 트리. 배경은 이슈 #87(Dispatch를 Atelier 안으로 합쳐 파이프라인을 문서+다이어그램으로 계획하고 실행·관찰).
+기준 커밋: Drawing `develop` 0394637, Dispatch 0.14.0 작업 트리. 배경은 이슈 #87(Dispatch를 Drawing 안으로 합쳐 파이프라인을 문서+다이어그램으로 계획하고 실행·관찰).
 경로 표기: `D:` = Dispatch 저장소(`~/personal/Dispatch`), 접두어 없음 = 이 저장소.
 
 ## 0. 추천 (한눈에)
@@ -16,9 +16,9 @@
 
 데이터와 가드:
 
-1. **대화 원문은 디스크에 쓰지 않아요.** 메모리 링버퍼만 두고, 디스크에는 메타데이터·사용량·단계 상태만 남겨요. Dispatch는 `.dispatch/transcripts/<id>.jsonl`에 남기지만(D:server/sessions.js:87-88, 195-202) Atelier 규칙(CLAUDE.md:13)과 충돌해요.
+1. **대화 원문은 디스크에 쓰지 않아요.** 메모리 링버퍼만 두고, 디스크에는 메타데이터·사용량·단계 상태만 남겨요. Dispatch는 `.dispatch/transcripts/<id>.jsonl`에 남기지만(D:server/sessions.js:87-88, 195-202) Drawing 규칙(CLAUDE.md:13)과 충돌해요.
 2. **한도·세션 길이 가드는 기본값 그대로 옮겨요.** 5시간 90 %, 주간 85 %, 컨텍스트 70 %, 누적 15M 토큰. 바뀌는 것 하나: 멈춤 지점이 티켓 대신 파이프라인 문서의 단계 상태예요.
-3. **Gemini의 조용한 우회를 없애요.** 지금은 `manual`을 골라도 `auto` + `--dangerously-skip-permissions`로 돌아요(D:server/sessions.js:1066, 1075). Atelier에서는 Gemini에 `manual`·`acceptEdits`를 고르면 400으로 거절해요.
+3. **Gemini의 조용한 우회를 없애요.** 지금은 `manual`을 골라도 `auto` + `--dangerously-skip-permissions`로 돌아요(D:server/sessions.js:1066, 1075). Drawing에서는 Gemini에 `manual`·`acceptEdits`를 고르면 400으로 거절해요.
 
 따로: `~/.dispatch/*` 공유 파일을 쓸지는 §8 Q1에서 정해요.
 
@@ -26,7 +26,7 @@
 
 ### 1.1 지금 상태
 
-| 항목 | Atelier | Dispatch |
+| 항목 | Drawing | Dispatch |
 |---|---|---|
 | 바인드 | `127.0.0.1` (server/index.js:8, 37) | `127.0.0.1` (D:server/index.js:19, 318) |
 | Host 검사(DNS rebinding) | 있음 (server/app.js:84-87, 119-122) | **없음** — `req.headers.host`를 그대로 URL에 씀 (D:server/index.js:290) |
@@ -41,8 +41,8 @@
 - **R1. 서버 프로세스는 루프백 외 요청을 만들지 않아요.** 서버 코드의 `fetch`/`http.request` 대상은 `127.0.0.1`만. 정적 테스트로 강제해요(§6.3).
 - **R2. 자식 프로세스 허용 목록:** `claude`, `codex`, `agy`, `git`만 `spawn`/`execFile` 해요. 다른 실행 파일·셸 문자열(`shell: true`)은 금지. 이 목록은 `server/runs/cli.js` 한 파일에 둬요.
 - **R3. 서버는 CLI 트래픽을 중계·가로채지 않아요.** 프록시 환경변수나 base URL을 주입하지 않고, CLI가 가진 로그인 정보를 읽지 않아요(D:server/auth.js:6-7의 원칙 유지). CLI에 넘기는 환경변수는 `DISPATCH_URL`(루프백)·`DISPATCH_SESSION`·헤드리스 Playwright 두 개뿐(D:server/sessions.js:25-26, 857-858, 914).
-- **R4. 세션 기능은 켜야만 동작해요.** Dispatch처럼 처음엔 제공자가 모두 "연결 안 됨"(D:server/store.js:9 `enabled: { claude: false, openai: false }`, D:README.md:76). 사용자가 켜기 전엔 서버가 CLI를 하나도 띄우지 않아요. 문서·캔버스만 쓰는 사람에게 Atelier는 여전히 완전 오프라인이에요.
-- **R5. 다른 서버 탐색(포트 4317–4330 프로빙, D:server/index.js:86-110)은 옮기지 않아요.** Atelier는 워크스페이스당 서버 하나라 필요 없어요. 루프백이라도 남의 포트를 두드리는 코드는 줄여요.
+- **R4. 세션 기능은 켜야만 동작해요.** Dispatch처럼 처음엔 제공자가 모두 "연결 안 됨"(D:server/store.js:9 `enabled: { claude: false, openai: false }`, D:README.md:76). 사용자가 켜기 전엔 서버가 CLI를 하나도 띄우지 않아요. 문서·캔버스만 쓰는 사람에게 Drawing는 여전히 완전 오프라인이에요.
+- **R5. 다른 서버 탐색(포트 4317–4330 프로빙, D:server/index.js:86-110)은 옮기지 않아요.** Drawing는 워크스페이스당 서버 하나라 필요 없어요. 루프백이라도 남의 포트를 두드리는 코드는 줄여요.
 - **R6. Host 검사·CSRF 가드를 세션 라우트에도 그대로 써요.** `isAllowedHost`(server/app.js:119)가 모든 라우트 앞에 있으니 새 라우트는 자동으로 덮여요. 본문 없는 쓰기(`/interrupt`, `/kill`)는 `content-type` 검사가 안 걸리므로, `/api/` 아래 모든 비-GET에 `x-drawing: 1` 헤더를 요구하고 웹의 fetch 래퍼가 붙여요. MCP 서버(D:server/mcp.js:11)도 같은 헤더를 보내요.
 
 ### 1.3 하지 않을 것
@@ -53,7 +53,7 @@
 
 원칙(CLAUDE.md:13, D:AGENTS.md:15, 조직 지침): 대화 원문·토큰·API 키·이메일·실명은 저장·기록하지 않아요.
 
-| 데이터 | Dispatch 지금 | Atelier 규칙 |
+| 데이터 | Dispatch 지금 | Drawing 규칙 |
 |---|---|---|
 | 대화 원문(사용자·모델·도구 입출력) | `.dispatch/transcripts/*.jsonl`에 append (D:server/sessions.js:195-202) | **메모리 링버퍼만**(세션당 400개, D:server/sessions.js:17). 디스크·로그·`.dpx.json`에 안 써요. 재시작하면 사라져요. |
 | 마지막 답변 `s.last` | 400자 잘라 `state.json`에 저장 (D:server/sessions.js:942) | 메모리에만. 디스크엔 단계 상태 코드와 시각만. 재시작 뒤 인계문은 브랜치·커밋으로 다시 확인하게 해요(이미 인계문이 그렇게 말함, D:server/sessions.js:580). |
@@ -62,7 +62,7 @@
 | 사용량·비용·토큰 수 | `state.json` `daily` (D:server/store.js:34-40) | 그대로 저장. 숫자만. |
 | 한도 % 와 리셋 시각 | `~/.dispatch/limits.json` (D:server/limits.js:76-78) | 숫자·시각만. 위치는 §8 Q1. |
 | Codex 한도 | `~/.codex/sessions` 최신 로그 끝 256KB를 읽어 `rate_limits`만 파싱 (D:server/limits.js:10, 27-61) | **OpenAI를 연결했을 때만** 읽어요(server/dispatch/hub.js:303). 연결 전엔 `~/.codex`를 건드리지 않아요. **읽기만**, 파싱한 숫자 외엔 버려요. |
-| 길이 가드 훅 표식 | 시스템 임시 폴더에 `dispatch-long-<id>` 빈 파일 | `~/.dispatch/hooks/`에 같은 빈 파일(세션 id만, 내용 없음, plugin/hooks/long-session.mjs:13). Atelier가 쓸 수 있는 폴더 안이에요. |
+| 길이 가드 훅 표식 | 시스템 임시 폴더에 `dispatch-long-<id>` 빈 파일 | `~/.dispatch/hooks/`에 같은 빈 파일(세션 id만, 내용 없음, plugin/hooks/long-session.mjs:13). Drawing가 쓸 수 있는 폴더 안이에요. |
 | 멈춤 감지용 명령 | 해시 12자리 + 횟수 (D:skills/dispatch/reference/api.md:33) | 그대로. 명령 원문·출력 저장 금지. |
 | 프로젝트 경로 | 레지스트리에 `~`로 줄여 저장 (D:server/index.js:90) | 응답엔 폴더 이름만(server/app.js:71-72 규칙 유지). |
 | 서버 로그 | 에러 메시지 일부 | 에러 종류만(`err.code ?? err.name`, server/app.js:101-102). CLI stderr 꼬리(D:server/sessions.js:883, 894)는 **UI 응답에만** 싣고 `console`에는 안 써요. |
@@ -90,7 +90,7 @@
 
 한도 수치는 CLI가 이미 보내는 `rate_limit_event`에서만 읽어요(D:server/sessions.js:971-984). 사용량 API를 따로 부르지 않으니 §1 규칙과 충돌이 없어요.
 
-### 3.2 Atelier에서 바뀌는 점
+### 3.2 Drawing에서 바뀌는 점
 
 - **G1. 티켓 = 파이프라인 단계.** 한도에 걸리면 실행 중인 파이프라인은 "한도로 멈춤(리셋 HH:MM)"으로 표시돼요. 남은 단계는 문서에 이미 있으니 별도 티켓 저장소가 필요 없어요. 리셋 뒤 자동 재개는 Dispatch와 같게(관리자에게 "멈춘 단계부터 이어서").
 - **G2. 파이프라인 시작 버튼도 가드를 거쳐요.** 첫 단계를 띄우기 전 `guardCheck`를 부르고, 걸리면 시작하지 않고 이유를 보여줘요("주간 한도 87 % — 차단 기준 이상이에요").
@@ -101,7 +101,7 @@
 
 모드 4개: `manual` · `acceptEdits` · `auto` · `plan` (D:server/roles.js:53).
 
-| 모드 | Claude (D:server/sessions.js:904) | Codex (D:server/sessions.js:1003) | Gemini 지금 (D:server/sessions.js:1066, 1075) | Gemini Atelier |
+| 모드 | Claude (D:server/sessions.js:904) | Codex (D:server/sessions.js:1003) | Gemini 지금 (D:server/sessions.js:1066, 1075) | Gemini Drawing |
 |---|---|---|---|---|
 | `manual` | `--permission-mode manual`, 요청은 UI로 | `read-only` 샌드박스 | **`auto` + 권한 건너뜀** | 거절(400) |
 | `acceptEdits` | 그대로 | `workspace-write` | `auto` + 권한 건너뜀 | 거절(400) |
@@ -118,12 +118,12 @@
 
 ## 5. CLAUDE.md · AGENTS.md 변경 초안
 
-### 5.1 Atelier `CLAUDE.md`
+### 5.1 Drawing `CLAUDE.md`
 
 ```diff
 @@ line 3
--Atelier: a local, internal-only diagramming tool that works and looks like Eraser.io (document + infinite canvas per file, Eraser-compatible diagram-as-code, free-form drawing). Work items are in `docs/tickets.md`; the spec is `docs/research/eraser/` (start with `00-summary.md`). The old draw.io live viewer is retired.
-+Atelier: a local, internal-only diagramming tool that works and looks like Eraser.io (document + infinite canvas per file, Eraser-compatible diagram-as-code, free-form drawing), and runs agent pipelines planned in those documents (merged from Dispatch, issue #87; design in `docs/design/dispatch-integration/`). Work items are in `docs/tickets.md`; the spec is `docs/research/eraser/` (start with `00-summary.md`). The old draw.io live viewer is retired.
+-Drawing: a local, internal-only diagramming tool that works and looks like Eraser.io (document + infinite canvas per file, Eraser-compatible diagram-as-code, free-form drawing). Work items are in `docs/tickets.md`; the spec is `docs/research/eraser/` (start with `00-summary.md`). The old draw.io live viewer is retired.
++Drawing: a local, internal-only diagramming tool that works and looks like Eraser.io (document + infinite canvas per file, Eraser-compatible diagram-as-code, free-form drawing), and runs agent pipelines planned in those documents (merged from Dispatch, issue #87; design in `docs/design/dispatch-integration/`). Work items are in `docs/tickets.md`; the spec is `docs/research/eraser/` (start with `00-summary.md`). The old draw.io live viewer is retired.
 @@ line 11
 -- The server binds to 127.0.0.1 only and makes no outbound network requests; everything (fonts, Excalidraw assets, icons) is bundled or vendored. It writes only inside the workspace folder it was started with.
 +- The server binds to 127.0.0.1 only and makes no outbound network requests (loopback only); everything (fonts, Excalidraw assets, icons) is bundled or vendored. It writes only inside the workspace folder it was started with (run state under `<workspace>/.drawing/`).
@@ -138,7 +138,7 @@
 +- Testing: point the server at a scratch workspace folder (in a temp dir), never at a real project folder. `npm test` uses the fake CLIs in `test/fixtures/fake-cli/` and must never start a real `claude`, `codex` or `agy`. A manual run against a real CLI uses `claude-haiku-5-5` at `effort: low` with one-line prompts.
 ```
 
-### 5.2 Atelier `AGENTS.md` (새 파일)
+### 5.2 Drawing `AGENTS.md` (새 파일)
 
 Codex 세션도 이 저장소에서 돌게 되므로(Codex는 `AGENTS.md`를 읽어요) 한 줄짜리를 둬요.
 
@@ -153,7 +153,7 @@ Codex 세션도 이 저장소에서 돌게 되므로(Codex는 `AGENTS.md`를 읽
 ```diff
 @@ line 5
 -- `server/` — Node HTTP + SSE server with zero npm dependencies. `sessions.js` spawns and parses the CLIs (...)
-+- `server/` — Node HTTP + SSE server with zero npm dependencies. `sessions.js` spawns and parses the CLIs (...). The runner is being merged into Atelier (chanyee725/Atelier, issue #87); port fixes there too until Dispatch is retired.
++- `server/` — Node HTTP + SSE server with zero npm dependencies. `sessions.js` spawns and parses the CLIs (...). The runner is being merged into Drawing (chanyee725/Drawing, issue #87); port fixes there too until Dispatch is retired.
 @@ line 15
 -- Persist metadata and usage totals only. Transcripts, tokens, API keys and account emails stay out of `.dispatch/state.json`, logs and API responses (the org forbids storing PII).
 +- Persist metadata and usage totals only. Transcripts, tokens, API keys and account emails stay out of `.dispatch/state.json`, `.dispatch/transcripts/`, logs and API responses (the org forbids storing PII).
@@ -201,8 +201,8 @@ Codex 세션도 이 저장소에서 돌게 되므로(Codex는 `AGENTS.md`를 읽
 
 ## 8. 열린 질문
 
-1. **`~/.dispatch/limits.json` 공유:** 한도는 계정 단위라 Dispatch는 여러 서버가 홈 폴더 파일로 나눠 봐요(D:server/limits.js:76-78). Atelier의 "워크스페이스 밖엔 안 씀" 규칙과 충돌해요. (a) 워크스페이스 `.drawing/limits.json`만 쓴다(다른 프로젝트의 한도 정보를 못 받음, 처음 한 턴은 모름) — 추천, (b) `~/.drawing/limits.json` 하나만 예외로 허용.
-2. **원문 디스크 저장을 끊을 범위:** Atelier는 끊는 게 추천인데, 재시작하면 세션 화면 기록이 비어요. 이걸 받아들일지, 아니면 "세션 삭제 시 지움 + 24시간 뒤 자동 삭제"로 디스크 보관을 허용할지. Dispatch 본체도 같이 끊을지.
-3. **`[Dispatch]` 접두어·`DISPATCH_*` 환경변수 이름:** 훅 호환을 위해 유지(추천)할지, Atelier 이름으로 바꾸고 훅도 같이 고칠지.
+1. **`~/.dispatch/limits.json` 공유:** 한도는 계정 단위라 Dispatch는 여러 서버가 홈 폴더 파일로 나눠 봐요(D:server/limits.js:76-78). Drawing의 "워크스페이스 밖엔 안 씀" 규칙과 충돌해요. (a) 워크스페이스 `.drawing/limits.json`만 쓴다(다른 프로젝트의 한도 정보를 못 받음, 처음 한 턴은 모름) — 추천, (b) `~/.drawing/limits.json` 하나만 예외로 허용.
+2. **원문 디스크 저장을 끊을 범위:** Drawing는 끊는 게 추천인데, 재시작하면 세션 화면 기록이 비어요. 이걸 받아들일지, 아니면 "세션 삭제 시 지움 + 24시간 뒤 자동 삭제"로 디스크 보관을 허용할지. Dispatch 본체도 같이 끊을지.
+3. **`[Dispatch]` 접두어·`DISPATCH_*` 환경변수 이름:** 훅 호환을 위해 유지(추천)할지, Drawing 이름으로 바꾸고 훅도 같이 고칠지.
 4. **Claude `--permission-mode manual`:** Dispatch는 `manual`을 그대로 넘겨요(D:server/sessions.js:904). 현재 CLI가 이 값을 받는지(아니면 `default`로 바꿔야 하는지) 실제 CLI로 한 번 확인이 필요해요.
 5. **Gemini 환경변수:** Gemini만 `sessionEnv()` 대신 `process.env`를 써서 헤드리스 Playwright 설정이 빠져요(D:server/sessions.js:1080 vs 26). 옮기면서 맞추는 게 맞는지(추천: 맞춘다).

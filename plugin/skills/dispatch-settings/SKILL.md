@@ -1,11 +1,11 @@
 ---
-name: atelier-settings
-description: Read and change Atelier's settings and machine-wide numbers — cost and tokens of the last 14 days, the branch graph, the session timeline, usage limits, the limit guard and team settings (models per role, max teammates, rotation, context and stuck guards), user defaults, PR tracking, provider connections and the workspace folder. Use for "비용 얼마 썼어", "브랜치 상태", "한도 가드 바꿔줘", "역할별 모델 바꿔줘", "Codex 연결해줘", "작업 폴더 바꿔줘".
+name: dispatch-settings
+description: Read and change Dispatch's settings and machine-wide numbers — cost and tokens of the last 14 days, the branch graph, the session timeline, usage limits, the limit guard and team settings (models per role, max teammates, rotation, context and stuck guards), user defaults, PR tracking, provider connections and the workspace folder. Use for "비용 얼마 썼어", "브랜치 상태", "한도 가드 바꿔줘", "역할별 모델 바꿔줘", "Codex 연결해줘", "작업 폴더 바꿔줘".
 ---
 
-# Atelier settings
+# Dispatch settings
 
-`<plugin-root>` is two levels above this file's folder. Calls go through `<plugin-root>/scripts/api.sh [-C <project-root>] METHOD PATH [BODY]`. Full fields: `../atelier-setup/reference/api.md` ("Providers and settings").
+`<plugin-root>` is two levels above this file's folder. Calls go through `<plugin-root>/scripts/api.sh [-C <project-root>] METHOD PATH [BODY]`. Full fields: `../dispatch/reference/api.md` ("Providers and settings").
 
 ## Read
 
@@ -16,7 +16,7 @@ description: Read and change Atelier's settings and machine-wide numbers — cos
 | 세션 타임라인 | `GET /api/timeline` | `sessions` → `[[at, state], …]` (2 hours) |
 | 한도 | `GET /api/limits` | `claude.windows[]` (`label`, `used` 0–1, `reset`), `openai`, `gemini` |
 | 현재 설정 | `GET /api/state` | `settings.guard`, `settings.team`, `providers`, `roles`, `models` |
-| 기본값 | `GET /api/user-defaults` | `values` (port, theme, team role models) from `~/.atelier/drawing.json` |
+| 기본값 | `GET /api/user-defaults` | `values` (port, theme, team role models) from `~/.dispatch/drawing.json` |
 | PR 추적 | `GET /api/workspace/pr-tracking` | `on` |
 | 작업 폴더 | `GET /api/workspaces` | `current`, `folders[]` |
 

@@ -43,9 +43,9 @@ const ASK = 'PLC에서 데이터를 받아온 뒤 로봇을 움직이는 웹 페
 const RULES = [
   '',
   '(데모 실행) 구현은 하지 말고 계획까지만 해요.',
-  `1) 먼저 create_sessions로 문서화 팀원 1명(model "${MODEL}")을 만들어 "아키텍처" 문서를 쓰게 해요: PLC → 게이트웨이 → 서버 → 웹 → 로봇 컨트롤러 아키텍처 다이어그램 하나와 명령 흐름도 하나(atelier-diagram 스킬).`,
+  `1) 먼저 create_sessions로 문서화 팀원 1명(model "${MODEL}")을 만들어 "아키텍처" 문서를 쓰게 해요: PLC → 게이트웨이 → 서버 → 웹 → 로봇 컨트롤러 아키텍처 다이어그램 하나와 명령 흐름도 하나(dispatch-diagram 스킬).`,
   '2) 그다음 write_plan으로 계획(목표, 단계(구현·리뷰), 위험)을 써요.',
-  '3) 이어서 atelier-doc 스킬로 그 계획 문서의 목표 아래에 "요구사항"과 "테스트 조건"(PLC 연결 끊김, 값 범위 밖, 로봇 정지 명령, 지연) 섹션을 넣어요. 단계 다이어그램 블록과 단계 목록은 건드리지 않아요.',
+  '3) 이어서 dispatch-doc 스킬로 그 계획 문서의 목표 아래에 "요구사항"과 "테스트 조건"(PLC 연결 끊김, 값 범위 밖, 로봇 정지 명령, 지연) 섹션을 넣어요. 단계 다이어그램 블록과 단계 목록은 건드리지 않아요.',
   '4) 계획 경로 한 줄로 턴을 끝내요. 시작하기는 누르지 않아요.',
 ].join('\n');
 
@@ -80,7 +80,7 @@ writeFileSync(join(repo, 'README.md'), '# plc-robot-console\n\nPLC 값을 받아
 writeFileSync(join(repo, 'gateway', 'README.md'), '# gateway\n\nPLC(Modbus TCP)에서 값을 읽어 서버로 보낸다.\n');
 writeFileSync(join(repo, 'server', 'README.md'), '# server\n\n게이트웨이 값을 받아 웹으로 내보내고 로봇 명령을 중계한다.\n');
 writeFileSync(join(repo, 'web', 'README.md'), '# web\n\n운전 화면: PLC 값, 로봇 상태, 명령 버튼.\n');
-writeFileSync(join(repo, '.gitignore'), '.atelier/\n');
+writeFileSync(join(repo, '.gitignore'), '.dispatch/\n');
 git('add', '.');
 git('commit', '-qm', 'init');
 const ws = join(repo, 'workspace');
@@ -104,7 +104,7 @@ if (port === 4000 || port === 4001) throw new Error('refusing the preview ports'
 const env = FAKE
   ? { HOME: scratch, DRAW_PORT: String(port), ...fake.env, PATH: `${fake.dir}:${dirname(which('git'))}` }
   : { ...process.env, DRAW_PORT: String(port), DRAWING_USER_DEFAULTS: 'off' };
-// When this script runs from inside an agent session, its Atelier and Claude Code variables (session ids, the
+// When this script runs from inside an agent session, its Dispatch and Claude Code variables (session ids, the
 // parent server's URL, messaging sockets) must not reach the demo server or its sessions.
 for (const k of Object.keys(env)) if (/^(DISPATCH_|DRAWING_SESSION|CLAUDE_CODE_|CLAUDECODE$|CLAUDE_PID$|CLAUDE_EFFORT$)/.test(k)) delete env[k];
 const server = spawn(process.execPath, ['server/index.js', ws], { env, stdio: ['ignore', 'pipe', 'pipe'] });

@@ -1,11 +1,11 @@
-// Strong masking for saved chat history (.atelier/chat/, #968). The chat is the one place a
+// Strong masking for saved chat history (.dispatch/chat/, #968). The chat is the one place a
 // conversation is kept on disk, so this goes further than redact.js: on top of its key and email
 // shapes it hides phone-like numbers, long random tokens, absolute and home paths and name-like
 // words in common contexts. It matches shapes, not known values, and leans to masking too much:
 // a false positive only hides a word in an old conversation.
 //
 // Trade-offs kept on purpose:
-// - Absolute paths with only two parts outside the system roots (/work/atelier, /api/file) stay:
+// - Absolute paths with only two parts outside the system roots (/work/dispatch, /api/file) stay:
 //   masking them would also hide every API route and short repo path mentioned in a chat.
 // - Names are found by context only (a title, a name field, an intro, a greeting, a surname before
 //   입니다/가); a bare name with no context stays. Inside a context the match is wide on purpose.

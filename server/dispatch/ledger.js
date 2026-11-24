@@ -1,5 +1,5 @@
 // Session ledger (issue #747): which sessions, models and accounts worked on which GitHub issue.
-// Kept in <project>/.atelier/state.json under `ledger`, so it outlives removed sessions (auto-remove drops the
+// Kept in <project>/.dispatch/state.json under `ledger`, so it outlives removed sessions (auto-remove drops the
 // session itself). Metadata only: role, provider, model, effort, the account *label* as it was when the session
 // started, times, token counts, cost, branch names and issue numbers. Never transcripts, prompts, answers,
 // emails or account ids. Strings are short tokens (pickSession's rule in server/runs/record.js).

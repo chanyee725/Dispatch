@@ -6,7 +6,7 @@ import * as agents from './cursor/agents.js';
 import * as activity from './cursor/activity.js';
 
 export const modules = [
-  // The user's defaults, ~/.atelier/drawing.json (E555): read first by the modules below, written by the 설정 UI.
+  // The user's defaults, ~/.dispatch/drawing.json (E555): read first by the modules below, written by the 설정 UI.
   { name: 'userDefaults', setup: userDefaults.setup },
   // The workspace's project folders (names only), the folder picker and the PR/CI switch.
   { name: 'workspace', setup: workspace.setup },

@@ -1,4 +1,4 @@
-// plugin/scripts/api.sh: the skills' one way to call the Atelier server (port lookup, x-drawing headers, errors).
+// plugin/scripts/api.sh: the skills' one way to call the Dispatch server (port lookup, x-drawing headers, errors).
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { execFile } from 'node:child_process';
@@ -9,7 +9,7 @@ import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const API = fileURLToPath(new URL('../plugin/scripts/api.sh', import.meta.url));
-// Not inside a git project, so no .atelier/server.port is picked up from the checkout running the tests.
+// Not inside a git project, so no .dispatch/server.port is picked up from the checkout running the tests.
 const CWD = mkdtempSync(join(tmpdir(), 'api-sh-cwd-'));
 
 function run(args, env = {}, input) {
@@ -63,12 +63,12 @@ test('api.sh: GET has no write headers; POST sends x-drawing, the session id and
   });
 });
 
-test('api.sh: the port comes from <project>/.atelier/server.port; 4xx exits 1 with the body on stderr', async () => {
+test('api.sh: the port comes from <project>/.dispatch/server.port; 4xx exits 1 with the body on stderr', async () => {
   const project = mkdtempSync(join(tmpdir(), 'api-sh-'));
   try {
     await withServer(async (port) => {
-      mkdirSync(join(project, '.atelier'));
-      writeFileSync(join(project, '.atelier/server.port'), `${port}\n`);
+      mkdirSync(join(project, '.dispatch'));
+      writeFileSync(join(project, '.dispatch/server.port'), `${port}\n`);
       const ok = await run(['-C', project, 'GET', '/api/info'], { DRAW_PORT: '1' });
       assert.equal(ok.code, 0);
       const miss = await run(['-C', project, 'DELETE', '/api/missing']);
@@ -92,9 +92,9 @@ test('api.sh: brackets in a query go out as they are (-g), and a hung server tim
     assert.equal(r.code, 0, r.stderr);
     assert.equal(seen.at(-1).url, '/api/file?path=a[1]{x}');
     const t0 = Date.now();
-    const hung = await run(['GET', '/api/hang'], { ...env, ATELIER_API_TIMEOUT: '1' });
+    const hung = await run(['GET', '/api/hang'], { ...env, DISPATCH_API_TIMEOUT: '1' });
     assert.equal(hung.code, 1);
     assert.ok(Date.now() - t0 < 5000);
-    assert.equal((await run(['GET', '/api/tree'], { ...env, ATELIER_API_TIMEOUT: 'x' })).code, 2);
+    assert.equal((await run(['GET', '/api/tree'], { ...env, DISPATCH_API_TIMEOUT: 'x' })).code, 2);
   });
 });

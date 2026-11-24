@@ -1,4 +1,4 @@
-// 세션 보드 inside the Atelier shell (#731), as a card dashboard on the home's dash primitives (#879): no header or tab
+// 세션 보드 inside the Dispatch shell (#731), as a card dashboard on the home's dash primitives (#879): no header or tab
 // row and no 프로젝트 card (one project per server, #778; the scope still comes from the address). Left 60%: 세션;
 // right 40%: 작업 보드, with 확인 필요 as its top group (#924); 사용량 lives in the sidebar and the 대시보드 (#919). Left, under the
 // session cards: the 타임라인 card. `#board=usage` and `#board=branches` open their full screen in one card; the old

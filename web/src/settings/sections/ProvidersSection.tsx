@@ -243,7 +243,7 @@ function ProviderRow({ meta, models, email, describedBy }: { meta: ProviderMeta;
                 {pending === 'key' && <Loader2 aria-hidden className="connect-spin size-3.5" />}키로 연결
               </button>
             </div>
-            <p className="text-xs text-muted-foreground">키는 {meta.cliName}에만 넘기고 Atelier에는 남기지 않아요.</p>
+            <p className="text-xs text-muted-foreground">키는 {meta.cliName}에만 넘기고 Dispatch에는 남기지 않아요.</p>
           </form>
         ) : (
           <button
@@ -277,7 +277,7 @@ function ProviderRow({ meta, models, email, describedBy }: { meta: ProviderMeta;
   );
 }
 
-// Codex and agy print no account email without reading their credential files, which Atelier never does.
+// Codex and agy print no account email without reading their credential files, which Dispatch never does.
 const NO_EMAIL: Record<string, string> = { openai: 'Codex CLI는 로그인한 이메일을 알려주지 않아요.', gemini: 'agy는 로그인한 이메일을 알려주지 않아요.' };
 
 /** 로그인 계정: the email the provider's CLI is logged in with, read only and selectable. `email` undefined: still asking. */

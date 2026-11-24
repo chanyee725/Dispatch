@@ -20,7 +20,7 @@ function hook(script, root, input) {
 }
 
 function scratch() {
-  const root = mkdtempSync(path.join(tmpdir(), "atelier-766-hooks-"));
+  const root = mkdtempSync(path.join(tmpdir(), "dispatch-766-hooks-"));
   const git = (...a) => assert.equal(spawnSync("git", ["-C", root, ...a]).status, 0, a.join(" "));
   git("init", "-q");
   git("config", "user.email", "t@example.invalid");

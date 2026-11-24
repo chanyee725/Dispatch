@@ -59,7 +59,7 @@ test("the lead hands PRs and merges to the two roles and runs neither command it
 
 test("team rules: leads and implementers open no PR and merge nothing; the two roles check open PRs", async () => {
   const { readFileSync } = await import("node:fs");
-  const rules = readFileSync(new URL("../../plugin/skills/atelier-team/reference/rules.md", import.meta.url), "utf8");
+  const rules = readFileSync(new URL("../../plugin/skills/dispatch-team/reference/rules.md", import.meta.url), "utf8");
   assert.match(rules, /Leads and implementers open no PR and merge nothing/);
   assert.match(rules, /PR role \(`pr`\): changes no code/);
   assert.match(rules, /Merge role \(`merge`, one per project\): the only one who runs `gh pr merge --merge`/);

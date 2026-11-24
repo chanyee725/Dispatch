@@ -199,15 +199,15 @@ test('connecting a provider checks the CLI only then; it stays off until the use
   }
 });
 
-test('state goes to <project>/.atelier/state.json only: nothing in the workspace, no transcripts', async () => {
+test('state goes to <project>/.dispatch/state.json only: nothing in the workspace, no transcripts', async () => {
   const { root, ws } = scratchRepo();
   const { deps } = fakeDeps(root);
   const { base, stop } = await start(ws, deps);
   assert.equal((await fetch(`${base}/api/settings`, { method: 'POST', headers: W, body: JSON.stringify({ team: { maxChildren: 3 } }) })).status, 200);
   await stop();
   try {
-    assert.deepEqual(readdirSync(join(root, '.atelier')).sort(), ['state.json']);
-    assert.equal(existsSync(join(ws, '.atelier')), false);
+    assert.deepEqual(readdirSync(join(root, '.dispatch')).sort(), ['state.json']);
+    assert.equal(existsSync(join(ws, '.dispatch')), false);
   } finally {
     rmSync(root, { recursive: true, force: true });
   }
@@ -222,7 +222,7 @@ test('outside a git project the dispatch module is off and drawing still works',
     assert.equal((await (await fetch(`${base}/api/dispatch`)).json()).reason, 'not-git');
     assert.equal((await fetch(`${base}/api/state`)).status, 404);
     assert.equal((await fetch(`${base}/api/workspace/projects`)).status, 200);
-    assert.equal(existsSync(join(dir, '.atelier')), false);
+    assert.equal(existsSync(join(dir, '.dispatch')), false);
   } finally {
     await stop();
     rmSync(dir, { recursive: true, force: true });
