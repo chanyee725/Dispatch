@@ -17,7 +17,7 @@ function fakeHub(sessions, rts, team = {}) {
     isConnected: () => true,
   });
   hub.sentTo = sent;
-  hub.send = (id, text) => sent.push({ id, text });
+  hub.send = (id, text, { onDelivery } = {}) => { sent.push({ id, text }); onDelivery?.(true); };
   return hub;
 }
 const fakeProc = () => { const lines = []; return { lines, stdin: { write: l => lines.push(JSON.parse(l)) } }; };

@@ -54,7 +54,8 @@ test("reports to an available provider are delivered while Claude reports wait",
   add("o", "openai").status = "idle"; add("c", "claude").status = "idle";
   const a = add("a", "gemini", "o"), b = add("b", "openai", "c");
   const sent = [];
-  hub.send = id => sent.push(id); hub.boardNote = () => ""; hub.armAutoRemove = () => {};
+  hub.send = (id, _text, { onDelivery } = {}) => { sent.push(id); onDelivery?.(true); };
+  hub.boardNote = () => ""; hub.armAutoRemove = () => {};
   hub.queueLeadReport(a, "ready"); hub.queueLeadReport(b, "wait");
   assert.deepEqual(sent, ["o"]);
   assert.equal(hub.rt(a.id).pendingReports.length, 0);

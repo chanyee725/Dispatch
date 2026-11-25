@@ -106,27 +106,50 @@ export class HubLeadInbox {
     for (const pending of this.leadInboxQueues(lead)) {
       if (!queue || pending[0].order < queue[0].order) queue = pending;
     }
-    if (!queue || this.pausedFor(lead) || this.holdTeam?.(lead.id) || this.runBlock(lead)) return;
-    r.drainingLeadInbox = true;
-    const item = queue.shift();
+    const item = queue?.[0];
+    if (!item || item.dispatching || this.pausedFor(lead) || this.holdTeam?.(lead.id) || this.runBlock(lead)) return;
+    // The replacement's handoff runs first. Keep the item in the queue that moves to the successor.
+    if (this.replaceDue(lead) && this.replaceSession(lead)) return;
+    r.drainingLeadInbox = item.dispatching = true;
+    const wasHeld = r.leadInboxHeld;
+    r.leadInboxHeld = r.leadInboxResume = false;
     try {
-      this.send(lead.id, item.text + (item.board ? this.boardNote(lead.id) : ""), { images: item.images });
+      this.send(lead.id, item.text + (item.board ? this.boardNote(lead.id) : ""), {
+        images: item.images,
+        onDelivery: delivered => {
+          r.drainingLeadInbox = item.dispatching = false;
+          const sender = item.sender && this.get(item.sender);
+          if (delivered) this.finishLeadDelivery(item, sender, queue);
+          else {
+            r.leadInboxHeld = true;
+            r.leadInboxResume = false;
+          }
+          if (this.get(lead.id) === lead) this.emit("session", this.publicSession(lead));
+          const parent = sender?.parent && this.get(sender.parent);
+          if (parent && parent !== lead) {
+            this.emit("session", this.publicSession(parent));
+            this.drainLeadInbox(parent);
+          }
+        },
+      });
     } catch {
-      queue.unshift(item);
-      return;
-    } finally {
-      r.drainingLeadInbox = false;
+      r.drainingLeadInbox = item.dispatching = false;
+      r.leadInboxHeld = wasHeld;
+      r.leadInboxResume = resume;
     }
+  }
 
-    const sender = item.sender && this.get(item.sender);
-    if (sender) {
-      // The length guard may replace a teammate on its next turn after its lead has heard the warning.
-      if (item.tellsLong && sender.longRun) {
-        sender.longRun.told = true;
-        this.store.save();
-      }
-      if (item.board) this.armAutoRemove(sender);
+  /** @this {import("./hub-util.js").HubThis} */
+  finishLeadDelivery(item, sender, queue) {
+    const pending = sender ? this.rt(sender.id).pendingReports : queue;
+    const index = pending.indexOf(item);
+    if (index >= 0) pending.splice(index, 1);
+    if (!sender) return;
+    // The length guard may replace a teammate on its next turn after its lead has heard the warning.
+    if (item.tellsLong && sender.longRun) {
+      sender.longRun.told = true;
+      this.store.save();
     }
-    if (this.get(lead.id)) this.emit("session", this.publicSession(lead));
+    if (item.board) this.armAutoRemove(sender);
   }
 }

@@ -22,17 +22,18 @@ function fixture({ provider = "claude", limit = 4 } = {}) {
   const work = [];
   const attach = (lead) => {
     const proc = Object.assign(new EventEmitter(), {
-      stdin: { write: (line) => { const { message } = JSON.parse(line); if (message) work.push(message.content); } },
+      stdin: { write: (line, callback) => { const { message } = JSON.parse(line); if (message) work.push(message.content); callback?.(); } },
       stdout: new PassThrough(), stderr: new EventEmitter(), kill() {},
     });
     hub.attach(lead, proc, provider === "claude" ? "exit" : "close");
     return proc;
   };
   const proc = attach(lead);
-  hub.start = (s, text) => {
+  hub.start = (s, text, _images, onStart) => {
     work.push(text);
     attach(s);
     hub.touch(s, { status: "running" });
+    onStart?.(true);
   };
   const report = (s, text) => { hub.rt(s.id).lastText = text; hub.reportToParent(s); };
   const done = (s = lead) => hub.onClaude(s, { type: "result" });
@@ -221,6 +222,99 @@ test("if sending fails before dispatch, the head stays queued and the retry only
   assert.equal(inboxCount(), 0);
   assert.deepEqual(messages(), ["retry"]);
   assert.equal(hub.transcript(lead.id).filter(e => e.kind === "user").length, 1);
+});
+
+test("a failed CLI launch keeps reports pending and only records delivery after a successful retry", () => {
+  for (const failure of ["throw", "spawn error", "closed before ready", "empty exit"]) {
+    const { hub, lead, a, report, inboxCount } = fixture({ provider: "gemini" });
+    delete hub.start;
+    hub.rt(lead.id).proc = null;
+    hub.touch(lead, { status: "idle" });
+    const proc = Object.assign(new EventEmitter(), { stdout: new PassThrough(), stderr: new PassThrough() });
+    hub.spawnCli = () => {
+      if (failure === "throw") throw new Error("launch failed");
+      return proc;
+    };
+    report(a, "keep this report");
+    if (failure === "spawn error") proc.emit("error", Object.assign(new Error("missing CLI"), { code: "ENOENT" }));
+    if (failure === "closed before ready") proc.emit("close", 1);
+    if (failure === "empty exit") proc.emit("close", 0);
+    assert.equal(lead.status, "error", failure);
+    assert.equal(inboxCount(), 1, failure);
+    assert.equal(hub.rt(a.id).pendingReports.length, 1, failure);
+    assert.equal(hub.autoRemoveBlocked(a), "report", failure);
+    assert.equal(hub.rt(a.id).autoRemove, undefined, failure);
+    assert.deepEqual(hub.transcript(lead.id).filter(e => e.kind === "user"), [], failure);
+
+    const retry = Object.assign(new EventEmitter(), { stdout: new PassThrough(), stderr: new PassThrough() });
+    hub.spawnCli = () => retry;
+    hub.messageSession(lead.id, "resume");
+    assert.equal(inboxCount(), 2, failure);
+    retry.stdout.write(JSON.stringify({ event: "init", conversation_id: "test" }) + "\n");
+    assert.equal(inboxCount(), 1, failure);
+    assert.equal(hub.rt(a.id).pendingReports.length, 0, failure);
+    assert.ok(hub.rt(a.id).autoRemove, failure);
+    assert.match(hub.transcript(lead.id).filter(e => e.kind === "user")[0].text, /keep this report$/);
+    hub.cancelAutoRemove(a.id);
+  }
+});
+
+test("Codex thread readiness does not consume a report when turn/start is rejected", () => {
+  const { hub, lead, a, add, report, inboxCount } = fixture({ provider: "openai" });
+  delete hub.start;
+  hub.rt(lead.id).proc = null;
+  hub.touch(lead, { status: "idle" });
+  const start = () => {
+    const proc = Object.assign(new EventEmitter(), {
+      stdin: new PassThrough(), stdout: new PassThrough(), stderr: new PassThrough(),
+    });
+    hub.spawnCli = () => proc;
+    const ready = () => {
+      for (const message of [
+        { id: 1, result: {} },
+        { id: 2, result: { thread: { id: "thread" }, approvalPolicy: "never", sandbox: { type: "workspaceWrite" } } },
+      ]) proc.stdout.write(JSON.stringify(message) + "\n");
+    };
+    return { proc, ready };
+  };
+
+  const first = start();
+  report(a, "codex pending");
+  first.ready();
+  assert.equal(inboxCount(), 1);
+  first.proc.stdout.write(JSON.stringify({ id: 3, error: { message: "turn rejected" } }) + "\n");
+  first.proc.emit("close", 0);
+  assert.equal(lead.status, "error");
+  assert.equal(hub.autoRemoveBlocked(a), "report");
+  assert.deepEqual(hub.transcript(lead.id).filter(e => e.kind === "user"), []);
+
+  const retry = start();
+  const newer = add("newer", lead.id);
+  hub.messageLead(newer.id, "later");
+  hub.messageSession(lead.id, "resume");
+  retry.ready();
+  retry.proc.stdout.write(JSON.stringify({ id: 3, result: { turn: { id: "turn" } } }) + "\n");
+  assert.equal(inboxCount(), 2);
+  assert.equal(hub.rt(newer.id).pendingReports.length, 1);
+  const user = hub.transcript(lead.id).filter(e => e.kind === "user");
+  assert.equal(user.length, 1);
+  assert.match(user[0].text, /codex pending$/);
+  hub.cancelAutoRemove(a.id);
+});
+
+test("a Claude pipe write callback failure leaves the report queued", () => {
+  const { hub, lead, a, proc, done, report, inboxCount } = fixture();
+  let complete;
+  proc.stdin.write = (_line, callback) => { complete = callback; };
+  report(a, "wait for pipe write");
+  done();
+  assert.equal(inboxCount(), 1);
+  assert.equal(hub.autoRemoveBlocked(a), "report");
+  complete(new Error("broken pipe"));
+  assert.equal(lead.status, "error");
+  assert.equal(inboxCount(), 1);
+  assert.deepEqual(hub.transcript(lead.id).filter(e => e.kind === "user"), []);
+  assert.equal(hub.rt(a.id).autoRemove, undefined);
 });
 
 test("maxLeadInbox is validated as a team setting", () => {

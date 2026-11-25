@@ -12,7 +12,7 @@ import { patchTeam, teamSettings } from "../../server/dispatch/settings.js";
 // Auto-remove of finished teammates (#632, ported from Dispatch #39) on a real Hub with fake CLI processes:
 // no agent CLI is ever started; the processes are stubs that record what is written to stdin.
 const MODELS = [{ id: "claude-fable-5-2", provider: "claude", efforts: ["low"], contextWindow: 200000 }];
-const fakeProc = () => { const lines = []; return { lines, stdin: { write: l => lines.push(JSON.parse(l)) }, kill() {} }; };
+const fakeProc = () => { const lines = []; return { lines, stdin: { write: (l, callback) => { lines.push(JSON.parse(l)); callback?.(); } }, kill() {} }; };
 const said = proc => proc.lines.map(l => l.message?.content ?? "").join("\n---\n");
 const dirs = [];
 const tmp = prefix => { const d = mkdtempSync(join(tmpdir(), prefix)); dirs.push(d); return d; };

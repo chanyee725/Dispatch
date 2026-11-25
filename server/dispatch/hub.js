@@ -680,7 +680,7 @@ export class Hub extends EventEmitter {
   /** Claude account windows never pause another provider's sessions. */
   pausedFor(s) { return s?.provider === "claude" && this.paused; }
 
-  send(id, text, { force = false, images = null } = {}) {
+  send(id, text, { force = false, images = null, onDelivery } = {}) {
     const s = this.get(id);
     if (!s) throw Object.assign(new Error("세션이 없어요"), { status: 404 });
     if (images?.length && s.provider !== "claude") throw Object.assign(new Error("이미지는 Claude 세션에만 보낼 수 있어요"), { status: 400 });
@@ -693,7 +693,13 @@ export class Hub extends EventEmitter {
     // does not go out.
     const notes = r.leadNotes?.length ? r.leadNotes.splice(0) : [];
     if (notes.length) text = `${text}\n\n${notes.join("\n")}`;
-    try { this.deliver(s, r, text, images); } catch (e) { r.leadNotes = [...notes, ...(r.leadNotes || [])]; throw e; }
+    const restoreNotes = () => { r.leadNotes = [...notes, ...(r.leadNotes || [])]; };
+    const settle = onDelivery && (delivered => {
+      if (!delivered) restoreNotes();
+      onDelivery(delivered);
+    });
+    try { this.deliver(s, r, text, images, settle); } catch (e) { restoreNotes(); throw e; }
+    if (onDelivery) return;
     // Whoever writes to a teammate in its grace period keeps it: the auto-remove timer stops once the
     // message went out. A refused message (a running Codex or Gemini turn) leaves the timer armed.
     r.leadInboxHeld = false;
@@ -702,9 +708,9 @@ export class Hub extends EventEmitter {
     this.cancelAutoRemove(id);
   }
 
-  deliver(s, r, text, images = null) {
+  deliver(s, r, text, images = null, onDelivery) {
     // Past the length guard (#969): the message goes to a fresh session instead, with the handoff in front.
-    if (this.replaceDue(s) && this.replaceSession(s, { text, images })) return;
+    if (!onDelivery && this.replaceDue(s) && this.replaceSession(s, { text, images })) return;
     const rotate = this.shouldRotate(s);
     if (!rotate && r.proc && s.provider !== "claude") {
       const name = s.provider === "openai" ? "Codex" : "Gemini";
@@ -713,19 +719,41 @@ export class Hub extends EventEmitter {
     // A pending length-guard note is attached here and cleared only on a path that delivers the message.
     const pend = s.longPending;
     if (pend) text = `${text}\n\n${pend}`;
-    const sent = () => { if (pend && s.longPending === pend) s.longPending = null; };
-    // Images (#968) go to the CLI only; the transcript keeps a count, never the bytes.
-    const record = () => this.push(s, { kind: "user", text: images?.length ? [text, `[이미지 ${images.length}장]`].filter(Boolean).join("\n") : text });
-    if (rotate) { record(); sent(); return this.rotate(s, text, images); }
+    let settled = false;
+    const sent = (delivered = true) => {
+      if (settled) return;
+      settled = true;
+      if (delivered) {
+        // Images go to the CLI only; the transcript keeps a count, never the bytes.
+        this.push(s, { kind: "user", text: images?.length ? [text, `[이미지 ${images.length}장]`].filter(Boolean).join("\n") : text });
+        if (pend && s.longPending === pend) s.longPending = null;
+      }
+      onDelivery?.(delivered);
+    };
+    if (rotate) {
+      if (!onDelivery) sent();
+      return this.rotate(s, text, images, onDelivery && sent);
+    }
     if (s.provider === "claude" && r.proc) {
       if (r.proc.stdin.destroyed || r.proc.stdin.writableEnded) throw new Error("Claude에 메시지를 보낼 수 없어요");
-      r.proc.stdin.write(JSON.stringify({ type: "user", message: { role: "user", content: userContent(text, images) } }) + "\n");
-      record();
-      sent();
-      this.touch(s, { status: "running" });
+      const line = JSON.stringify({ type: "user", message: { role: "user", content: userContent(text, images) } }) + "\n";
+      if (onDelivery) {
+        let writeFailed = false;
+        r.proc.stdin.write(line, error => {
+          if (this.get(s.id) !== s || s._killed) return sent(false);
+          writeFailed = Boolean(error);
+          if (error) this.touch(s, { status: "error", error: "Claude에 메시지를 보낼 수 없어요" });
+          sent(!error);
+        });
+        if (!writeFailed) this.touch(s, { status: "running", error: null });
+      } else {
+        r.proc.stdin.write(line);
+        sent();
+        this.touch(s, { status: "running" });
+      }
     } else {
-      record();
-      this.start(s, text, images);
+      if (!onDelivery) sent();
+      this.start(s, text, images, onDelivery && sent);
     }
   }
 
@@ -811,7 +839,7 @@ export class Hub extends EventEmitter {
   }
 
   /** Ends the current CLI session and starts a fresh one with a handoff note plus `text`. */
-  rotate(s, text, images = null) {
+  rotate(s, text, images = null, onStart) {
     const r = this.rt(s.id);
     const old = r.proc;
     r.proc = null; // the exit handler ignores a process that is no longer current
@@ -830,7 +858,7 @@ export class Hub extends EventEmitter {
     if (s.provider === "openai") s.ctxWindow = 0;
     s.ctxHigh = null;
     r.ctxNoticed = false;
-    this.start(s, note, images);
+    this.start(s, note, images, onStart);
   }
 
   /* ---------------- Auto-replace long sessions (#969) ---------------- */
@@ -844,7 +872,7 @@ export class Hub extends EventEmitter {
     const t = this.team();
     if (!s || !t.autoRotateLong || !longOver(s, t) || s.status !== "idle" || s._killed) return false;
     const r = this.live.get(s.id);
-    if (r?.replacing || r?.perms?.size || s.asksUser) return false;
+    if (r?.replacing || r?.drainingLeadInbox || r?.perms?.size || s.asksUser) return false;
     if (s.parent && !s.longRun?.told) return false;
     if (this.pausedFor(s) || this.runBlock(s) || this.holdTeam?.(s.parent ?? s.id)) return false;
     if (s.provider === "claude" && this.guardCheck(1)) return false;
@@ -994,7 +1022,7 @@ export class Hub extends EventEmitter {
     if (!lead || lead.status === "done") return;
     const r = this.rt(leadId);
     const midTurn = lead.provider === "claude" && r.proc && (lead.status === "running" || lead.status === "waiting");
-    if (midTurn && !r.leadInboxHeld) { try { this.send(leadId, text); return; } catch { /* kept for the next message */ } }
+    if (midTurn && !r.leadInboxHeld && !r.drainingLeadInbox) { try { this.send(leadId, text); return; } catch { /* kept for the next message */ } }
     (r.leadNotes ||= []).push(text);
   }
 

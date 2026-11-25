@@ -14,9 +14,14 @@ function processed(total) {
 
 // One stdio app-server process per Dispatch turn, as with exec. Its token notifications
 // carry both the cumulative processing counters and the latest context snapshot.
-export function codexTurn(proc, { threadId: resumeId, cwd, model, sandbox, text, effort, active, started, usage, item, finish }) {
+export function codexTurn(proc, { threadId: resumeId, cwd, model, sandbox, text, effort, active, started, accepted, usage, item, finish }) {
   let threadId;
   let turnId;
+  const accept = id => {
+    if (!id || turnId) return;
+    turnId = id;
+    accepted?.();
+  };
   let ended = false;
   let expectedReply = 1;
   const seenCompaction = new Set();
@@ -65,8 +70,8 @@ export function codexTurn(proc, { threadId: resumeId, cwd, model, sandbox, text,
         }
         started(threadId);
         request(3, "turn/start", { threadId, effort, input: [{ type: "text", text, text_elements: [] }] });
-      } else if (id === 3 && !turnId) {
-        turnId = result?.turn?.id;
+      } else if (id === 3) {
+        accept(result?.turn?.id);
       }
       return;
     }
@@ -80,7 +85,7 @@ export function codexTurn(proc, { threadId: resumeId, cwd, model, sandbox, text,
       if (count(last)) contextsAtTotal.add(`${last}/${tokenUsage.modelContextWindow ?? 0}`);
       return;
     }
-    if (method === "turn/started") turnId ??= params.turn?.id;
+    if (method === "turn/started") accept(params.turn?.id);
     if (!turnId || (params.turnId ?? params.turn?.id) !== turnId) return;
 
     const it = params.item;

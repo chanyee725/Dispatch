@@ -38,7 +38,7 @@ function setup(lines) {
   const usage = () => ({ input: 0, output: 0, cacheRead: 0, cacheWrite: 0 });
   const sent = [];
   store.data.sessions.L = { id: "L", name: "Dex", roleName: "관리자", role: "lead", provider: "claude", model: "claude-fable-5-2", status: "idle", usage: usage(), turns: 1, canSpawn: true };
-  hub.rt("L").proc = { stdin: { write: l => sent.push(JSON.parse(l).message.content) }, kill() {} };
+  hub.rt("L").proc = { stdin: { write: (line, callback) => { sent.push(JSON.parse(line).message.content); callback?.(); } }, kill() {} };
   const kid = store.data.sessions.K = { id: "K", name: "Wes", roleName: "테스터", role: "test", parent: "L", provider: "gemini", model: "gemini-fake-flash",
     perm: "auto", cwd: root, status: "idle", usage: usage(), turns: 0, last: "" };
   return { hub, kid, sent, bin };
