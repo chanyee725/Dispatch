@@ -232,7 +232,7 @@ const AGY_USAGE = {
 
 test("geminiUsageWindows: the Gemini group's buckets become windows (used = 1 - remaining), other groups and bad shapes are dropped", () => {
   assert.deepEqual(geminiUsageWindows(JSON.stringify(AGY_USAGE)), [{ label: "주간", used: 0.75, reset: Date.parse("2026-11-26T10:38:45Z") }]);
-  const daily = { command: { name: "usage", data: { groups: [{ name: "Gemini Models", buckets: [{ window: "daily", remaining_fraction: 1.2 }, { window: "weekly", remaining_fraction: "x" }] }] } } };
+  const daily = { command: { name: "usage", data: { groups: [{ name: "Gemini Models", buckets: [{ window: "daily", remaining_fraction: 1 }, { window: "weekly", remaining_fraction: "x" }, { window: "weekly", remaining_fraction: 1.2 }] }] } } };
   assert.deepEqual(geminiUsageWindows(daily), [{ label: "일간", used: 0, reset: null }]);
   for (const bad of ["", "not json", "{}", JSON.stringify({ command: { name: "other", data: AGY_USAGE.command.data } })]) assert.deepEqual(geminiUsageWindows(bad), []);
 });
