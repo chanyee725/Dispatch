@@ -1,5 +1,5 @@
 // App sidebar: the project's name, the 세션 보드 views (세션 보드 S, 브랜치, 사용량), the project folders (each opens the
-// board scoped to it), saved chats (SidebarHistory), then one row per model with its connection status (SidebarModels.tsx),
+// board scoped to it), then one row per model with its connection status (SidebarModels.tsx),
 // settings and the theme switch. Built from the shadcn Sidebar (components/ui/sidebar.tsx).
 // The current view carries aria-current="page", which also drives its look (weight + fill, never colour alone).
 import { ChartColumn, FolderClosed, GitBranch, LayoutGrid } from 'lucide-react';
@@ -19,7 +19,6 @@ import { useProjectList } from './dispatch/useProjectList';
 import type { BoardTab, Section } from './projectNav';
 import { SettingsEntry } from './settings/SettingsEntry';
 import { SidebarModels } from './SidebarModels';
-import { SidebarHistory } from './shell/SidebarHistory';
 import { ThemeSwitch } from './ThemeSwitch';
 import { ProjectName } from './ProjectName';
 import type { Theme, ThemePref } from './theme';
@@ -79,7 +78,6 @@ export function Sidebar(p: Props) {
             </SidebarMenu>
           )}
         </SidebarGroup>
-        <SidebarHistory />
       </SidebarContent>
       <SidebarFooter>
         <SidebarModels />

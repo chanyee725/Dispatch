@@ -1,4 +1,4 @@
-// The app shell: the sidebar (project folders, saved chats, models, settings, theme) and the 세션 보드 beside it, with
+// The app shell: the sidebar (project folders, models, settings, theme) and the 세션 보드 beside it, with
 // the agent live panel, dialogs and toasts over them. The address picks the board's tab and scope
 // (`#board…`, projectNav.ts).
 import { lazy, Suspense, useCallback, useState } from 'react';
