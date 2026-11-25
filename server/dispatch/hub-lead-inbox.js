@@ -96,12 +96,12 @@ export class HubLeadInbox {
 
   /** @this {import("./hub-util.js").HubThis} */
   drainLeadInbox(lead, { resume = false } = {}) {
-    const r = this.live.get(lead.id);
+    let r = this.live.get(lead.id);
     resume ||= r?.leadInboxResume;
-    if (this.stopping || !r || this.get(lead.id) !== lead || lead._killed ||
+    if (this.stopping || this.get(lead.id) !== lead || lead._killed ||
         (lead.status !== "idle" && !(resume && lead.status === "error")) ||
-        (!resume && (lead.asksUser || r.leadInboxHeld)) || r.perms.size || r.drainingLeadInbox ||
-        (r.proc && lead.provider !== "claude")) return;
+        (!resume && (lead.asksUser || r?.leadInboxHeld)) || r?.perms.size || r?.drainingLeadInbox ||
+        (r?.proc && lead.provider !== "claude")) return;
     let queue;
     for (const pending of this.leadInboxQueues(lead)) {
       if (!queue || pending[0].order < queue[0].order) queue = pending;
@@ -110,6 +110,8 @@ export class HubLeadInbox {
     if (!item || item.dispatching || this.pausedFor(lead) || this.holdTeam?.(lead.id) || this.runBlock(lead)) return;
     // The replacement's handoff runs first. Keep the item in the queue that moves to the successor.
     if (this.replaceDue(lead) && this.replaceSession(lead)) return;
+    // An idle lead restored from disk has no runtime until its first delivery.
+    r ??= this.rt(lead.id);
     r.drainingLeadInbox = item.dispatching = true;
     const wasHeld = r.leadInboxHeld;
     r.leadInboxHeld = r.leadInboxResume = false;

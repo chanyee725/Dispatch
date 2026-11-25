@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { EventEmitter } from "node:events";
 import { test } from "node:test";
 import { PassThrough, Readable } from "node:stream";
+import { diskView } from "../../server/dispatch/dispatch-store.js";
 import { Hub } from "../../server/dispatch/hub.js";
 import { adapt, routeTable } from "../../server/dispatch/routes.js";
 import { patchTeam } from "../../server/dispatch/settings.js";
@@ -142,6 +143,39 @@ test("a team hold, Claude quota, and provider guard prevent draining until the h
   hub.checkTeams();
   assert.equal(lead.status, "running");
   assert.deepEqual(messages(), ["held"]);
+});
+
+test("a new report wakes an idle lead only once after restarting without inbox state", () => {
+  const { hub, store, lead, a, report } = fixture();
+  report(a, "old in-memory report");
+  hub.touch(lead, { status: "idle" });
+  const saved = JSON.stringify(diskView(store.data));
+  assert.doesNotMatch(saved, /old in-memory report/);
+  const restarted = new Hub({
+    root: "/tmp", store: { data: JSON.parse(saved), save() {} }, models: hub.models, roles: [], port: 0, limits: hub.shared,
+  });
+  restarted.boardNote = () => "";
+  const restored = restarted.get(lead.id);
+  restarted.checkTeams();
+  assert.equal(restarted.publicSession(restored).leadInboxCount, 0);
+  assert.equal(restarted.live.has(lead.id), false);
+
+  const starts = [];
+  let accept;
+  restarted.start = (s, text, _images, onStart) => {
+    starts.push(text);
+    accept = onStart;
+    restarted.touch(s, { status: "running" });
+  };
+  restarted.rt(a.id).lastText = "new report";
+  restarted.reportToParent(restarted.get(a.id));
+  restarted.checkTeams();
+  restarted.checkTeams();
+  assert.deepEqual(starts, ["[a(팀원) 보고]\nnew report"]);
+  assert.equal(restarted.publicSession(restored).leadInboxCount, 1);
+  accept(true);
+  assert.equal(restarted.publicSession(restored).leadInboxCount, 0);
+  restarted.cancelAutoRemove(a.id);
 });
 
 test("a cancel or an errored turn holds the inbox until a new user instruction resumes FIFO", () => {
