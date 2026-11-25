@@ -110,6 +110,7 @@ test("3.18M Codex tokens stay cumulative while provider context shrinks and dupl
   assert.equal(ctxShare(s), null);
   first.send(high);
   second.send(high);
+  second.send(update(total, counts(49_000, 39_000, 1_000), 272000, "turn-2"));
   second.send(update(counts(4_000_000, 2_400_000, 80_000), counts(1, 0, 0), 272000, "turn-2", "other-thread"));
   assert.equal(ctxShare(s), null);
   const nextTotal = counts(3_120_000, 2_415_000, 81_000, 101_000);
@@ -120,6 +121,30 @@ test("3.18M Codex tokens stay cumulative while provider context shrinks and dupl
   assert.equal(s.turns, 2);
   assert.equal(ctxShare(s), 21_000 / 300_000);
   assert.equal(mtokens(s), 3.201);
+});
+
+test("a resumed Codex turn without replay counts the first request once", async t => {
+  const { hub, store, processes } = await setup(t);
+  const [session] = await hub.create({ items: [{ role: ROLE.id, effort: "low" }], commonPrompt: "test", worktree: false });
+  const s = hub.get(session.id);
+  const first = processes[0];
+  handshake(first);
+  first.send(update(counts(1_000, 700, 100, 40), counts(1_000, 700, 100, 40)));
+  first.send(finished());
+  first.emit("close", 0);
+  const before = mtokens(s);
+
+  hub.send(s.id, "test");
+  const second = processes[1];
+  handshake(second, { resume: true, turnId: "turn-2" });
+  const firstUsage = update(counts(1_100, 760, 110, 45), counts(100, 60, 10, 5), 272000, "turn-2");
+  second.send(firstUsage);
+  second.send(firstUsage);
+
+  assert.equal(s.ctx, 110);
+  assert.equal(Math.round((mtokens(s) - before) * 1_000_000), 110);
+  assert.deepEqual(s.usage, { input: 295, cacheRead: 760, cacheWrite: 45, output: 110 });
+  assert.deepEqual(Object.values(store.data.daily)[0].models[MODEL.id], { ...s.usage, cost: 0 });
 });
 
 test("old saved Codex totals are preserved and a turn with no snapshot stays unknown", async t => {

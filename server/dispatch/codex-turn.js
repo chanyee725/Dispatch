@@ -98,15 +98,19 @@ export function codexTurn(proc, { threadId: resumeId, cwd, model, sandbox, text,
     if (tokenUsage) {
       const { total, last, modelContextWindow } = tokenUsage;
       const next = processed(total);
-      // Older servers can omit the resume snapshot. Count an unambiguous first
-      // increment, otherwise establish a baseline to avoid billing old usage twice.
-      const latest = processed(last);
-      const base = previousTotal ?? (next && latest && Object.keys(zero).every(k => next[k] === latest[k]) ? zero : next);
-      const entries = next && Object.entries(next).map(([key, value]) => [key, value - base[key]]);
-      // Rate-limit updates can repeat usage. Older totals must never replace a newer sample.
-      if (entries?.some(([, value]) => value < 0)) return;
-      const delta = entries?.some(([, value]) => value > 0) ? Object.fromEntries(entries) : null;
-      if (next) previousTotal = next;
+      let delta = null;
+      if (next) {
+        // Without a resume snapshot, only the latest request belongs to the new turn.
+        const entries = previousTotal
+          ? Object.entries(next).map(([key, value]) => [key, value - previousTotal[key]])
+          : Object.entries(processed(last) ?? zero);
+        // Rate-limit updates can repeat usage. Older totals must never replace a newer sample.
+        if (entries.some(([, value]) => value < 0)) return;
+        if (entries.every(([key, value]) => value <= next[key]) && entries.some(([, value]) => value > 0)) {
+          delta = Object.fromEntries(entries);
+        }
+        previousTotal = next;
+      }
       if (delta) contextsAtTotal.clear();
       const ctx = count(last?.totalTokens) ? last.totalTokens : null;
       const window = count(modelContextWindow) ? modelContextWindow : 0;
