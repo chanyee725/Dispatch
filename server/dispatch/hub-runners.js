@@ -84,6 +84,7 @@ export class HubRunners {
       const callback = onStart;
       onStart = null;
       callback?.(delivered);
+      return !!callback;
     };
     let stderr = "";
     proc.stderr.on("data", d => { stderr = (stderr + d).slice(-2000); });
@@ -140,8 +141,14 @@ export class HubRunners {
     });
     onJsonLines(proc.stdout, m => {
       if (r.proc !== proc || s._killed) return;
-      if ((m.type === "system" && m.subtype === "init") || m.type === "assistant" || m.type === "control_request") settleStart(true);
-      if (m.type === "result") settleStart(!m.is_error);
+      // Init only identifies the CLI session. Claude can still reject its first turn.
+      if ((m.type === "assistant" && m.message && !m.error && m.message.model !== "<synthetic>") ||
+          (m.type === "control_request" && m.request?.subtype === "can_use_tool")) settleStart(true);
+      if (m.type === "result" && settleStart(!m.is_error) && m.is_error) {
+        // Retry a rejected first turn through a fresh CLI, with the same delivery check.
+        r.proc = null;
+        proc.kill("SIGTERM");
+      }
       this.onClaude(s, m);
     });
     proc.stdin.write(JSON.stringify({ type: "user", message: { role: "user", content: userContent(prompt, images) } }) + "\n");
@@ -333,8 +340,13 @@ export class HubRunners {
     this.rt(s.id).agyTurn = turn;
     onJsonLines(proc.stdout, m => {
       if (this.live.get(s.id)?.proc === proc && !s._killed && !turn.ended) {
-        if (m.event === "init" || m.event === "step_update") settleStart(true);
-        if (m.event === "result") settleStart(m.result?.status !== "ERROR");
+        // The CLI can emit init and echo its input before the provider accepts the turn.
+        if (m.event === "step_update") {
+          const step = m.step_update;
+          if ((step?.step_type === "agent_response" && (step.text_delta || step.text)) ||
+              (step?.step_type === "tool" && ["ACTIVE", "DONE"].includes(step.state))) settleStart(true);
+        }
+        if (m.event === "result") settleStart(!!m.result?.status && m.result.status !== "ERROR");
       }
       this.onGemini(s, m, turn);
     });

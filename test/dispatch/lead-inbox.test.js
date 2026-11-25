@@ -250,7 +250,7 @@ test("a failed CLI launch keeps reports pending and only records delivery after 
     hub.spawnCli = () => retry;
     hub.messageSession(lead.id, "resume");
     assert.equal(inboxCount(), 2, failure);
-    retry.stdout.write(JSON.stringify({ event: "init", conversation_id: "test" }) + "\n");
+    retry.stdout.write(JSON.stringify({ event: "result", result: { status: "OK" } }) + "\n");
     assert.equal(inboxCount(), 1, failure);
     assert.equal(hub.rt(a.id).pendingReports.length, 0, failure);
     assert.ok(hub.rt(a.id).autoRemove, failure);
@@ -258,6 +258,60 @@ test("a failed CLI launch keeps reports pending and only records delivery after 
     hub.cancelAutoRemove(a.id);
   }
 });
+
+for (const provider of ["claude", "gemini"]) {
+  test(`${provider} init and startup errors keep a report pending until the first turn is accepted`, () => {
+    const { hub, lead, a, report, inboxCount } = fixture({ provider });
+    delete hub.start;
+    hub.rt(lead.id).proc = null;
+    hub.touch(lead, { status: "idle" });
+    const claude = provider === "claude";
+    const start = () => {
+      const proc = Object.assign(new EventEmitter(), {
+        stdin: new PassThrough(), stdout: new PassThrough(), stderr: new PassThrough(), kill() {},
+      });
+      hub.spawnCli = () => proc;
+      return {
+        proc,
+        emit: message => proc.stdout.write(JSON.stringify(message) + "\n"),
+      };
+    };
+    const init = claude ? { type: "system", subtype: "init", session_id: "test" }
+      : { event: "init", conversation_id: "test" };
+    const assertPending = count => {
+      assert.equal(inboxCount(), count);
+      assert.equal(hub.rt(a.id).pendingReports.length, 1);
+      assert.equal(hub.autoRemoveBlocked(a), "report");
+      assert.equal(hub.rt(a.id).autoRemove, undefined);
+      assert.deepEqual(hub.transcript(lead.id).filter(e => e.kind === "user"), []);
+    };
+
+    const first = start();
+    report(a, "keep this report");
+    first.emit(init);
+    assertPending(1);
+    first.emit(claude
+      ? { type: "assistant", error: "authentication_failed", message: { content: [{ type: "text", text: "Authentication failed" }] } }
+      : { event: "step_update", step_update: { step_type: "user_input", state: "DONE" } });
+    assertPending(1);
+    first.emit(claude ? { type: "result", is_error: true, result: "Authentication failed" }
+      : { event: "result", result: { status: "ERROR", error: "Authentication failed" } });
+    if (!claude) first.proc.emit("close", 1);
+    assertPending(1);
+
+    const retry = start();
+    hub.messageSession(lead.id, "resume");
+    retry.emit(init);
+    assertPending(2);
+    retry.emit(claude ? { type: "assistant", message: { content: [{ type: "text", text: "Ready" }] } }
+      : { event: "step_update", step_update: { step_type: "agent_response", text_delta: "Ready" } });
+    assert.equal(inboxCount(), 1);
+    assert.equal(hub.rt(a.id).pendingReports.length, 0);
+    assert.ok(hub.rt(a.id).autoRemove);
+    assert.match(hub.transcript(lead.id).find(e => e.kind === "user").text, /keep this report$/);
+    hub.cancelAutoRemove(a.id);
+  });
+}
 
 test("Codex thread readiness does not consume a report when turn/start is rejected", () => {
   const { hub, lead, a, add, report, inboxCount } = fixture({ provider: "openai" });
