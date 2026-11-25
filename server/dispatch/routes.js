@@ -146,6 +146,7 @@ export function routeTable(d) {
       return hub.folderUsage(p);
     }],
     ["GET", /^\/api\/projects$/, async () => ({ projects: await d.projects() })],
+    ["GET", /^\/api\/service-projects$/, async () => ({ projects: await d.serviceProjects() })],
     ["POST", /^\/api\/settings$/, async (_, b) => {
       const before = { guard: store.data.settings.guard, team: store.data.settings.team };
       if (b.guard) store.data.settings.guard = patchGuard(store.data.settings.guard, b.guard);
