@@ -122,7 +122,10 @@ export function apply(ev: string, d: unknown) {
       const { id, entry } = d as { id: string; entry: Entry };
       loading.get(id)?.buf.push(entry);
       const cur = state.transcripts[id];
-      if (cur) setState({ transcripts: { ...state.transcripts, [id]: [...cur, entry] } });
+      // History can already contain an SSE entry by the time it arrives. The timestamp also
+      // distinguishes sequence numbers reused when a session's in-memory transcript starts over.
+      if (!cur || (entry.id !== undefined && cur.some(e => e.id === entry.id && e.at === entry.at))) break;
+      setState({ transcripts: { ...state.transcripts, [id]: [...cur, entry] } });
       break;
     }
     case 'tasks': setState({ tasks: d as BoardTask[] }); break;

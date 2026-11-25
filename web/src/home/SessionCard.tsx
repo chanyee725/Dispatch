@@ -91,7 +91,7 @@ export function SessionCard({ agent: a, leadInboxCount = 0, summary, title, onOp
         <span className={cn('min-w-0 truncate', detail ? 'text-foreground/80' : 'text-muted-foreground')} title={detail ?? undefined}>
           {detail ?? (busy ? '작업 중이에요' : '다음 지시를 기다려요')}
         </span>
-        {leadInboxCount > 0 && <span className="text-muted-foreground tabular-nums">팀원 메시지 {leadInboxCount}건 대기</span>}
+        {leadInboxCount > 0 && <span className="text-muted-foreground tabular-nums">메시지 {leadInboxCount}건 대기</span>}
         {/* Working: a sliver sweeps the track in the tone of what it does now (trackTone); waiting: the track blinks;
             idle: a quiet line. */}
         <span aria-hidden {...track} />

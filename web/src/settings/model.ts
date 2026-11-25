@@ -194,7 +194,7 @@ export const TEAM_NUMBERS: TeamNumberField[] = [
   { id: 'rotateOthers', label: '다른 역할 대화 새로 시작', unit: '턴', min: 0, max: 100, def: 10, hint: '구현자·리뷰어·테스터 등에 같은 규칙을 써요.' },
   { id: 'maxChildren', label: '관리자 한 명이 둘 수 있는 팀원', unit: '명', min: 1, max: 16, def: 8, hint: '동시에 열려 있는 팀원 수의 상한이에요.' },
   // Auto-remove of finished teammates (#632, #640).
-  { id: 'maxLeadInbox', label: '관리자 메시지 최대 대기', unit: '건', min: 1, max: 100, def: 20, hint: '관리자는 팀원 메시지를 받은 순서대로 턴마다 한 건씩 처리해요.' },
+  { id: 'maxLeadInbox', label: '관리자 메시지 최대 대기', unit: '건', min: 1, max: 100, def: 20, hint: '관리자는 사용자 지시와 팀원 메시지를 받은 순서대로 턴마다 한 건씩 처리해요.' },
   { id: 'autoRemoveGraceSec', label: '끝난 팀원 지우기 전 기다리는 시간', unit: '초', min: 3, max: 3600, def: 120, hint: '이 시간 안에 관리자가 다시 말을 걸면 지우지 않아요.' },
   // 멈춤 감지 (#624): the server's stuck checks (server/dispatch/state.js), 0 turns a check off.
   { id: 'stuckFails', label: '같은 검사가 연달아 실패', unit: '번', min: 0, max: 20, def: 3, hint: '같은 검사 명령이 이만큼 연달아 실패하면 멈춘 것으로 봐요. 0이면 끄기예요.' },
