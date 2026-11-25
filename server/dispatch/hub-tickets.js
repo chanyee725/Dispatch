@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { redact } from "./redact.js";
-import { STALL_MS, isOpenStatus, clip } from "./hub-util.js";
+import { STALL_MS, isOpenStatus, clip, sameCommitSha } from "./hub-util.js";
 
 // Hub's tickets (work saved when the usage limit is reached) and the team watchdog that delivers reports.
 // Mixed into Hub.prototype by hub.js, so `this` is the Hub.
@@ -132,10 +132,19 @@ export class HubTickets {
     const r = this.live.get(s.id);
     if (!r?.lastText) return;
     let report = `[${s.name}(${s.roleName}) 보고${s.branch ? ` · ${s.branch}` : ""}]\n${clip(redact(r.lastText), 2500)}`;
-    const tellsLong = Boolean(s.longNote);
-    // The length-guard note rides with the report.
-    if (tellsLong) { report += `\n\n${s.longNote}`; s.longNote = null; }
+    const longNote = s.longNote;
+    // Only a review with the standard SHA/verdict heading and one matching card can be scoped.
+    const heading = s.role === "review" && /^([0-9a-f]{7,40}) — must-fix 있음\s*$/i.exec(r.lastText.trimStart().split("\n", 1)[0]);
+    const cards = heading ? this.tasks.filter(t => t.lead === s.parent && t.stage !== "done" && sameCommitSha(t.commit, heading[1])) : [];
+    let review;
+    if (cards.length === 1) {
+      const [card] = cards;
+      const commit = heading[1].length > card.commit.length ? heading[1] : card.commit;
+      review = { taskId: card.id, commit: commit.toLowerCase(), longNote };
+    }
+    // The length-guard note rides with the report even if the finding is later resolved.
+    if (longNote) { report += `\n\n${longNote}`; s.longNote = null; }
     r.lastText = null;
-    this.queueLeadReport(s, report, { tellsLong });
+    this.queueLeadReport(s, report, { tellsLong: Boolean(longNote), review });
   }
 }

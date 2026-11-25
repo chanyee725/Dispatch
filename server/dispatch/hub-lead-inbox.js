@@ -65,14 +65,27 @@ export class HubLeadInbox {
   }
 
   /** @this {import("./hub-util.js").HubThis} */
-  queueLeadReport(sender, text, { board = true, tellsLong = false, messageId } = {}) {
+  queueLeadReport(sender, text, { board = true, tellsLong = false, messageId, review } = {}) {
     this.rt(sender.id).pendingReports.push({
-      sender: sender.id, text: redact(text), board, tellsLong, messageId, order: ++this.leadReportSeq,
+      sender: sender.id, text: redact(text), board, tellsLong, messageId, review, order: ++this.leadReportSeq,
     });
     const lead = sender.parent && this.get(sender.parent);
     if (!lead || lead.status === "done") return;
     this.emit("session", this.publicSession(lead));
     this.drainLeadInbox(lead);
+  }
+
+  /** @this {import("./hub-util.js").HubThis} */
+  resolveQueuedReviews(lead, taskId, commits) {
+    for (const queue of this.leadInboxQueues(lead)) {
+      for (const item of queue) {
+        const review = item.review;
+        if (review?.taskId === taskId && commits.has(review.commit)) {
+          item.resolvedReview = `[Dispatch] ${review.commit} 후보의 리뷰 지적은 해결됐어요. 이 지적으로 작업 카드를 다시 열지 마세요.`
+            + (review.longNote ? `\n\n${review.longNote}` : "");
+        }
+      }
+    }
   }
 
   /** @this {import("./hub-util.js").HubThis} */
@@ -116,7 +129,8 @@ export class HubLeadInbox {
     const wasHeld = r.leadInboxHeld;
     r.leadInboxHeld = r.leadInboxResume = false;
     try {
-      this.send(lead.id, item.text + (item.board ? this.boardNote(lead.id) : ""), {
+      const text = item.resolvedReview ?? (item.text + (item.board ? this.boardNote(lead.id) : ""));
+      this.send(lead.id, text, {
         images: item.images,
         onDelivery: delivered => {
           r.drainingLeadInbox = item.dispatching = false;

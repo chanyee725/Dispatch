@@ -16,7 +16,7 @@ function fixture({ provider = "claude", limit = 4 } = {}) {
   hub.refreshCodex = async () => {};
   hub.boardNote = () => "";
   const add = (id, parent = null) => (store.data.sessions[id] = {
-    id, parent, name: id, roleName: parent ? "팀원" : "관리자", canSpawn: !parent, perm: "auto", provider, model: "fake",
+    id, parent, folder: null, name: id, roleName: parent ? "팀원" : "관리자", canSpawn: !parent, perm: "auto", provider, model: "fake",
     turns: 0, status: parent ? "idle" : "running", usage: { ...usage }, startedAt: Date.now(),
   });
   const lead = add("lead");
@@ -238,6 +238,41 @@ test("a card handoff drains the moved teammates' pending reports in order with t
   assert.equal(inboxCount(next), 0);
   for (const session of [a, b]) assert.equal(hub.rt(session.id).pendingReports.length, 0);
   assert.equal(hub.transcript(next.id).filter(e => e.kind === "user").length, 2);
+});
+
+test("handoff replaces only a queued finding confirmed resolved on a previous candidate", async () => {
+  const { hub, lead, a, b, add, report, done, work } = fixture({ limit: 6 });
+  const next = add("next");
+  next.status = "idle";
+  a.role = b.role = "review";
+  hub.boardNote = Hub.prototype.boardNote;
+  const oldCommit = "a".repeat(40);
+  const currentCommit = "b".repeat(40);
+  const card = await hub.setTask(lead.id, { title: "candidate", commit: oldCommit, stage: "review" });
+  report(a, "aaaaaaa — must-fix 있음\nReopen the previous candidate");
+  report(b, "Progress note mentioning aaaaaaa");
+  await hub.setTask(lead.id, { title: "another card", commit: oldCommit, stage: "review" });
+  report(b, "aaaaaaa — must-fix 있음\nFinding with two matching cards");
+  await hub.setTask(lead.id, { id: card.id, commit: currentCommit, stage: "merge" });
+  report(b, "bbbbbbb — must-fix 있음\nCurrent candidate finding");
+  report(b, "ccccccc — must-fix 있음\nUnattributed finding");
+  hub.messageLead(a.id, "Explicit report", "report-1");
+
+  const handoff = { fromLead: lead.id, toLead: next.id, sessionIds: [a.id, b.id] };
+  assert.throws(() => hub.handoffTask(card.id, { ...handoff, resolvedReviewCommits: ["bbbbbbb"] }), { status: 400 });
+  assert.equal(card.lead, lead.id);
+  hub.handoffTask(card.id, { ...handoff, resolvedReviewCommits: [oldCommit] });
+  assert.equal(work.length, 1);
+  assert.doesNotMatch(work[0], /Reopen the previous candidate|set_task/);
+  assert.match(work[0], /aaaaaaa.*해결/);
+  assert.deepEqual([card.commit, card.stage], [currentCommit, "merge"]);
+  for (const expected of ["Progress note", "Finding with two matching cards", "Current candidate finding", "Unattributed finding", "Explicit report"]) {
+    done(next);
+    assert.ok(work.at(-1).includes(expected), expected);
+  }
+  done(next);
+  assert.equal(hub.transcript(next.id).filter(e => e.kind === "user").length, 6);
+  assert.deepEqual(hub.messageLead(a.id, "Explicit report", "report-1"), { ok: true, duplicate: true });
 });
 
 test("accepted explicit messages follow a reparent ahead of newer items even when the new inbox is full", () => {

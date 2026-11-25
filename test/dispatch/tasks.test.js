@@ -128,7 +128,7 @@ test("removing a lead keeps its board cards through a state reload", async () =>
     const finished = await hub.setTask(lead, { title: "Finished" });
     await hub.setTask(lead, { id: finished.id, stage: "done" });
     assert.deepEqual([active.folder, finished.folder], ["alpha", "alpha"]);
-    assert.equal((await hub.setTask("missing", { id: active.id })).folder, "alpha", "updates keep the assigned project");
+    assert.equal((await hub.setTask(null, { id: active.id })).folder, "alpha", "updates keep the assigned project");
     store.data.tasks.expired = { ...finished, id: "expired", updatedAt: Date.now() - 7 * 60 * M };
     const cards = structuredClone([store.data.tasks.legacy, store.data.tasks.unknown, active, finished]);
 
