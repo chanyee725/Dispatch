@@ -275,32 +275,59 @@ test("handoff replaces only a queued finding confirmed resolved on a previous ca
   assert.deepEqual(hub.messageLead(a.id, "Explicit report", "report-1"), { ok: true, duplicate: true });
 });
 
-for (const [name, heading, resolvedLength] of [
+const commentUrl = "https://github.com/chanyee725/Dispatch/pull/71#issuecomment-7178180505";
+
+for (const [name, heading, resolvedLength, old = "a".repeat(40), extraUnscoped = []] of [
   ["a unique abbreviated resolution SHA", sha => `${sha} — must-fix 있음`, 7],
   ["the automatic PR review heading", sha => `PR #71 \`${sha}\` — **must-fix 있음**`, 40],
+  [
+    "the delivered review result with the check summary and comment link",
+    sha => `\`${sha}\` — **must-fix 있음** · \`ℹ pass 42\` / \`ℹ fail 0\` · [PR 리뷰 댓글](${commentUrl})`,
+    40,
+    "d03b695220e7f3636403f8cd7bec8153c2a85362",
+    [
+      sha => `\`${sha}\` — **must-fix 있음** · \`ℹ pass 42\` / \`ℹ fail 0\``,
+      sha => `\`${sha}\` — **must-fix 있음** · \`ℹ pass 42\` / \`ℹ fail 0\` · [PR](https://github.com/chanyee725/Dispatch/pull/71)`,
+      sha => `\`${sha}\` — **must-fix 있음** · \`ℹ pass 42\` · [PR 리뷰 댓글](${commentUrl})`,
+    ],
+  ],
+  [
+    "an equivalent review result with a single code span",
+    sha => `\`${sha}\` — **must-fix 있음** · \`ℹ pass 41, ℹ fail 1\` · [댓글](${commentUrl})`,
+    40,
+  ],
+  [
+    "an equivalent review result with plain check counts and a bare comment link",
+    sha => `\`${sha}\` — **must-fix 있음** · ℹ pass 42 · ℹ fail 0 · ${commentUrl}`,
+    40,
+  ],
 ]) {
   test(`handoff recognizes ${name}`, async () => {
     const { hub, lead, a, add, report, done, work } = fixture();
     const next = add("next");
     next.status = "idle";
     a.role = "review";
-    const old = "a".repeat(40);
     const card = await hub.setTask(lead.id, { title: "candidate", commit: old, stage: "review" });
     report(a, `${heading(old)}\nPrevious finding`);
-    report(a, `See ${heading(old)}\nReview mentioned in a sentence`);
-    report(a, `${heading(old)} in another report\nHeading with trailing prose`);
+    const unscoped = [
+      `See ${heading(old)}\nReview mentioned in a sentence`,
+      `${heading(old)} in another report\nHeading with trailing prose`,
+      ...extraUnscoped.map(format => format(old)),
+    ];
+    for (const text of unscoped) report(a, text);
     await hub.setTask(lead.id, { id: card.id, commit: "b".repeat(40), stage: "merge" });
 
     hub.handoffTask(card.id, { fromLead: lead.id, toLead: next.id, sessionIds: [a.id], resolvedReviewCommits: [old.slice(0, resolvedLength)] });
     assert.equal(work.length, 1);
     assert.doesNotMatch(work[0], /Previous finding/);
-    assert.match(work[0], /aaaaaaa.*해결/);
+    assert.ok(work[0].includes(old));
+    assert.match(work[0], /해결/);
+    for (const text of unscoped) {
+      done(next);
+      assert.ok(work.at(-1).endsWith(text), text);
+    }
     done(next);
-    assert.match(work[1], /Review mentioned in a sentence/);
-    done(next);
-    assert.match(work[2], /Heading with trailing prose/);
-    done(next);
-    assert.equal(work.length, 3);
+    assert.equal(work.length, unscoped.length + 1);
   });
 }
 

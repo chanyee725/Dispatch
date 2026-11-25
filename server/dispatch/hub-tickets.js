@@ -4,6 +4,23 @@ import { STALL_MS, isOpenStatus, clip, sameCommitSha } from "./hub-util.js";
 
 const REVIEW_HEADING = /^(?:([0-9a-f]{7,40}) — must-fix 있음|PR #[1-9]\d* `([0-9a-f]{7,40})` — \*\*must-fix 있음\*\*)[ \t\r]*$/i;
 
+const REVIEW_RESULT_HEADING = /^`([0-9a-f]{7,40})` — \*\*must-fix 있음\*\* · (.+?) · (\[[^\]\r\n]+\]\([^\s()]+\)|https:\/\/\S+)[ \t\r]*$/i;
+const REVIEW_CHECK_COUNTS = /^(`?)ℹ pass \d+\1[ \t]*[,/·][ \t]*(`?)ℹ fail \d+\2$/;
+const REVIEW_COMMENT_URL = /^https:\/\/github\.com\/[\w.-]+\/[\w.-]+\/pull\/[1-9]\d*#(?:issuecomment-|discussion_r|pullrequestreview-)\d+$/;
+
+function reviewedSha(text) {
+  const first = text.trimStart().split("\n", 1)[0];
+  const heading = REVIEW_HEADING.exec(first);
+  if (heading) return heading[1] ?? heading[2];
+
+  const result = REVIEW_RESULT_HEADING.exec(first);
+  if (!result) return null;
+  const [, sha, summary, link] = result;
+  const counts = summary.replace(/^`([^`]+)`$/, "$1");
+  const url = /^\[[^\]]+\]\(([^()]+)\)$/.exec(link)?.[1] ?? link;
+  return REVIEW_CHECK_COUNTS.test(counts) && REVIEW_COMMENT_URL.test(url) ? sha : null;
+}
+
 // Hub's tickets (work saved when the usage limit is reached) and the team watchdog that delivers reports.
 // Mixed into Hub.prototype by hub.js, so `this` is the Hub.
 export class HubTickets {
@@ -136,8 +153,7 @@ export class HubTickets {
     let report = `[${s.name}(${s.roleName}) 보고${s.branch ? ` · ${s.branch}` : ""}]\n${clip(redact(r.lastText), 2500)}`;
     const longNote = s.longNote;
     // Only a review with the standard SHA/verdict heading and one matching card can be scoped.
-    const heading = s.role === "review" ? REVIEW_HEADING.exec(r.lastText.trimStart().split("\n", 1)[0]) : null;
-    const sha = heading?.[1] ?? heading?.[2];
+    const sha = s.role === "review" ? reviewedSha(r.lastText) : null;
     const cards = sha ? this.tasks.filter(t => t.lead === s.parent && t.stage !== "done" && sameCommitSha(t.commit, sha)) : [];
     let review;
     if (cards.length === 1) {
