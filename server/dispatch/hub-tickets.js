@@ -2,6 +2,8 @@ import { randomUUID } from "node:crypto";
 import { redact } from "./redact.js";
 import { STALL_MS, isOpenStatus, clip, sameCommitSha } from "./hub-util.js";
 
+const REVIEW_HEADING = /^(?:([0-9a-f]{7,40}) — must-fix 있음|PR #[1-9]\d* `([0-9a-f]{7,40})` — \*\*must-fix 있음\*\*)[ \t\r]*$/i;
+
 // Hub's tickets (work saved when the usage limit is reached) and the team watchdog that delivers reports.
 // Mixed into Hub.prototype by hub.js, so `this` is the Hub.
 export class HubTickets {
@@ -134,12 +136,13 @@ export class HubTickets {
     let report = `[${s.name}(${s.roleName}) 보고${s.branch ? ` · ${s.branch}` : ""}]\n${clip(redact(r.lastText), 2500)}`;
     const longNote = s.longNote;
     // Only a review with the standard SHA/verdict heading and one matching card can be scoped.
-    const heading = s.role === "review" && /^([0-9a-f]{7,40}) — must-fix 있음\s*$/i.exec(r.lastText.trimStart().split("\n", 1)[0]);
-    const cards = heading ? this.tasks.filter(t => t.lead === s.parent && t.stage !== "done" && sameCommitSha(t.commit, heading[1])) : [];
+    const heading = s.role === "review" ? REVIEW_HEADING.exec(r.lastText.trimStart().split("\n", 1)[0]) : null;
+    const sha = heading?.[1] ?? heading?.[2];
+    const cards = sha ? this.tasks.filter(t => t.lead === s.parent && t.stage !== "done" && sameCommitSha(t.commit, sha)) : [];
     let review;
     if (cards.length === 1) {
       const [card] = cards;
-      const commit = heading[1].length > card.commit.length ? heading[1] : card.commit;
+      const commit = sha.length > card.commit.length ? sha : card.commit;
       review = { taskId: card.id, commit: commit.toLowerCase(), longNote };
     }
     // The length-guard note rides with the report even if the finding is later resolved.

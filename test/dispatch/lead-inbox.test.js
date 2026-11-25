@@ -275,6 +275,57 @@ test("handoff replaces only a queued finding confirmed resolved on a previous ca
   assert.deepEqual(hub.messageLead(a.id, "Explicit report", "report-1"), { ok: true, duplicate: true });
 });
 
+for (const [name, heading, resolvedLength] of [
+  ["a unique abbreviated resolution SHA", sha => `${sha} — must-fix 있음`, 7],
+  ["the automatic PR review heading", sha => `PR #71 \`${sha}\` — **must-fix 있음**`, 40],
+]) {
+  test(`handoff recognizes ${name}`, async () => {
+    const { hub, lead, a, add, report, done, work } = fixture();
+    const next = add("next");
+    next.status = "idle";
+    a.role = "review";
+    const old = "a".repeat(40);
+    const card = await hub.setTask(lead.id, { title: "candidate", commit: old, stage: "review" });
+    report(a, `${heading(old)}\nPrevious finding`);
+    report(a, `See ${heading(old)}\nReview mentioned in a sentence`);
+    report(a, `${heading(old)} in another report\nHeading with trailing prose`);
+    await hub.setTask(lead.id, { id: card.id, commit: "b".repeat(40), stage: "merge" });
+
+    hub.handoffTask(card.id, { fromLead: lead.id, toLead: next.id, sessionIds: [a.id], resolvedReviewCommits: [old.slice(0, resolvedLength)] });
+    assert.equal(work.length, 1);
+    assert.doesNotMatch(work[0], /Previous finding/);
+    assert.match(work[0], /aaaaaaa.*해결/);
+    done(next);
+    assert.match(work[1], /Review mentioned in a sentence/);
+    done(next);
+    assert.match(work[2], /Heading with trailing prose/);
+    done(next);
+    assert.equal(work.length, 3);
+  });
+}
+
+test("handoff preserves both findings when an abbreviated resolution SHA matches two candidates", async () => {
+  const { hub, lead, a, add, report, done, work } = fixture();
+  const next = add("next");
+  next.status = "idle";
+  a.role = "review";
+  const prefix = "abcdef0";
+  const first = prefix + "a".repeat(33);
+  const second = prefix + "b".repeat(33);
+  const card = await hub.setTask(lead.id, { title: "candidate", commit: first, stage: "review" });
+  report(a, `${first} — must-fix 있음\nFirst finding`);
+  await hub.setTask(lead.id, { id: card.id, commit: second });
+  report(a, `${second} — must-fix 있음\nSecond finding`);
+  await hub.setTask(lead.id, { id: card.id, commit: "c".repeat(40), stage: "merge" });
+
+  hub.handoffTask(card.id, { fromLead: lead.id, toLead: next.id, sessionIds: [a.id], resolvedReviewCommits: [prefix] });
+  assert.match(work[0], /First finding/);
+  done(next);
+  assert.match(work[1], /Second finding/);
+  done(next);
+  assert.equal(work.length, 2);
+});
+
 test("accepted explicit messages follow a reparent ahead of newer items even when the new inbox is full", () => {
   const { hub, lead, a, b, add, attach, done, report, inboxCount, work } = fixture({ limit: 2 });
   const next = add("next");

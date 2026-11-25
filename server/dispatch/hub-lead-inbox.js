@@ -77,13 +77,23 @@ export class HubLeadInbox {
 
   /** @this {import("./hub-util.js").HubThis} */
   resolveQueuedReviews(lead, taskId, commits) {
-    for (const queue of this.leadInboxQueues(lead)) {
-      for (const item of queue) {
-        const review = item.review;
-        if (review?.taskId === taskId && commits.has(review.commit)) {
-          item.resolvedReview = `[Dispatch] ${review.commit} 후보의 리뷰 지적은 해결됐어요. 이 지적으로 작업 카드를 다시 열지 마세요.`
-            + (review.longNote ? `\n\n${review.longNote}` : "");
-        }
+    const reviewed = new Map();
+    for (const sender of this.sessions) {
+      for (const item of this.live.get(sender.id)?.pendingReports ?? []) {
+        if (item.review?.taskId !== taskId) continue;
+        const sha = item.review.commit;
+        if (!reviewed.has(sha)) reviewed.set(sha, []);
+        // Reports still with the old lead can make an abbreviation ambiguous too.
+        if (sender.parent === lead.id) reviewed.get(sha).push(item);
+      }
+    }
+    for (const prefix of commits) {
+      const matches = [...reviewed.keys()].filter(sha => sha.startsWith(prefix));
+      if (matches.length !== 1) continue;
+      const [sha] = matches;
+      for (const item of reviewed.get(sha)) {
+        item.resolvedReview = `[Dispatch] ${sha} 후보의 리뷰 지적은 해결됐어요. 이 지적으로 작업 카드를 다시 열지 마세요.`
+          + (item.review.longNote ? `\n\n${item.review.longNote}` : "");
       }
     }
   }
