@@ -9,6 +9,7 @@ const outDir = fileURLToPath(new URL('../public', import.meta.url));
 export default defineConfig({
   root,
   plugins: [react(), tailwindcss()],
+  resolve: { dedupe: ['react', 'react-dom'] },
   publicDir: false,
   build: {
     outDir,
