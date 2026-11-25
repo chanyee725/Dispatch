@@ -160,10 +160,11 @@ export async function createDispatch({ root, broadcast, port, workspaceDir, layo
 
   // The identity endpoint stays local so peer lookups never recurse.
   const projects = async () => [{ port: hub.port, name: path.basename(root), path: tilde(root), current: true }];
-  const serviceProjects = async () => listServiceProjects({
+  const serviceProjects = () => listServiceProjects({
     root,
     port: hub.port,
-    workspaces: (await userDefaults.current()).workspaces ?? [],
+    // Loaded inside the lookup so a slow settings read stays within its deadline.
+    workspaces: async () => (await userDefaults.current()).workspaces ?? [],
   });
 
   // Harness profiles per mode (#748), stored in ~/.dispatch/drawing.json as `modeProfiles`.

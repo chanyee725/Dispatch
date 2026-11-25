@@ -111,17 +111,12 @@ async function scanServices(root, port, candidates, peers, signal) {
   }
 }
 
-/** The current server and registered peers whose loopback response identifies the same project root. */
+/**
+ * The current server and registered peers whose loopback response identifies the same project root.
+ * `workspaces` may be a loader; its wait counts toward the same deadline as the scan.
+ */
 export async function listServiceProjects({ root, port, workspaces, deployments = DEPLOYMENTS }) {
   const current = { name: basename(root), port, current: true };
-  const candidates = [...deployments, ...workspaces.map((entry) => entry.path)];
-  const key = JSON.stringify([root, port, candidates]);
-  if (activeLookup) {
-    // Share matching lookups without handing peers from one workspace list to another.
-    return activeLookup.key === key ? activeLookup.result : [current];
-  }
-
-  const peers = [];
   const controller = new AbortController();
   let timer;
   const deadline = new Promise((resolve) => {
@@ -130,6 +125,27 @@ export async function listServiceProjects({ root, port, workspaces, deployments 
       resolve();
     }, LOOKUP_TIMEOUT_MS);
   });
+
+  let entries;
+  try {
+    const load = Promise.resolve().then(() => (typeof workspaces === 'function' ? workspaces() : workspaces));
+    entries = await Promise.race([load, deadline]);
+  } catch {
+    // Unreadable settings still leave the registered deployments to check.
+    entries = [];
+  }
+  // A slow settings read must not start a scan after the deadline.
+  if (controller.signal.aborted) return [current];
+
+  const candidates = [...deployments, ...(entries ?? []).map((entry) => entry.path)];
+  const key = JSON.stringify([root, port, candidates]);
+  if (activeLookup) {
+    clearTimeout(timer);
+    // Share matching lookups without handing peers from one workspace list to another.
+    return activeLookup.key === key ? activeLookup.result : [current];
+  }
+
+  const peers = [];
   const scan = scanServices(root, port, candidates, peers, controller.signal).finally(() => {
     clearTimeout(timer);
     // Hold the slot until pending filesystem operations have finished unwinding.

@@ -185,3 +185,31 @@ test('concurrent service requests share matching work and only one scan runs per
   assert.deepEqual((await listServiceProjects(otherQuery)).map((entry) => entry.port), [4100, 4102]);
   assert.deepEqual(calls, [4101, 4102]);
 });
+
+test('a slow settings read counts toward the deadline and starts no scan after it', { timeout: 5_000 }, async (t) => {
+  const { peers, query } = await peerFixture(t, 1);
+  const calls = [];
+  t.mock.method(globalThis, 'fetch', async (url) => {
+    calls.push(Number(new URL(url).port));
+    return Response.json({ projects: peers });
+  });
+  const settingsRead = Promise.withResolvers();
+  const workspaces = () => new Promise((resolve) => setTimeout(() => {
+    resolve([{ path: peers[0].path }]);
+    settingsRead.resolve();
+  }, 2_200));
+
+  const start = performance.now();
+  const result = await listServiceProjects({ ...query, deployments: [], workspaces });
+  const elapsed = performance.now() - start;
+  assert.deepEqual(result, [{ name: 'Dispatch', port: 4100, current: true }]);
+  assert.ok(elapsed < 1_700, `answered after ${Math.round(elapsed)}ms`);
+
+  await settingsRead.promise;
+  await new Promise((resolve) => setTimeout(resolve, 50));
+  assert.deepEqual(calls, []);
+  // The slot stayed free, so the next request scans normally.
+  assert.deepEqual((await listServiceProjects({ ...query, deployments: [], workspaces: [{ path: peers[0].path }] }))
+    .map((entry) => entry.port), [4100, 4101]);
+  assert.deepEqual(calls, [4101]);
+});
