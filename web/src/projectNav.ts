@@ -48,9 +48,6 @@ export function boardHash(r: { tab: BoardTab; folder?: string | null; extra?: Bo
   return `#board${view ? `=${view}` : ''}${folder}`;
 }
 
-/** True for the address that opens the chat dock (`#chat`). */
-export const isChatHash = (hash: string) => /^#?chat$/.test(hash);
-
 /** The board address for an old `/dispatch` hash (`#usage&folder=x`, `#folder=x`, `#tv`, `#settings`, `#timeline`). */
 export function legacyBoardHash(hash: string): string {
   const own = parseBoardHash(hash);

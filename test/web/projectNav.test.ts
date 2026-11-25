@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { boardHash, isChatHash, legacyBoardHash, parseBoardHash, percent, shellKey } from '../../web/src/projectNav.ts';
+import { boardHash, legacyBoardHash, parseBoardHash, percent, shellKey } from '../../web/src/projectNav.ts';
 const key = (code: string, more: Record<string, unknown> = {}) =>
   shellKey({ code, ctrlKey: false, metaKey: false, altKey: false, shiftKey: false, isComposing: false, repeat: false, defaultPrevented: false, target: null, ...more });
 const inside = (match: boolean) => ({ closest: () => (match ? {} : null) }) as unknown as EventTarget;
@@ -46,8 +46,7 @@ test('board hash: tabs, scope and the one-off extras read back', () => {
   assert.equal(parseBoardHash('#file=a.dpx.json'), null);
   assert.equal(parseBoardHash('#boards'), null);
   assert.equal(parseBoardHash(''), null);
-  assert.ok(isChatHash('#chat'));
-  assert.ok(!isChatHash('#chats') && !isChatHash('#board'));
+  assert.equal(parseBoardHash('#chat'), null);
   for (const h of ['#board', '#board=usage', '#board=timeline&folder=a%20b', '#board&folder=', '#board=settings']) assert.equal(boardHash(parseBoardHash(h)!), h);
 });
 
@@ -60,5 +59,6 @@ test('legacy /dispatch hashes map to the board address', () => {
   assert.equal(legacyBoardHash('#tv'), '#board=tv');
   assert.equal(legacyBoardHash('#settings'), '#board=settings');
   assert.equal(legacyBoardHash('#nonsense'), '#board');
+  assert.equal(legacyBoardHash('#chat'), '#board');
   assert.equal(legacyBoardHash('#board=usage'), '#board=usage');
 });
