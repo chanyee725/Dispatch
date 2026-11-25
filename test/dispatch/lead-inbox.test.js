@@ -215,6 +215,31 @@ test("a queued report follows a reparent, including after its old lead is killed
   }
 });
 
+test("a card handoff drains the moved teammates' pending reports in order with the transferred board", async () => {
+  const { hub, lead, a, b, add, report, done, inboxCount, work } = fixture();
+  const next = add("next");
+  next.status = "idle";
+  hub.boardNote = Hub.prototype.boardNote;
+  const card = await hub.setTask(lead.id, { title: "candidate", stage: "review" });
+  report(b, "first");
+  report(a, "second");
+
+  hub.handoffTask(card.id, { fromLead: lead.id, toLead: next.id, sessionIds: [a.id, b.id] });
+  assert.equal(inboxCount(lead), 0);
+  assert.equal(inboxCount(next), 1);
+  assert.equal(work.length, 1);
+  assert.match(work[0], /\nfirst\n/);
+  assert.ok(work[0].includes(card.id));
+  done(next);
+  assert.equal(work.length, 2);
+  assert.match(work[1], /\nsecond\n/);
+  assert.ok(work[1].includes(card.id));
+  done(next);
+  assert.equal(inboxCount(next), 0);
+  for (const session of [a, b]) assert.equal(hub.rt(session.id).pendingReports.length, 0);
+  assert.equal(hub.transcript(next.id).filter(e => e.kind === "user").length, 2);
+});
+
 test("accepted explicit messages follow a reparent ahead of newer items even when the new inbox is full", () => {
   const { hub, lead, a, b, add, attach, done, report, inboxCount, work } = fixture({ limit: 2 });
   const next = add("next");
