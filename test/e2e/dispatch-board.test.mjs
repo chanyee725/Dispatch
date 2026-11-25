@@ -1,5 +1,4 @@
-// Headless check of the 작업 보드 (E19b, #372): tasks posted to a scratch workspace show in stage columns with owner,
-// ETA and time in the stage; a stage change and a new task arrive live without reloading.
+// Headless check of the 작업 보드: tasks show their lead and live ETA in the dashboard and the full board.
 // Run on request: DRAW_E2E=1 CHROME=/path/to/chrome-headless-shell PLAYWRIGHT_CORE=/path/to/node_modules/playwright-core npm test
 // The server gets a scratch HOME and a PATH of fake agent CLIs; it refuses to go on unless its log names its port and workspace.
 import { test } from 'node:test';
@@ -70,7 +69,10 @@ test('작업 보드 shows tasks by stage and follows live changes', { skip: !ON 
     };
 
     at('seed tasks');
-    await call('POST', '/api/tasks', { title: '로그인 화면 만들기', stage: 'impl', owner: 'Ivy', eta_minutes: 30 });
+    const { sessions: [lead] } = await call('POST', '/api/sessions', {
+      items: [{ role: 'lead', provider: 'claude', task: 'check the board' }], worktree: false,
+    });
+    const task = await call('POST', '/api/tasks', { lead: lead.id, title: '로그인 화면 만들기', stage: 'impl', owner: 'Ivy', eta_minutes: 4 });
     await call('POST', '/api/tasks', { title: '결제 검토', stage: 'review', owner: 'Rae' });
     await call('POST', '/api/tasks', { title: '배포 막힘', stage: 'blocked', note: '키가 없어요' });
 
@@ -78,10 +80,23 @@ test('작업 보드 shows tasks by stage and follows live changes', { skip: !ON 
     const errors = [];
     page = await browser.newPage({ viewport: { width: 1280, height: 800 } });
     page.on('pageerror', (e) => errors.push(String(e.stack).slice(0, 400)));
+    await page.clock.install({ time: task.etaAt - 4 * 60_000 + 5_000 });
     await page.goto(`${BASE}/dispatch`);
 
+    at('dashboard countdown and task lead');
+    const row = page.locator(`[data-row="${task.id}"]`);
+    const rowEta = row.locator('[data-eta]');
+    await rowEta.filter({ hasText: /^3분 남음$/ }).waitFor();
+    assert.equal(await row.locator('[data-task-lead]').innerText(), lead.name);
+    await page.clock.fastForward(60_000);
+    await rowEta.filter({ hasText: /^2분 남음$/ }).waitFor();
+    const other = page.getByRole('list', { name: '진행 중인 작업' }).locator('[data-row]').filter({ hasText: '결제 검토' });
+    assert.equal(await other.locator('[data-eta]').innerText(), 'ETA 미추정');
+    assert.equal(await other.locator('[data-task-lead]').innerText(), '관리자 미배정');
+    if (SHOTS) await page.screenshot({ path: join(SHOTS, 'task-board-dashboard.png') });
+
     at('open the board');
-    await page.getByRole('button', { name: /작업 보드/ }).click();
+    await page.getByRole('button', { name: '전체 보기', exact: true }).click();
     const board = page.locator('[data-board]');
     await board.waitFor();
     const card = (title) => board.locator(`[data-task="${title}"]`);
@@ -91,11 +106,14 @@ test('작업 보드 shows tasks by stage and follows live changes', { skip: !ON 
     // All seven stage columns are there, empty ones included.
     assert.equal(await board.locator('[data-stage]').count(), 7);
 
-    at('owner, eta and time in stage');
+    at('owner, lead and ETA');
     const impl = card('로그인 화면 만들기');
     await impl.getByText('Ivy', { exact: true }).waitFor();
-    assert.match(await impl.locator('[data-eta]').innerText(), /^(약 \d+분 남음\(예상\)|\d+분 남음|곧 끝나요)$/);
-    assert.match(await impl.locator('[data-in-stage]').innerText(), /^구현 (방금|.+째)$/);
+    assert.equal(await impl.locator('[data-eta]').innerText(), '2분 남음');
+    assert.equal(await impl.locator('[data-task-lead]').innerText(), lead.name);
+    const etaBox = await impl.locator('[data-eta]').boundingBox();
+    const leadBox = await impl.locator('[data-task-lead]').boundingBox();
+    assert.ok(leadBox.x >= etaBox.x + etaBox.width, 'lead is to the right of the ETA');
     assert.ok(await impl.locator('[data-bar]').count() >= 1, 'a stage-time bar');
     await card('배포 막힘').getByText('맡은 사람 없음').waitFor();
     await card('결제 검토').getByText('Rae', { exact: true }).waitFor();
@@ -111,6 +129,7 @@ test('작업 보드 shows tasks by stage and follows live changes', { skip: !ON 
     const done = board.locator('[data-stage="done"]');
     await done.getByRole('button', { name: '2개 더 보기' }).waitFor();
     assert.equal(await done.locator('[data-task]').count(), 10);
+    assert.equal(await done.locator('[data-eta]').first().innerText(), '완료');
     const toggle = done.getByRole('button', { name: '2개 더 보기' });
     assert.equal(await toggle.getAttribute('aria-expanded'), 'false');
     await toggle.click();
@@ -125,8 +144,7 @@ test('작업 보드 shows tasks by stage and follows live changes', { skip: !ON 
     assert.equal(await done.locator('[data-task]').count(), 12);
 
     at('live stage change');
-    const { id } = (await call('GET', '/api/tasks')).tasks.find((x) => x.title === '로그인 화면 만들기');
-    await call('POST', '/api/tasks', { id, stage: 'test' });
+    await call('POST', '/api/tasks', { id: task.id, stage: 'test' });
     await board.locator('[data-stage="test"]').locator('[data-task="로그인 화면 만들기"]').waitFor();
     assert.equal(await board.locator('[data-stage="impl"] [data-task]').count(), 0);
     const spans = await card('로그인 화면 만들기').locator('[data-bar]').evaluateAll((els) => els.map((e) => e.getAttribute('data-bar')));
@@ -144,6 +162,13 @@ test('작업 보드 shows tasks by stage and follows live changes', { skip: !ON 
     await page.keyboard.press('Escape');
     await board.waitFor({ state: 'detached' });
     assert.equal(await page.locator('[data-slot=sheet-content]').count(), 0, 'no sheet once it is closed');
+
+    at('dashboard deadline crosses without a server update');
+    await page.clock.fastForward(180_000);
+    await rowEta.filter({ hasText: /^기한 초과$/ }).waitFor();
+    assert.equal(await row.locator('[data-task-lead]').innerText(), lead.name);
+    const current = (await call('GET', '/api/tasks')).tasks.find((item) => item.id === task.id);
+    assert.equal(current.etaAt, task.etaAt);
     assert.deepEqual(errors, []);
   } catch (e) {
     const shot = join(tmpdir(), `dispatch-board-fail-${Date.now()}.png`);
