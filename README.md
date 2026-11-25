@@ -5,9 +5,11 @@
 **Run and watch AI agent sessions in one local app.**<br>
 Start Claude Code, Codex and Gemini sessions and teams, follow them on the session board, and talk to them in the chat.
 
+In 1.1, open the lead’s session card or live view to check how many messages are waiting.
+
 **English** · [한국어](README.ko.md)
 
-[![version](https://img.shields.io/badge/version-1.0.0-6366f1)](CHANGELOG.md)
+[![version](https://img.shields.io/badge/version-1.1.0-6366f1)](CHANGELOG.md)
 [![node](https://img.shields.io/badge/node-%E2%89%A522.18-339933?logo=nodedotjs&logoColor=white)](#-quick-start)
 [![Claude Code plugin](https://img.shields.io/badge/Claude_Code-plugin-d97757)](#-install-the-skills)
 [![Codex plugin](https://img.shields.io/badge/Codex-plugin-111111)](#-install-the-skills)
@@ -91,10 +93,14 @@ Dispatch 1.0 is the app that was called Atelier, under the Dispatch name. Nothin
 
 ## 🧭 How a team runs
 
+Set the waiting limit per lead in **Settings → 관리자와 팀 → 관리자 메시지 최대 대기** (default 20, range 1–100). The displayed count is capped at this limit.
+
 1. Tell a lead what you need, in one line: "We need a web page that takes PLC data and moves a robot."
 2. The lead adds teammates and assigns the work.
 3. Implementers work in git worktrees, a fresh reviewer comments on each PR, and the merge role merges reviewed PRs.
 4. The session board shows every session and task live.
+
+A lead takes user instructions, teammate messages and automatic reports in arrival order, one per turn.
 
 ## 🔒 Privacy and local only
 

@@ -5,9 +5,11 @@
 **AI 에이전트 세션을 한 화면에서 돌리고 지켜봐요. 내 컴퓨터에서만 도는 앱이에요.**<br>
 Claude Code · Codex · Gemini 세션과 팀을 띄우고, 세션 보드에서 지켜보고, 채팅으로 말을 걸어요.
 
+1.1에서는 관리자 카드나 실시간 화면을 열어 **메시지 N건 대기**를 확인해요.
+
 [English](README.md) · **한국어**
 
-[![version](https://img.shields.io/badge/version-1.0.0-6366f1)](CHANGELOG.md)
+[![version](https://img.shields.io/badge/version-1.1.0-6366f1)](CHANGELOG.md)
 [![node](https://img.shields.io/badge/node-%E2%89%A522.18-339933?logo=nodedotjs&logoColor=white)](#-빠른-시작)
 [![Claude Code plugin](https://img.shields.io/badge/Claude_Code-plugin-d97757)](#-스킬-설치)
 [![Codex plugin](https://img.shields.io/badge/Codex-plugin-111111)](#-스킬-설치)
@@ -91,10 +93,14 @@ Dispatch 1.0은 Atelier라고 부르던 앱을 Dispatch 이름으로 낸 거예�
 
 ## 🧭 팀이 일하는 방식
 
+**설정 → 관리자와 팀 → 관리자 메시지 최대 대기**에서 관리자 한 명의 대기 한도를 1~100건으로 정해요. 기본값은 20건이에요. 대기 건수는 설정한 한도까지만 표시해요.
+
 1. 리드에게 한 줄로 말해요: "PLC에서 데이터를 받아온 뒤 로봇을 움직이는 웹 페이지를 만들어야 해."
 2. 리드가 팀원을 두고 일을 나눠요.
 3. 구현자는 git worktree에서 일하고, 새 리뷰어가 PR마다 코멘트를 달고, 병합 담당이 리뷰를 통과한 PR을 병합해요.
 4. 세션 보드에서 모든 세션과 작업을 실시간으로 봐요.
+
+관리자는 사용자 지시, 팀원 메시지, 자동 보고를 받은 순서대로 턴마다 한 건씩 처리해요.
 
 ## 🔒 개인정보와 로컬 전용
 

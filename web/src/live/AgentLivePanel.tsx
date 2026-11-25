@@ -134,6 +134,11 @@ function AgentLivePanel({ sid, hidden, closing }: { sid: string; hidden: boolean
             />
           )}
           <LiveSummaryView d={d} now={now} titleId={titleId} plain />
+          {session?.canSpawn && (
+            <span role="status" className="empty:sr-only text-xs text-muted-foreground tabular-nums">
+              {(session.leadInboxCount ?? 0) > 0 && `메시지 ${session.leadInboxCount}건 대기`}
+            </span>
+          )}
           <span aria-hidden {...track} />
         </div>
         {tab === 'chat' && !outside && (

@@ -33,7 +33,7 @@ export function SessionGrid({ label, children }: { label: string; children: Reac
  * (isEditingDiagram); otherwise the name is plain. The card's body opens the session's live view; the file it holds
  * is its own link under the body (shown once, there).
  */
-export function SessionCard({ agent: a, summary, title, onOpen, trail }: { agent: AgentPresence; summary: TaskSummary | null; title: string | null; onOpen: (p: string) => void; trail: readonly string[] }) {
+export function SessionCard({ agent: a, leadInboxCount = 0, summary, title, onOpen, trail }: { agent: AgentPresence; leadInboxCount?: number; summary: TaskSummary | null; title: string | null; onOpen: (p: string) => void; trail: readonly string[] }) {
   const busy = isBusy(a);
   // The card that opened the live view keeps a ring while it is open (#942, data-origin + aria-current).
   const selected = useAgentLiveTarget() === a.sid;
@@ -91,6 +91,7 @@ export function SessionCard({ agent: a, summary, title, onOpen, trail }: { agent
         <span className={cn('min-w-0 truncate', detail ? 'text-foreground/80' : 'text-muted-foreground')} title={detail ?? undefined}>
           {detail ?? (busy ? '작업 중이에요' : '다음 지시를 기다려요')}
         </span>
+        {leadInboxCount > 0 && <span className="text-muted-foreground tabular-nums">메시지 {leadInboxCount}건 대기</span>}
         {/* Working: a sliver sweeps the track in the tone of what it does now (trackTone); waiting: the track blinks;
             idle: a quiet line. */}
         <span aria-hidden {...track} />

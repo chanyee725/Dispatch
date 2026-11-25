@@ -12,7 +12,7 @@ import { patchTeam, teamSettings } from "../../server/dispatch/settings.js";
 // Auto-remove of finished teammates (#632, ported from Dispatch #39) on a real Hub with fake CLI processes:
 // no agent CLI is ever started; the processes are stubs that record what is written to stdin.
 const MODELS = [{ id: "claude-fable-5-2", provider: "claude", efforts: ["low"], contextWindow: 200000 }];
-const fakeProc = () => { const lines = []; return { lines, stdin: { write: l => lines.push(JSON.parse(l)) }, kill() {} }; };
+const fakeProc = () => { const lines = []; return { lines, stdin: { write: (l, callback) => { lines.push(JSON.parse(l)); callback?.(); } }, kill() {} }; };
 const said = proc => proc.lines.map(l => l.message?.content ?? "").join("\n---\n");
 const dirs = [];
 const tmp = prefix => { const d = mkdtempSync(join(tmpdir(), prefix)); dirs.push(d); return d; };
@@ -84,7 +84,8 @@ test("a message to the teammate, a new turn or a permission request cancels the 
   await flush();
   assert.ok(store.data.sessions.K, "kept: the lead wrote to it");
 
-  // Its next report re-arms; a permission request then cancels.
+  // The lead finished its turn. The next report re-arms; a permission request then cancels.
+  hub.onClaude(hub.get("L"), { type: "result" });
   finish();
   hub.touch(kid, { status: "waiting" });
   mock.timers.tick(200_000);
@@ -92,6 +93,7 @@ test("a message to the teammate, a new turn or a permission request cancels the 
   assert.ok(store.data.sessions.K, "kept: waiting on a permission");
 
   // The next turn's report re-arms, and the full grace counts from there.
+  hub.onClaude(hub.get("L"), { type: "result" });
   finish();
   mock.timers.tick(119_000);
   await flush();
@@ -233,6 +235,7 @@ test("work after the report keeps the teammate even while its status still reads
   assert.ok(store.data.sessions.K, "init cancels the timer");
 
   // Any transcript event after the report blocks the removal even if the timer was not cancelled.
+  hub.onClaude(hub.get("L"), { type: "result" });
   finish();
   hub.push(kid, { kind: "tool", name: "Bash", text: "npm test" });
   assert.equal(kid.status, "idle");
@@ -241,6 +244,7 @@ test("work after the report keeps the teammate even while its status still reads
   assert.ok(store.data.sessions.K, "kept: it is working");
 
   // The next report re-arms and, with no work after it, the removal goes ahead.
+  hub.onClaude(hub.get("L"), { type: "result" });
   finish();
   mock.timers.tick(120_000);
   await flush();

@@ -44,7 +44,7 @@ export class HubRunners {
   }
 
   /** @this {import("./hub-util.js").HubThis} */
-  start(s, prompt, images = null) {
+  start(s, prompt, images = null, onStart) {
     s._killed = false;
     // Turn clock and token baseline for the web "thinking" line.
     s.turnStartedAt = Date.now();
@@ -59,48 +59,63 @@ export class HubRunners {
     } catch (e) {
       this.push(s, { kind: "error", text: e.message });
       this.touch(s, { status: "error", error: e.message });
+      onStart?.(false);
       return;
     }
     try {
-      if (s.provider === "claude") this.startClaude(s, prompt, images);
-      else if (s.provider === "gemini") this.startGemini(s, prompt);
-      else this.startCodex(s, prompt);
+      if (s.provider === "claude") this.startClaude(s, prompt, images, onStart);
+      else if (s.provider === "gemini") this.startGemini(s, prompt, onStart);
+      else this.startCodex(s, prompt, onStart);
     } catch (e) {
       // spawnCli refused (not an allowed CLI, or a real CLI under npm test): nothing started.
       this.push(s, { kind: "error", text: e.message });
       this.touch(s, { status: "error", error: e.message });
+      onStart?.(false);
     }
   }
 
   /** @this {import("./hub-util.js").HubThis} */
-  attach(s, proc, exitEvent = "exit") {
+  attach(s, proc, exitEvent = "exit", onStart) {
     const r = this.rt(s.id);
     r.proc = proc;
     r.ran = true; // see alive(): a per-turn CLI keeps its team alive between turns
+    // The queue waits for the provider to acknowledge the new turn; a closed process cannot deliver it.
+    const settleStart = delivered => {
+      const callback = onStart;
+      onStart = null;
+      callback?.(delivered);
+      return !!callback;
+    };
     let stderr = "";
     proc.stderr.on("data", d => { stderr = (stderr + d).slice(-2000); });
     proc.on("error", e => {
       if (r.proc !== proc) return;
       r.proc = null;
       this.touch(s, { status: "error", error: e.code === "ENOENT" ? "CLI를 찾을 수 없어요" : e.message });
+      settleStart(false);
     });
     proc.on(exitEvent, code => {
       if (r.proc !== proc) return;
       r.proc = null;
       r.perms.clear();
+      const startupFailed = !!onStart && code === 0;
+      settleStart(false);
       if (s._killed || s.status === "done") return this.touch(s, { status: "done" });
-      if (exitEvent === "close" && s.status === "error") return;
-      if (s.status !== "idle" && ((code && code !== 130) || (exitEvent === "close" && code === 0))) {
-        const err = stderr.trim().split("\n").slice(-3).join(" ").slice(0, 300) || (code === 0 ? "Codex 턴 종료 이벤트를 받지 못했어요" : `exit ${code}`);
+      if (s.status === "error") return;
+      if (startupFailed || (s.status !== "idle" && ((code && code !== 130) || (s.provider === "openai" && code === 0)))) {
+        const fallback = startupFailed ? "CLI가 턴을 시작하기 전에 닫혔어요" : code === 0 ? "Codex 턴 종료 이벤트를 받지 못했어요" : `exit ${code}`;
+        const err = stderr.trim().split("\n").slice(-3).join(" ").slice(0, 300) || fallback;
         this.push(s, { kind: "error", text: err });
         return this.touch(s, { status: "error", error: err });
       }
       this.touch(s, { status: "idle" });
+      if (s.provider === "openai") this.drainLeadInbox(s);
     });
+    return settleStart;
   }
 
   /** @this {import("./hub-util.js").HubThis} */
-  startClaude(s, prompt, images = null) {
+  startClaude(s, prompt, images = null, onStart) {
     const args = ["-p", "--input-format", "stream-json", "--output-format", "stream-json", "--verbose",
       "--model", s.model, "--permission-mode", s.perm, "--permission-prompt-tool", "stdio"];
     if (s.effort) args.push("--effort", s.effort);
@@ -118,8 +133,24 @@ export class HubRunners {
     // DISPATCH_URL / DISPATCH_SESSION let the plugin's length hook (hooks/long-session.mjs) find this session.
     const proc = this.spawnCli("claude", args, { cwd: s.cwd, env: { ...sessionEnv(s), DISPATCH_URL: `http://127.0.0.1:${this.port}`, DISPATCH_SESSION: s.id }, stdio: ["pipe", "pipe", "pipe"] });
     s._costBase = s.cost;
-    this.attach(s, proc);
-    onJsonLines(proc.stdout, m => this.onClaude(s, m));
+    const settleStart = this.attach(s, proc, "close", onStart);
+    const r = this.rt(s.id);
+    r.pauseInterrupted = false;
+    proc.stdin.on("error", () => {
+      if (r.proc === proc && !s._killed) settleStart(false);
+    });
+    onJsonLines(proc.stdout, m => {
+      if (r.proc !== proc || s._killed) return;
+      // Init only identifies the CLI session. Claude can still reject its first turn.
+      if ((m.type === "assistant" && m.message && !m.error && m.message.model !== "<synthetic>") ||
+          (m.type === "control_request" && m.request?.subtype === "can_use_tool")) settleStart(true);
+      if (m.type === "result" && settleStart(!m.is_error) && m.is_error) {
+        // Retry a rejected first turn through a fresh CLI, with the same delivery check.
+        r.proc = null;
+        proc.kill("SIGTERM");
+      }
+      this.onClaude(s, m);
+    });
     proc.stdin.write(JSON.stringify({ type: "user", message: { role: "user", content: userContent(prompt, images) } }) + "\n");
     this.touch(s, { status: "running", error: null });
   }
@@ -199,7 +230,11 @@ export class HubRunners {
         }
         const win = Object.values(m.modelUsage || {})[0]?.contextWindow;
         if (win) s.ctxWindow = win;
-        if (m.is_error) this.push(s, { kind: "error", text: clip(m.result || m.subtype, 400) });
+        if (m.is_error) {
+          if (s.canSpawn && !r.pauseInterrupted) r.leadInboxHeld = true;
+          this.push(s, { kind: "error", text: clip(m.result || m.subtype, 400) });
+        }
+        r.pauseInterrupted = false;
         this.touch(s, { status: "idle", turns: s.turns + 1, turnsSinceRotate: (s.turnsSinceRotate ?? s.turns ?? 0) + 1 });
         this.endTurn(s);
         break;
@@ -208,11 +243,14 @@ export class HubRunners {
   }
 
   /** @this {import("./hub-util.js").HubThis} */
-  startCodex(s, prompt) {
+  startCodex(s, prompt, onStart) {
     // checkPerm (in start) already refused manual and acceptEdits; the sandbox never runs looser than the mode.
     const sandbox = CODEX_SANDBOX[s.perm];
     if (!sandbox) throw badRequest("알 수 없는 권한 모드예요");
-    const first = !s.providerSessionId;
+    const runtime = this.rt(s.id);
+    const handoff = runtime.codexHandoff;
+    if (handoff) prompt = handoff + prompt;
+    const first = !s.providerSessionId || !!handoff;
     const args = ["app-server", "--listen", "stdio://", "-c", `sandbox_mode="${sandbox}"`];
     const env = Object.entries(this.mcpEnv(s)).map(([k, v]) => `${k}=${JSON.stringify(v)}`).join(",");
     args.push("-c", `mcp_servers.dispatch.command=${JSON.stringify(process.execPath)}`,
@@ -222,8 +260,7 @@ export class HubRunners {
     const system = this.systemPrompt(s);
     const text = first && system ? `[역할]\n${system}\n\n[작업]\n${prompt}` : prompt;
     const proc = this.spawnCli("codex", args, { cwd: s.cwd, env: sessionEnv(s), stdio: ["pipe", "pipe", "pipe"] });
-    const runtime = this.rt(s.id);
-    this.attach(s, proc, "close");
+    const settleStart = this.attach(s, proc, "close", onStart);
     this.cancelAutoRemove(s.id);
     runtime.lastText = "";
     this.touch(s, { status: "running", error: null, ctx: null, ctxWindow: 0, ctxHigh: null });
@@ -232,6 +269,10 @@ export class HubRunners {
       effort: s.effort ? checkEffort({ efforts: EFFORT_WORDS }, s.effort) : null,
       active: () => runtime.proc === proc && !s._killed && s.status !== "done",
       started: providerSessionId => this.touch(s, { providerSessionId }),
+      accepted: () => {
+        if (handoff && runtime.codexHandoff === handoff) runtime.codexHandoff = null;
+        settleStart(true);
+      },
       usage: (delta, ctx, ctxWindow) => {
         if (delta) {
           for (const k in delta) s.usage[k] += delta[k];
@@ -247,6 +288,7 @@ export class HubRunners {
       },
       item: it => this.onCodexItem(s, it),
       finish: (status, error) => {
+        settleStart(false);
         if (status === "completed") {
           this.touch(s, { status: "idle", turns: s.turns + 1, turnsSinceRotate: (s.turnsSinceRotate ?? s.turns ?? 0) + 1 });
           this.endTurn(s);
@@ -282,7 +324,7 @@ export class HubRunners {
   }
 
   /** @this {import("./hub-util.js").HubThis} */
-  startGemini(s, prompt) {
+  startGemini(s, prompt, onStart) {
     // agy has no approval channel in headless mode: checkPerm (in start) refused manual, and the other
     // modes map to agy's own --mode. --dangerously-skip-permissions is never passed (CLAUDE.md: no
     // bypass, refuse instead). If agy cannot run a tool headless in a mode, the turn fails and says so.
@@ -297,17 +339,30 @@ export class HubRunners {
     // Same environment as Claude/Codex (headless Playwright, own git env), plus the MCP variables.
     const env = { ...sessionEnv(s), ...this.mcpEnv(s) };
     const proc = this.spawnCli("agy", args, { cwd: s.cwd, env, stdio: ["ignore", "pipe", "pipe"] });
-    this.attach(s, proc);
+    const settleStart = this.attach(s, proc, "close", onStart);
     // One agy process is one turn. Its answer arrives as text_delta chunks; they add up in `turn.text`.
     const turn = { text: "", ended: false };
     this.rt(s.id).agyTurn = turn;
-    onJsonLines(proc.stdout, m => this.onGemini(s, m, turn));
+    onJsonLines(proc.stdout, m => {
+      if (this.live.get(s.id)?.proc === proc && !s._killed && !turn.ended) {
+        // The CLI can emit init and echo its input before the provider accepts the turn.
+        if (m.event === "step_update") {
+          const step = m.step_update;
+          if ((step?.step_type === "agent_response" && (step.text_delta || step.text)) ||
+              (step?.step_type === "tool" && ["ACTIVE", "DONE"].includes(step.state))) settleStart(true);
+        }
+        if (m.event === "result") settleStart(!!m.result?.status && m.result.status !== "ERROR");
+      }
+      this.onGemini(s, m, turn);
+    });
     // No result event before agy exited cleanly (the line was lost): the turn still ends with what agy said,
     // so the lead gets the report. Only for exit code 0 of the current turn: a signal (interrupt, rotate,
     // stopAll) gives code null and is handled elsewhere; an old process closing after rotate() must not
     // touch the new turn. A failed exit is left to attach().
     proc.on("close", code => {
-      if (code === 0 && !turn.ended && this.rt(s.id).agyTurn === turn && !s._killed && s.status !== "done") this.endGeminiTurn(s, turn);
+      if (this.live.get(s.id)?.agyTurn !== turn || s._killed || s.status === "done") return;
+      if (code === 0 && !turn.ended && s.status !== "error") this.endGeminiTurn(s, turn);
+      else this.drainLeadInbox(s);
     });
     this.touch(s, { status: "running", error: null });
   }

@@ -343,7 +343,7 @@ function Group({ g, scoped, summaries }: { g: BoardGroup<Session>; scoped: boole
         <div className="-mx-2">
           <SessionGrid label={`${g.label} 세션`}>
             {shown.map((s) => (
-              <SessionCard key={s.id} agent={presenceOf(s, stateOf)} summary={summaries.get(s.id) ?? null} title={null} onOpen={() => undefined} trail={TRAIL.board} />
+              <SessionCard key={s.id} agent={presenceOf(s, stateOf)} leadInboxCount={s.canSpawn ? s.leadInboxCount : undefined} summary={summaries.get(s.id) ?? null} title={null} onOpen={() => undefined} trail={TRAIL.board} />
             ))}
           </SessionGrid>
         </div>

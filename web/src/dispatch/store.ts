@@ -10,7 +10,7 @@ const initial = (): DispatchState => ({
   project: { name: '', path: '', branch: null }, roles: [], perms: [], models: [],
   providers: {} as Record<Provider, ProviderStatus>,
   limits: { five: null, seven: null, fable: null, fiveReset: null, sevenReset: null, fableReset: null, updatedAt: null },
-  settings: { guard: { enabled: true, five: 0.9, seven: 0.85 }, team: { rotateLead: 5, rotateOthers: 10, ctxHandoff: 70, handoffMTokens: 15, maxChildren: 8, replyStyle: true, shareDeps: true, dropWorktrees: true, autoRemoveDone: true, autoRotateLong: true, autoRemoveGraceSec: 120, roleModels: {} } },
+  settings: { guard: { enabled: true, five: 0.9, seven: 0.85 }, team: { rotateLead: 5, rotateOthers: 10, ctxHandoff: 70, handoffMTokens: 15, maxChildren: 8, maxLeadInbox: 20, replyStyle: true, shareDeps: true, dropWorktrees: true, autoRemoveDone: true, autoRotateLong: true, autoRemoveGraceSec: 120, roleModels: {} } },
   sessions: [],
 });
 
@@ -122,7 +122,10 @@ export function apply(ev: string, d: unknown) {
       const { id, entry } = d as { id: string; entry: Entry };
       loading.get(id)?.buf.push(entry);
       const cur = state.transcripts[id];
-      if (cur) setState({ transcripts: { ...state.transcripts, [id]: [...cur, entry] } });
+      // History can already contain an SSE entry by the time it arrives. The timestamp also
+      // distinguishes sequence numbers reused when a session's in-memory transcript starts over.
+      if (!cur || (entry.id !== undefined && cur.some(e => e.id === entry.id && e.at === entry.at))) break;
+      setState({ transcripts: { ...state.transcripts, [id]: [...cur, entry] } });
       break;
     }
     case 'tasks': setState({ tasks: d as BoardTask[] }); break;

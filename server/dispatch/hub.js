@@ -22,6 +22,7 @@ import {
   mixin, badRequest, PROVIDERS, UNSUPPORTED_MODEL, PROVIDER_NAMES, checkPerm, checkEffort, MAX_TRANSCRIPT, RESUME_TEXT, isOpenStatus, clip, RESUME_ID, userContent, activityOf, maskedPerm,
 } from "./hub-util.js";
 import { HubAutoRemove } from "./hub-auto-remove.js";
+import { HubLeadInbox } from "./hub-lead-inbox.js";
 import { HubTickets } from "./hub-tickets.js";
 import { HubRunners } from "./hub-runners.js";
 export { AGY_MODES, CODEX_SANDBOX, PROVIDERS, PROVIDER_NAMES, UNSUPPORTED_MODEL, activityOf, checkEffort, checkPerm, userContent } from "./hub-util.js";
@@ -40,6 +41,7 @@ export class Hub extends EventEmitter {
     // Claude limits and the Gemini quota are account-wide: shared by every server via ~/.dispatch/limits.json.
     this.shared = limits || new SharedLimits();
     this.shared.on("change", () => { this.emit("limits", this.currentLimits()); this.checkTickets(); });
+    this.leadReportSeq = 0;
     this.live = new Map(); // id -> { proc, transcript, perms, seenMsgIds }
     // The live view per session (#728): metadata only, in memory, sent as throttled `live` events.
     this.liveView = new LiveTracker({ workspaceDir, emit: ev => this.emit("live", ev), known: id => !!this.get(id) });
@@ -105,7 +107,7 @@ export class Hub extends EventEmitter {
   rt(id) {
     let r = this.live.get(id);
     if (!r) {
-      this.live.set(id, r = { proc: null, transcript: [], seq: 0, perms: new Map(), seenMsgIds: new Set(), pendingReport: null,
+      this.live.set(id, r = { proc: null, transcript: [], seq: 0, perms: new Map(), seenMsgIds: new Set(), leadInbox: [], pendingReports: [],
         fails: new Map(), checks: new Map(), lastEventAt: Date.now() });
       // A repeat-fail flag survives a restart: seed its counter so the next failure continues the count.
       const st = this.get(id)?.stuck;
@@ -132,7 +134,7 @@ export class Hub extends EventEmitter {
     recordState(h, state, s.stateSince ?? Date.now());
     if (h[h.length - 1][1] !== before) this.store.save();
     const { history: _h, ...rest } = s;
-    return { ...rest, pending, activity: busy ? r?.activity ?? null : null,
+    return { ...rest, pending, leadInboxCount: s.canSpawn ? this.leadInboxSize(s) : 0, activity: busy ? r?.activity ?? null : null,
       attention: attentionOf(s, state, pending.length, s.stateSince), ...this.burn?.fields(s, this.sessions) };
   }
 
@@ -678,7 +680,7 @@ export class Hub extends EventEmitter {
   /** Claude account windows never pause another provider's sessions. */
   pausedFor(s) { return s?.provider === "claude" && this.paused; }
 
-  send(id, text, { force = false, images = null } = {}) {
+  send(id, text, { force = false, images = null, onDelivery } = {}) {
     const s = this.get(id);
     if (!s) throw Object.assign(new Error("세션이 없어요"), { status: 404 });
     if (images?.length && s.provider !== "claude") throw Object.assign(new Error("이미지는 Claude 세션에만 보낼 수 있어요"), { status: 400 });
@@ -691,32 +693,67 @@ export class Hub extends EventEmitter {
     // does not go out.
     const notes = r.leadNotes?.length ? r.leadNotes.splice(0) : [];
     if (notes.length) text = `${text}\n\n${notes.join("\n")}`;
-    try { this.deliver(s, r, text, images); } catch (e) { r.leadNotes = [...notes, ...(r.leadNotes || [])]; throw e; }
+    const restoreNotes = () => { r.leadNotes = [...notes, ...(r.leadNotes || [])]; };
+    const settle = onDelivery && (delivered => {
+      if (!delivered) restoreNotes();
+      onDelivery(delivered);
+    });
+    try { this.deliver(s, r, text, images, settle); } catch (e) { restoreNotes(); throw e; }
+    if (onDelivery) return;
     // Whoever writes to a teammate in its grace period keeps it: the auto-remove timer stops once the
     // message went out. A refused message (a running Codex or Gemini turn) leaves the timer armed.
+    r.leadInboxHeld = false;
+    r.leadInboxResume = false;
+    r.interruptReported = false;
     this.cancelAutoRemove(id);
   }
 
-  deliver(s, r, text, images = null) {
+  deliver(s, r, text, images = null, onDelivery) {
     // Past the length guard (#969): the message goes to a fresh session instead, with the handoff in front.
-    if (this.replaceDue(s) && this.replaceSession(s, { text, images })) return;
+    if (!onDelivery && this.replaceDue(s) && this.replaceSession(s, { text, images })) return;
+    const rotate = this.shouldRotate(s);
+    if (!rotate && r.proc && s.provider !== "claude") {
+      const name = s.provider === "openai" ? "Codex" : "Gemini";
+      throw new Error(`${name}는 응답이 끝난 뒤에 다음 메시지를 보낼 수 있어요`);
+    }
     // A pending length-guard note is attached here and cleared only on a path that delivers the message.
     const pend = s.longPending;
     if (pend) text = `${text}\n\n${pend}`;
-    const sent = () => { if (pend && s.longPending === pend) s.longPending = null; };
-    // Images (#968) go to the CLI only; the transcript keeps a count, never the bytes.
-    this.push(s, { kind: "user", text: images?.length ? [text, `[이미지 ${images.length}장]`].filter(Boolean).join("\n") : text });
-    if (this.shouldRotate(s)) { sent(); return this.rotate(s, text, images); }
+    let settled = false;
+    const sent = (delivered = true) => {
+      if (settled) return;
+      settled = true;
+      if (delivered) {
+        // Images go to the CLI only; the transcript keeps a count, never the bytes.
+        this.push(s, { kind: "user", text: images?.length ? [text, `[이미지 ${images.length}장]`].filter(Boolean).join("\n") : text });
+        if (pend && s.longPending === pend) s.longPending = null;
+      }
+      onDelivery?.(delivered);
+    };
+    if (rotate) {
+      if (!onDelivery) sent();
+      return this.rotate(s, text, images, onDelivery && sent);
+    }
     if (s.provider === "claude" && r.proc) {
-      r.proc.stdin.write(JSON.stringify({ type: "user", message: { role: "user", content: userContent(text, images) } }) + "\n");
-      sent();
-      this.touch(s, { status: "running" });
-    } else if (s.provider === "openai" && r.proc) {
-      throw new Error("Codex는 응답이 끝난 뒤에 다음 메시지를 보낼 수 있어요");
-    } else if (s.provider === "gemini" && r.proc) {
-      throw new Error("Gemini는 응답이 끝난 뒤에 다음 메시지를 보낼 수 있어요");
+      if (r.proc.stdin.destroyed || r.proc.stdin.writableEnded) throw new Error("Claude에 메시지를 보낼 수 없어요");
+      const line = JSON.stringify({ type: "user", message: { role: "user", content: userContent(text, images) } }) + "\n";
+      if (onDelivery) {
+        let writeFailed = false;
+        r.proc.stdin.write(line, error => {
+          if (this.get(s.id) !== s || s._killed) return sent(false);
+          writeFailed = Boolean(error);
+          if (error) this.touch(s, { status: "error", error: "Claude에 메시지를 보낼 수 없어요" });
+          sent(!error);
+        });
+        if (!writeFailed) this.touch(s, { status: "running", error: null });
+      } else {
+        r.proc.stdin.write(line);
+        sent();
+        this.touch(s, { status: "running" });
+      }
     } else {
-      this.start(s, text, images);
+      if (!onDelivery) sent();
+      this.start(s, text, images, onDelivery && sent);
     }
   }
 
@@ -802,7 +839,7 @@ export class Hub extends EventEmitter {
   }
 
   /** Ends the current CLI session and starts a fresh one with a handoff note plus `text`. */
-  rotate(s, text, images = null) {
+  rotate(s, text, images = null, onStart) {
     const r = this.rt(s.id);
     const old = r.proc;
     r.proc = null; // the exit handler ignores a process that is no longer current
@@ -810,7 +847,7 @@ export class Hub extends EventEmitter {
     old?.kill("SIGTERM");
     const { last, team } = this.handoffParts(s, r.lastText);
     const why = s.ctxHigh ? `컨텍스트를 ${s.ctxHigh.pct}% 써서` : `컨텍스트를 줄이려고 ${s.turnsSinceRotate ?? s.turns}턴 만에`;
-    const note = `[Dispatch] ${why} 새 CLI 세션으로 이어 간다. 이전 대화는 이 세션에 없다. 필요한 상태는 작업 폴더·브랜치·git log·docs로 다시 확인하라.\n\n[직전 내 응답]\n${last || "(없음)"}${team}\n\n[이어서 할 일]\n${text}`;
+    const handoff = `[Dispatch] ${why} 새 CLI 세션으로 이어 간다. 이전 대화는 이 세션에 없다. 필요한 상태는 작업 폴더·브랜치·git log·docs로 다시 확인하라.\n\n[직전 내 응답]\n${last || "(없음)"}${team}\n\n[이어서 할 일]\n`;
     this.push(s, { kind: "info", text: s.ctxHigh
       ? `새 세션으로 이어 감 (컨텍스트 ${s.ctxHigh.pct}%, 대화 요약을 넘김)`
       : `새 세션으로 이어 감 (${s.turnsSinceRotate ?? s.turns}턴, 대화 요약을 넘김)` });
@@ -821,7 +858,9 @@ export class Hub extends EventEmitter {
     if (s.provider === "openai") s.ctxWindow = 0;
     s.ctxHigh = null;
     r.ctxNoticed = false;
-    this.start(s, note, images);
+    // Codex may create the thread yet reject its first turn. Keep the handoff for retries.
+    if (s.provider === "openai") r.codexHandoff = handoff;
+    this.start(s, s.provider === "openai" ? text : handoff + text, images, onStart);
   }
 
   /* ---------------- Auto-replace long sessions (#969) ---------------- */
@@ -835,7 +874,7 @@ export class Hub extends EventEmitter {
     const t = this.team();
     if (!s || !t.autoRotateLong || !longOver(s, t) || s.status !== "idle" || s._killed) return false;
     const r = this.live.get(s.id);
-    if (r?.replacing || r?.perms?.size || s.asksUser) return false;
+    if (r?.replacing || r?.drainingLeadInbox || r?.perms?.size || s.asksUser) return false;
     if (s.parent && !s.longRun?.told) return false;
     if (this.pausedFor(s) || this.runBlock(s) || this.holdTeam?.(s.parent ?? s.id)) return false;
     if (s.provider === "claude" && this.guardCheck(1)) return false;
@@ -844,9 +883,11 @@ export class Hub extends EventEmitter {
 
   /** A turn ended: report to the lead, then swap a lead (or a session without one) that is past the length guard. */
   endTurn(s) {
+    if (this.stopping) return;
     const last = this.live.get(s.id)?.lastText ?? null;
     this.reportToParent(s);
-    if (!s.parent && this.replaceDue(s)) this.replaceSession(s, { last });
+    if (!this.live.get(s.id)?.leadInboxHeld && !s.parent && this.replaceDue(s) && this.replaceSession(s, { last })) return;
+    this.drainLeadInbox(s);
   }
 
   /**
@@ -887,7 +928,11 @@ export class Hub extends EventEmitter {
       for (const v of Object.values(bag || {})) if (v?.lead === old.id) v.lead = s.id;
     const nr = this.rt(s.id);
     if (r.leadNotes?.length) nr.leadNotes = r.leadNotes.splice(0);
-    if (r.pendingReport) { nr.pendingReport = r.pendingReport; r.pendingReport = null; }
+    nr.leadInbox = r.leadInbox.splice(0);
+    nr.pendingReports = r.pendingReports.splice(0);
+    for (const report of nr.pendingReports) report.sender = s.id;
+    nr.acceptedLeadMessages = r.acceptedLeadMessages;
+    nr.acceptedLeadInstructions = r.acceptedLeadInstructions;
     const said = `누적 ${mtok}M 토큰이라 새 세션 ${s.name}로 바꿨어요`;
     this.push(s, { kind: "info", text: `${said} (이전 세션 ${old.name})` });
     this.push(s, { kind: "user", text: note, label: "인계" });
@@ -901,9 +946,14 @@ export class Hub extends EventEmitter {
     return s;
   }
 
-  interrupt(id) {
+  interrupt(id, { pause = false } = {}) {
     const s = this.get(id), r = this.live.get(id);
     if (!s || !r?.proc) return;
+    if (s.canSpawn && !pause) {
+      r.leadInboxHeld = true;
+      r.leadInboxResume = false;
+    }
+    if (pause && s.provider === "claude") r.pauseInterrupted = true;
     this.handoffOnInterrupt(s);
     if (r.agyTurn) r.agyTurn.ended = true; // agy: the [중단] note is this turn's only report
     if (s.provider === "claude") {
@@ -920,17 +970,22 @@ export class Hub extends EventEmitter {
    */
   handoffOnInterrupt(s) {
     const r = this.live.get(s.id);
-    if (!r || s.canSpawn || !s.parent) return;
-    const doing = clip(r.lastText || "", 600) || (r.lastTool ? `도구 실행 중: ${r.lastTool}` : "작업 진행 중");
-    r.pendingReport = `[${s.name}(${s.roleName}) 중단${s.branch ? ` · ${s.branch}` : ""}] 턴 중간에 멈췄다. 하던 일:\n${doing}\n(재개하려면 이 세션에 지시를 보내면 된다. 전체 대화를 다시 읽지 말고 이 요약과 git diff/log로 상태를 파악하라.)`;
+    if (!r || s.canSpawn || !s.parent || r.interruptReported) return;
+    r.interruptReported = true;
+    const doing = clip(redact(r.lastText || ""), 600) || (r.lastTool ? `도구 실행 중: ${r.lastTool}` : "작업 진행 중");
+    const report = `[${s.name}(${s.roleName}) 중단${s.branch ? ` · ${s.branch}` : ""}] 턴 중간에 멈췄다. 하던 일:\n${doing}\n(재개하려면 이 세션에 지시를 보내면 된다. 전체 대화를 다시 읽지 말고 이 요약과 git diff/log로 상태를 파악하라.)`;
     r.lastText = null;
-    this.deliverReport(s);
+    this.queueLeadReport(s, report);
   }
 
   kill(id) {
     const s = this.get(id), r = this.live.get(id);
     if (!s) return;
     s._killed = true;
+    if (r?.leadInbox.length) {
+      const cancelled = r.leadInbox.splice(0).length;
+      this.push(s, { kind: "info", text: `세션을 종료해 대기 중인 사용자 메시지 ${cancelled}건을 취소했어요.` });
+    }
     r?.proc?.kill("SIGTERM");
     r?.perms.clear();
     this.touch(s, { status: "done" });
@@ -960,19 +1015,16 @@ export class Hub extends EventEmitter {
   /** A teammate stopped with an error: it is not removed, and its lead hears about it at once. */
   noticeError(s) {
     if (s._killed || !this.team().autoRemoveDone || !s.parent || s.canSpawn) return;
-    this.notifyLead(s.parent, `[Dispatch] ${s.name}(${s.roleName ?? s.role}) 세션이 오류로 멈췄어요${s.branch ? `(브랜치 ${s.branch})` : ""}: ${clip(s.error || "알 수 없는 오류", 300)}\n자동 정리하지 않았어요. 원인을 보고 다시 지시하거나 stop_session(remove: true)로 정리하세요.`, { wake: true });
+    this.queueLeadReport(s, `[Dispatch] ${s.name}(${s.roleName ?? s.role}) 세션이 오류로 멈췄어요${s.branch ? `(브랜치 ${s.branch})` : ""}: ${clip(s.error || "알 수 없는 오류", 300)}\n자동 정리하지 않았어요. 원인을 보고 다시 지시하거나 stop_session(remove: true)로 정리하세요.`, { board: false });
   }
 
-  /**
-   * Tells a lead something without spending a turn on it: mid-turn when its Claude process is running,
-   * otherwise with its next message (like the length guard's longPending). `wake` sends it now.
-   */
-  notifyLead(leadId, text, { wake = false } = {}) {
+  /** An internal lifecycle notice rides with the next instruction unless Claude is already running. */
+  notifyLead(leadId, text) {
     const lead = this.get(leadId);
     if (!lead || lead.status === "done") return;
     const r = this.rt(leadId);
     const midTurn = lead.provider === "claude" && r.proc && (lead.status === "running" || lead.status === "waiting");
-    if (wake || midTurn) { try { this.send(leadId, text); return; } catch { /* kept for the next message */ } }
+    if (midTurn && !r.leadInboxHeld && !r.drainingLeadInbox) { try { this.send(leadId, text); return; } catch { /* kept for the next message */ } }
     (r.leadNotes ||= []).push(text);
   }
 
@@ -1027,18 +1079,14 @@ export class Hub extends EventEmitter {
       const max = this.team().maxChildren;
       if (active + 1 > max) throw Object.assign(new Error(`관리자 한 명이 동시에 둘 수 있는 세션은 ${max}개까지예요 (현재 ${active}개)`), { status: 400 });
     }
+    const previous = s.parent && this.get(s.parent);
+    const next = parent && this.get(parent);
     this.touch(s, { parent: parent || null });
-    this.deliverReport(s);
-  }
-
-  // A child asks or tells its lead something mid-turn (message_lead tool).
-  messageLead(id, text) {
-    const s = this.get(id);
-    if (!s) throw Object.assign(new Error("세션이 없어요"), { status: 404 });
-    const p = s.parent && this.get(s.parent);
-    if (!p || p.status === "done") throw Object.assign(new Error("연결된 관리자가 없어요"), { status: 400 });
-    if (!String(text).trim()) throw Object.assign(new Error("보낼 내용이 없어요"), { status: 400 });
-    this.send(p.id, `[${s.name}(${s.roleName}) 메시지${s.branch ? ` · ${s.branch}` : ""}]\n${clip(text, 4000)}`);
+    for (const lead of new Set([previous, next])) {
+      if (!lead || lead.status === "done") continue;
+      this.emit("session", this.publicSession(lead));
+      this.drainLeadInbox(lead);
+    }
   }
 
   // Resume every session a restart cut off mid-turn, once its provider is connected.
@@ -1054,8 +1102,9 @@ export class Hub extends EventEmitter {
   }
 
   stopAll() {
+    this.stopping = true;
     for (const r of this.live.values()) r.proc?.kill("SIGTERM");
   }
 }
 
-mixin(Hub, HubRunners, HubTickets, HubAutoRemove);
+mixin(Hub, HubRunners, HubTickets, HubAutoRemove, HubLeadInbox);

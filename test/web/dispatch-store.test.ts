@@ -212,8 +212,13 @@ test('messages arriving while the transcript loads are kept, without duplicates'
     await p;
     assert.deepEqual(texts('a'), ['m1', 'm2', 'm3']);
     assert.equal('b' in getState().transcripts, false);
-    apply('message', { id: 'a', entry: msg(4) }); // after the load: appended as before
-    assert.deepEqual(texts('a'), ['m1', 'm2', 'm3', 'm4']);
+    apply('message', { id: 'a', entry: msg(2) }); // SSE arrived after history already contained it
+    apply('message', { id: 'a', entry: msg(4, 'm2') }); // an independent reply with exactly the same text
+    apply('message', { id: 'a', entry: msg(4, 'm2') }); // the SSE event can also be replayed
+    apply('message', { id: 'a', entry: { ...msg(2), at: 5 } }); // runtime restarted its sequence
+    assert.deepEqual(getState().transcripts.a?.map(e => [e.id, e.at, e.text]), [
+      [1, 1, 'm1'], [2, 2, 'm2'], [3, 3, 'm3'], [4, 4, 'm2'], [2, 5, 'm2'],
+    ]);
   } finally { f.restore(); }
 });
 

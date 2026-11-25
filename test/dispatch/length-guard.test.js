@@ -12,16 +12,16 @@ function fakeHub(sessions, rts, team = {}) {
   const live = new Map(Object.entries(rts));
   const sent = [];
   const hub = Object.assign(Object.create(Hub.prototype), {
-    live, store: { data: { sessions: Object.fromEntries(sessions.map(s => [s.id, s])), settings: { team } }, save() {} }, emit() {},
-    runBlock: () => null, // provider and model checks are covered in safety.test.js
+    leadReportSeq: 0, live, store: { data: { sessions: Object.fromEntries(sessions.map(s => [s.id, s])), settings: { team } }, save() {} }, emit() {},
+    pausedFor: () => false, runBlock: () => null, // provider and model checks are covered in safety.test.js
     isConnected: () => true,
   });
   hub.sentTo = sent;
-  hub.send = (id, text) => sent.push({ id, text });
+  hub.send = (id, text, { onDelivery } = {}) => { sent.push({ id, text }); onDelivery?.(true); };
   return hub;
 }
 const fakeProc = () => { const lines = []; return { lines, stdin: { write: l => lines.push(JSON.parse(l)) } }; };
-const rt = proc => ({ proc, transcript: [], written: 0, perms: new Map(), fails: new Map(), checks: new Map(), lastEventAt: 0 });
+const rt = proc => ({ proc, transcript: [], leadInbox: [], pendingReports: [], written: 0, perms: new Map(), fails: new Map(), checks: new Map(), lastEventAt: 0 });
 const M = n => ({ input: 0, output: 0, cacheRead: n * 1e6, cacheWrite: 0 });
 
 test("mtokens / longOver: counts every kind of token, 0 turns the guard off", () => {

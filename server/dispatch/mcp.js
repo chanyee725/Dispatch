@@ -2,6 +2,7 @@
 // Minimal MCP stdio server that lets a lead session drive Dispatch's session hub over its local HTTP API.
 // Spawned by Claude Code (--mcp-config), Codex (mcp_servers.dispatch) or agy with DISPATCH_URL / DISPATCH_PARENT.
 
+import { randomUUID } from "node:crypto";
 import { LANES } from "./lanes.js";
 
 // Only this machine's loopback: a DISPATCH_URL pointing anywhere else is refused, and there is no
@@ -19,7 +20,10 @@ async function api(method, path, body) {
     body: body ? JSON.stringify(body) : undefined,
   });
   const data = await res.json().catch(() => ({}));
-  if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
+  if (!res.ok) {
+    throw Object.assign(new Error(data.error || `HTTP ${res.status}`),
+      data.code === "lead_inbox_full" ? { code: data.code, waiting: data.waiting, limit: data.limit } : {});
+  }
   return data;
 }
 
@@ -44,15 +48,26 @@ const brief = s => ({
   long: !!s.longRun,
   ...(s.mode && { mode: s.mode }), ...(s.profileNote && { profileNote: s.profileNote }),
   pendingPermissions: (s.pending || []).length,
+  leadInboxCount: s.leadInboxCount ?? 0,
 });
 
 // Teammates get one tool: reach their lead mid-turn.
 const CHILD_TOOLS = [
   {
     name: "message_lead",
-    description: "턴 중간에 관리자에게 묻거나 알린다. 턴을 끝낼 때의 답변은 자동으로 보고되니 따로 보내지 않는다.",
-    inputSchema: { type: "object", required: ["text"], properties: { text: { type: "string" } } },
-    run: async ({ text }) => { await api("POST", `/api/sessions/${SELF}/to-lead`, { text }); return { ok: true }; },
+    description: "관리자가 다음 턴에 볼 메시지를 보낸다. 대기열이 가득 차면 같은 message_id로 다시 보낸다. 마지막 답변은 자동으로 보고된다.",
+    inputSchema: { type: "object", required: ["text"], properties: {
+      text: { type: "string" },
+      message_id: { type: "string", description: "같은 메시지를 다시 보낼 때 재사용하는 ID. 생략하면 자동으로 만들어요." },
+    } },
+    run: async ({ text, message_id: messageId = randomUUID() }) => {
+      try {
+        return { ...(await api("POST", `/api/sessions/${SELF}/to-lead`, { text, messageId })), message_id: messageId };
+      } catch (e) {
+        if (e.code !== "lead_inbox_full") throw e;
+        return { ok: false, code: e.code, waiting: e.waiting, limit: e.limit, message_id: messageId };
+      }
+    },
   },
 ];
 
