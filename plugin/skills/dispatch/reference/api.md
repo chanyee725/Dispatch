@@ -1,6 +1,6 @@
 # Dispatch HTTP API
 
-Base URL `http://127.0.0.1:4330` (or `$DISPATCH_PORT`). JSON in and out. Every non-GET request needs the header `x-dispatch: 1`; without it the server answers 403. Errors come back as `{ "error": "<message>" }` with a 4xx status — relay the message to the user as-is.
+Base URL `http://127.0.0.1:4330` (or `$DISPATCH_PORT`). JSON in and out. Every non-GET request needs the header `x-dispatch: 1`; without it the server answers 403. Errors come back as `{ "error": "<message>" }` with a 4xx status — relay the message to the user as-is. The lead inbox adds backpressure fields on HTTP 429 as described below.
 
 ```bash
 H=(-H 'content-type: application/json' -H 'x-dispatch: 1')
@@ -21,6 +21,7 @@ A session object carries `id`, `name`, `role`, `provider`, `model`, `effort`, `p
 
 Monitoring fields, decided on the server so every view agrees:
 
+- `leadInboxCount` is the number of entries waiting for a lead, capped at `settings.team.maxLeadInbox`. It is zero for other sessions and finished leads. It appears in session objects and `session` events. The queue contents stay in memory.
 - `state` — what the session needs from a person: `working` (a turn is running) · `waiting` (a permission prompt is open, or a session without a lead ended its turn asking the user something) · `stuck` (`stuck` is set; see below) · `failed` (last turn ended in an error) · `resting` (turn finished, nothing asked) · `done`. A teammate's question goes to its lead, so it stays `resting`.
 - `asksUser` — true when the last turn ended by asking its reader something (checked on the final answer's last lines). With no `parent` this is what makes `state` `waiting`; the web UI then pins the question as a '답할 것' card in the session sheet, read from the transcript in the browser — the question text itself is not stored.
 - `stateSince` — epoch ms when the session entered its current `state`.
@@ -34,8 +35,6 @@ Monitoring fields, decided on the server so every view agrees:
   - `{ reason: "silent", label, sinceMs }` — `running` with no output or tool event for `stuckSilentMinutes` (default 10). The next event clears it.
 
   `label` is Korean UI copy (`e2e가 3번 연속 실패했어요`). `sinceMs` is epoch ms (first failure, last event). A `session` event goes out when a flag appears, changes reason or command, or clears; a growing `count` is updated in place and rides on the next event, so one loop is one alert. Checked on every tool result and every 30 s.
-
-When a session with a `parent` finishes a turn, the server sends its last answer to the parent as a message (`[<name>(<role>) 보고 · <branch>]` + the text; names are short random ones such as `Juno` or `Cal`, unique among listed sessions), so an idle lead wakes up without polling. A report that cannot be delivered yet (no parent, or a busy Codex lead) is retried until it lands.
 
 ## Create sessions
 
@@ -57,8 +56,8 @@ Per item: `role` (required), `n` (copies, default 1), `model`, `effort` (one of 
 
 | Request | Body | Effect |
 |---|---|---|
-| `POST /api/sessions/<id>/message` | `{ "text": "..." }` | Sends a follow-up; resumes the CLI session if its process has exited. Codex accepts it only while `idle`. |
-| `POST /api/sessions/<id>/to-lead` | `{ "text": "..." }` | Sends a mid-turn message from a teammate to its lead (what the `message_lead` tool calls). |
+| `POST /api/sessions/<id>/message` | `text`, optional `messageId` for a lead | Accepts a follow-up into the lead inbox even while the lead is working. Other sessions receive follow-ups directly. For non-lead Codex and Gemini sessions, wait for the current response to finish. |
+| `POST /api/sessions/<id>/to-lead` | `text`, optional `messageId` | Accepts a teammate’s explicit message into its lead’s inbox. Requires an active sender with an attached lead. Called by `message_lead`. |
 | `POST /api/sessions/<id>/parent` | `{ "parent": "<lead-id>" \| null }` | Attaches a session to a lead (or detaches it). The lead then receives the session's finished turns as reports and sees it in `list_sessions`. Refused when the target is not a lead or already has 8 open children. |
 | `POST /api/sessions/<id>/perm` | `{ "perm": "manual" \| "acceptEdits" \| "auto" \| "plan" }` | Changes the session's permission mode. A live Claude process switches at once; otherwise (and for Codex) the next turn starts in it. The transcript and context stay. |
 | `POST /api/sessions/<id>/permission` | `{ "requestId", "behavior": "allow" \| "deny", "always": false }` | Answers a pending Claude permission request from `session.pending`. |
@@ -66,6 +65,20 @@ Per item: `role` (required), `n` (copies, default 1), `model`, `effort` (one of 
 | `POST /api/sessions/<id>/kill` | — | Ends the session (`done`). |
 | `POST /api/sessions/clear-done` | — | Removes every finished session (`done` or `error`) the same way. Returns `{ removed }`. |
 | `POST /api/sessions/<id>/remove` | — | Removes a session from the list, with its tasks; its worktree too when nothing uncommitted is left (the branch stays). The lead does this through `stop_session` with `remove: true`. |
+
+### Lead inbox
+
+Reuse the same `messageId` when retrying a request to either inbox route. IDs are case-sensitive and use 1–128 ASCII letters, digits, underscores, dots or hyphens. The server generates an ID when omitted. During the current server run, user IDs are tracked per lead and teammate IDs per sender. Requests with the same text and different IDs are separate entries.
+
+| HTTP result | Meaning |
+|---|---|
+| 200 `{ ok: true }` | Accepted for delivery. An available lead can start the turn immediately. |
+| 200 `{ ok: true, duplicate: true }` | This ID was already accepted, including after delivery. |
+| 429 `{ error, code: "lead_inbox_full", waiting, limit }` | The request was declined. Retry with the same ID when space is available. |
+
+User instructions, explicit teammate messages and automatic turn reports share one in-memory queue. An available lead works through it in arrival order, one item per turn. An item leaves the queue when it is handed to the CLI. Automatic reports stay pending in the teammate’s memory even at the limit and can follow a teammate to a new lead. Waiting entries are lost on server restart.
+
+Permission or user prompts and team or provider holds pause delivery. A fresh user instruction can resume the queue after an interruption or error. If the queue is full, that request can resume the oldest item and still return 429 for the new instruction.
 
 ## Task board
 
@@ -86,8 +99,10 @@ Per item: `role` (required), `n` (copies, default 1), `model`, `effort` (one of 
 | `POST /api/providers/<id>/logout` | `{ "cli": false }` | Disconnects in Dispatch; `cli: true` also logs the CLI out. |
 | `POST /api/providers/openai/key` | `{ "key": "..." }` | Codex API-key login, piped straight to `codex login --with-api-key`. Only for keys the user enters in the UI themselves. |
 | `POST /api/providers/refresh` | — | Re-reads CLI login status. |
-| `POST /api/settings` | `{ "guard": { "enabled", "five", "seven" }, "team": { … } }` | Limit guard thresholds (0–1) and team settings from the 설정 page: `rotateLead` / `rotateOthers` (turns before a fresh CLI session, 0 = off), `ctxHandoff` (context guard in percent of the window, 0 or 30–95, default 70: a Claude session crossing it mid-turn is told once to commit and wrap up, and any session over it continues in a fresh CLI session at its next message whatever its turn count), `handoffMTokens` (session length guard in million tokens processed, 0 or 2–500, default 15: a teammate's lead is told once to stop it and give the rest to a fresh teammate; a lead is told to hand over, mid-turn when running, else with its next message), `maxChildren` (1–16), `replyStyle`, `shareDeps`, `dropWorktrees` (booleans), `autoRemoveDone` (boolean, default true: a teammate whose report reached its lead and that waits on nothing is stopped and removed after the grace period unless the lead writes to it; leads and errored sessions are never removed) and `autoRemoveGraceSec` (10–3600, default 120), `roleModels` (`{ role: modelId }`, `null` resets), stuck thresholds `stuckFails` (0–20), `stuckSilentMinutes` (0–240), `stuckMismatchMinutes` (0–240), `stuckEtaRatio` (1–10, one decimal); 0 turns a check off. Saved per project; the matching `DISPATCH_*` env vars only seed the defaults. |
+| `POST /api/settings` | `{ "guard": { "enabled", "five", "seven" }, "team": { … } }` | Limit guard thresholds (0–1) and team settings from the 설정 page: `rotateLead` / `rotateOthers` (turns before a fresh CLI session, 0 = off), `ctxHandoff` (context guard in percent of the window, 0 or 30–95, default 70: a Claude session crossing it mid-turn is told once to commit and wrap up, and any session over it continues in a fresh CLI session at its next message whatever its turn count), `handoffMTokens` (session length guard in million tokens processed, 0 or 2–500, default 15: a teammate's lead is told once to stop it and give the rest to a fresh teammate; a lead is told to hand over, mid-turn when running, else with its next message), `maxChildren` (1–16), `maxLeadInbox` (1–100, default 20, waiting entries per lead), `replyStyle`, `shareDeps`, `dropWorktrees` (booleans), `autoRemoveDone` (boolean, default true: a teammate whose report reached its lead and that waits on nothing is stopped and removed after the grace period unless the lead writes to it; leads and errored sessions are never removed) and `autoRemoveGraceSec` (10–3600, default 120), `roleModels` (`{ role: modelId }`, `null` resets), stuck thresholds `stuckFails` (0–20), `stuckSilentMinutes` (0–240), `stuckMismatchMinutes` (0–240), `stuckEtaRatio` (1–10, one decimal); 0 turns a check off. Saved per project; the matching `DISPATCH_*` env vars only seed the defaults. |
 
 ## Manager MCP tools
 
-`lead` sessions get an MCP server named `dispatch` (its `list_sessions` / `get_session` include `ctxPct`, the share of the context window in use) with `list_roles`, `create_sessions`, `list_sessions`, `get_session`, `send_message`, `set_task`, `stop_session`. `set_task` returns `merge_check` when it was asked to close a task as done. Every other session gets the same server with one tool, `message_lead`. Sessions it creates have `parent` set to the manager's id. These tools wrap the endpoints above, so the same rules (connected providers, limit guard, 8 open children per manager) apply.
+`lead` sessions get an MCP server named `dispatch` (its `list_sessions` / `get_session` include `leadInboxCount` and `ctxPct`, the share of the context window in use) with `list_roles`, `create_sessions`, `list_sessions`, `get_session`, `send_message`, `set_task`, `stop_session`. `set_task` returns `merge_check` when it was asked to close a task as done. Sessions created through these tools have `parent` set to the manager’s ID.
+
+Every other session gets the same server with one tool, `message_lead`. Pass `message_id` to reuse an ID, or use the generated `message_id` returned with `ok` and, for duplicates, `duplicate: true`. A full inbox returns `{ ok: false, code: "lead_inbox_full", waiting, limit, message_id }` from the tool. Reuse that ID when retrying.
