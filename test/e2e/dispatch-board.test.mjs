@@ -169,6 +169,18 @@ test('작업 보드 shows tasks by stage and follows live changes', { skip: !ON 
     assert.equal(await row.locator('[data-task-lead]').innerText(), lead.name);
     const current = (await call('GET', '/api/tasks')).tasks.find((item) => item.id === task.id);
     assert.equal(current.etaAt, task.etaAt);
+
+    at('removed lead keeps the card visible after a page reload');
+    await call('POST', `/api/sessions/${lead.id}/remove`);
+    await row.locator('[data-task-lead]').filter({ hasText: /^관리자 확인 불가$/ }).waitFor();
+    await page.reload();
+    await row.locator('[data-task-lead]').filter({ hasText: /^관리자 확인 불가$/ }).waitFor();
+    await rowEta.filter({ hasText: /^기한 초과$/ }).waitFor();
+    await page.getByRole('button', { name: '전체 보기', exact: true }).click();
+    const retained = board.locator('[data-stage="test"]').locator('[data-task="로그인 화면 만들기"]');
+    await retained.locator('[data-task-lead]').filter({ hasText: /^관리자 확인 불가$/ }).waitFor();
+    assert.deepEqual(await retained.locator('[data-bar]').evaluateAll((els) => els.map((el) => el.getAttribute('data-bar'))), spans);
+    assert.deepEqual((await call('GET', '/api/tasks')).tasks.find((item) => item.id === task.id), current);
     assert.deepEqual(errors, []);
   } catch (e) {
     const shot = join(tmpdir(), `dispatch-board-fail-${Date.now()}.png`);

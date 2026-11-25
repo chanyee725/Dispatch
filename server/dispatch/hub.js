@@ -348,10 +348,7 @@ export class Hub extends EventEmitter {
 
   get tasks() {
     const cut = Date.now() - 6 * 3600_000; // finished work drops off after six hours
-    const sessions = this.store.data.sessions || {};
     return Object.values(this.store.data.tasks ||= {})
-      // A removed lead's tasks have no one left to close them.
-      .filter(t => !t.lead || sessions[t.lead])
       .filter(t => t.stage !== "done" || t.updatedAt > cut)
       .sort((a, b) => a.createdAt - b.createdAt);
   }
@@ -996,9 +993,9 @@ export class Hub extends EventEmitter {
     this.cancelAutoRemove(id);
     this.kill(id);
     delete this.store.data.sessions[id];
-    // Its board goes with it: a removed lead can no longer close its tasks.
-    for (const bag of [this.store.data.tasks, this.store.data.tickets])
-      for (const [k, v] of Object.entries(bag || {})) if (v.lead === id) delete bag[k];
+    // Board cards keep their assigned lead ID after session removal. Limit tickets belong to the session.
+    const tickets = this.store.data.tickets;
+    for (const [key, ticket] of Object.entries(tickets || {})) if (ticket.lead === id) delete tickets[key];
     this.live.delete(id);
     this.liveView?.drop(id);
     this.store.save();
