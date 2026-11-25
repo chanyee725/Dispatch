@@ -314,7 +314,7 @@ export class Hub extends EventEmitter {
   }
 
   /**
-   * Per-provider usage hold for Codex and Gemini (Claude's windows hold every new turn through limitHit): a Codex
+   * Per-provider usage hold for Codex and Gemini (Claude's windows hold Claude turns through limitHit): a Codex
    * window at or over its threshold (guard.openai) or a reached Gemini quota refuses new turns of that provider only.
    */
   providerHold(provider, now = Date.now()) {
@@ -669,11 +669,14 @@ export class Hub extends EventEmitter {
   /** True while a guard window is over its threshold: no new turns until the reset. */
   get paused() { return !!this.limitHit(); }
 
+  /** Claude account windows never pause another provider's sessions. */
+  pausedFor(s) { return s?.provider === "claude" && this.paused; }
+
   send(id, text, { force = false, images = null } = {}) {
     const s = this.get(id);
     if (!s) throw Object.assign(new Error("세션이 없어요"), { status: 404 });
     if (images?.length && s.provider !== "claude") throw Object.assign(new Error("이미지는 Claude 세션에만 보낼 수 있어요"), { status: 400 });
-    if (!force && this.paused) throw new Error("사용량 한도로 일시정지 중이에요. 남은 작업은 티켓으로 저장됐고, 초기화되면 이어서 진행해요.");
+    if (!force && this.pausedFor(s)) throw new Error("사용량 한도로 일시정지 중이에요. 남은 작업은 티켓으로 저장됐고, 초기화되면 이어서 진행해요.");
     if (s.provider === "openai") void this.refreshCodex(); // fresh windows for the next turn's hold check
     const blocked = this.runBlock(s); // before anything is recorded or started
     if (blocked) throw new Error(blocked);
@@ -827,7 +830,7 @@ export class Hub extends EventEmitter {
     const r = this.live.get(s.id);
     if (r?.replacing || r?.perms?.size || s.asksUser) return false;
     if (s.parent && !s.longRun?.told) return false;
-    if (this.paused || this.runBlock(s) || this.holdTeam?.(s.parent ?? s.id)) return false;
+    if (this.pausedFor(s) || this.runBlock(s) || this.holdTeam?.(s.parent ?? s.id)) return false;
     if (s.provider === "claude" && this.guardCheck(1)) return false;
     return true;
   }
@@ -1035,7 +1038,7 @@ export class Hub extends EventEmitter {
   resumeInterrupted() {
     for (const s of this.sessions) {
       // Not runnable yet (provider not connected, model list not loaded): stays interrupted for a later try.
-      if (!s.interrupted || this.runBlock(s) || this.paused) continue; // paused: the ticket resumes it
+      if (!s.interrupted || this.runBlock(s) || this.pausedFor(s)) continue; // paused: the ticket resumes it
       if (this.holdTeam?.(s.parent ?? s.id)) continue; // a stopped plan: 이어서 하기 resumes it
       s.interrupted = false;
       try { this.send(s.id, RESUME_TEXT); } catch { /* resumes on the next message instead */ }

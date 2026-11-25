@@ -37,10 +37,10 @@ export class HubTickets {
     const hit = this.limitHit();
     if (hit && this.store.data.ticketedFor !== hit.key) {
       this.store.data.ticketedFor = hit.key;
-      const open = this.tasks.filter(t => t.stage !== "done");
+      const open = this.tasks.filter(t => t.stage !== "done" && this.get(t.lead)?.provider === "claude");
       const leads = new Set(open.map(t => t.lead).filter(Boolean));
       // A lead with running teammates but nothing on the board still gets one ticket.
-      for (const s of this.sessions) if (s.canSpawn && this.sessions.some(c => c.parent === s.id && c.status === "running")) leads.add(s.id);
+      for (const s of this.sessions) if (s.canSpawn && this.sessions.some(c => c.parent === s.id && c.provider === "claude" && c.status === "running")) leads.add(s.id);
       for (const lead of leads) {
         const ls = this.get(lead);
         const items = open.filter(t => t.lead === lead);
@@ -58,14 +58,14 @@ export class HubTickets {
       this.emit("tickets", this.tickets);
       // Pause: interrupt every running turn so nothing keeps spending past the threshold.
       for (const s of this.sessions) {
-        if (s.status === "running" || s.status === "starting" || s.status === "waiting") {
+        if (s.provider === "claude" && (s.status === "running" || s.status === "starting" || s.status === "waiting")) {
           this.push(s, { kind: "info", text: `사용량 한도(${hit.reason})로 일시정지 — 티켓으로 저장됨` });
           this.interrupt(s.id);
         }
       }
     }
     // While paused, a session that still runs (e.g. started before the hit was seen) is stopped too.
-    if (hit) for (const s of this.sessions) if (s.status === "running" && !this.rt(s.id).pauseNoted) {
+    if (hit) for (const s of this.sessions) if (s.provider === "claude" && s.status === "running" && !this.rt(s.id).pauseNoted) {
       this.rt(s.id).pauseNoted = true;
       this.interrupt(s.id);
     }
@@ -145,7 +145,7 @@ export class HubTickets {
   deliverReport(s) {
     const r = this.live.get(s.id), parent = s.parent && this.get(s.parent);
     if (!r?.pendingReport || !parent || parent.status === "done") return;
-    if (this.paused) return; // kept; delivered after the reset
+    if (this.pausedFor(parent)) return; // kept; delivered after the reset
     if (this.holdTeam?.(parent.id)) return; // kept; delivered after 이어서 하기
     try { this.send(parent.id, r.pendingReport + this.boardNote(parent.id)); r.pendingReport = null; } catch { return; /* retried by checkTeams */ }
     this.armAutoRemove(s);
