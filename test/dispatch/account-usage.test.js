@@ -90,6 +90,18 @@ test("account usage retains verified quota signals even when usage rates are una
     connection: "unverified", status: "unavailable", windows: [], updatedAt: null, reached: true, reset: 200,
   });
   assert.equal((await read(201)).reached, undefined);
-  hub.shared.gemini = { reached: false, reset: null };
+  hub.shared.gemini = { reached: false, reset: null, at: 200 };
   assert.equal((await read(201)).reached, false);
+});
+
+test("account usage omits an old Gemini quota signal with no reset", async () => {
+  const now = 1_900_000_000_000;
+  const quota = { reached: true, reset: null, at: now - 86_400_000 };
+  const ctx = { providers: () => ({ gemini: { connected: true } }), hub: { shared: { gemini: quota } } };
+  const usage = { status: "available", windows: [{ label: "일간", used: 0, reset: now + 3_600_000 }], updatedAt: now };
+  const read = () => accountUsage("gemini", ctx, { gemini: async () => usage, now: () => now });
+
+  assert.deepEqual(await read(), { connection: "connected", ...usage });
+  quota.at = now - 60_000;
+  assert.deepEqual(await read(), { connection: "connected", ...usage, reached: true, reset: null });
 });

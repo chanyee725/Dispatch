@@ -1,7 +1,7 @@
 import os from "node:os";
 import { runCli, spawnCli } from "./cli.js";
 import { onJsonLines } from "./hub-util.js";
-import { geminiUsageResult } from "./limits.js";
+import { GEMINI_USAGE_MS, geminiUsageResult } from "./limits.js";
 
 const empty = status => ({ status, windows: [] });
 const finite = value => typeof value === "number" && Number.isFinite(value);
@@ -90,7 +90,12 @@ export async function accountUsage(id, { providers, hub }, { codex = codexAccoun
   if (!providers()[id]?.connected) return disconnected;
   const quota = hub.shared?.gemini;
   const reset = timestamp(quota?.reset);
-  const knownQuota = typeof quota?.reached === "boolean" && (reset == null || reset > now());
+  const observedAt = timestamp(quota?.at);
+  const checkedAt = now();
+  // Without a reset, a quota signal is current only within the usage polling interval.
+  const knownQuota = typeof quota?.reached === "boolean" && (reset != null
+    ? reset > checkedAt
+    : observedAt != null && checkedAt - observedAt < GEMINI_USAGE_MS);
   // agy --version confirms installation only. A quota response can verify the account connection.
   return {
     connection: windows.length ? "connected" : "unverified", status, windows,
