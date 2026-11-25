@@ -7,6 +7,7 @@
 // Loaded lazily so the editor bundle does not carry it. Numbers and names only: no transcript text is read here.
 import { lazy, Suspense, useEffect, useId, useMemo, useRef, useState, type ReactNode } from 'react';
 import { ArrowLeft, MoreHorizontal, Plus } from 'lucide-react';
+import { LazyBoundary } from '../LazyBoundary';
 import { Alert } from '../components/ui/alert';
 import { Button } from '../components/ui/button';
 import { DropdownMenu, DropdownMenuCheckboxItem, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from '../components/ui/dropdown-menu';
@@ -198,7 +199,11 @@ function DetailView({ tab, scope, onRoute, narrow }: { tab: 'usage' | 'branches'
         }
       />
       {/* 브랜치 fills the pane below the header (its two columns scroll inside), so the page itself never scrolls. */}
-      <div data-card={tab} className={cn('min-w-0', tab === 'branches' && 'flex min-h-0 flex-1 flex-col')}>{tab === 'usage' ? <UsagePage /> : <BranchesPage />}</div>
+      <div data-card={tab} className={cn('min-w-0', tab === 'branches' && 'flex min-h-0 flex-1 flex-col')}>
+        <LazyBoundary key={tab}>
+          {tab === 'usage' ? <UsagePage /> : <BranchesPage />}
+        </LazyBoundary>
+      </div>
     </div>
   );
 }
