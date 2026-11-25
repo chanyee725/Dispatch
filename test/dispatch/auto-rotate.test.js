@@ -52,7 +52,8 @@ const handoff = (hub, id) => hub.transcript(id).find(e => e.kind === "user" && e
 
 test("a lead past the guard is swapped at the end of its turn: teammates, board, tickets and plans move, the handoff goes first", async () => {
   const { hub, store, root, bin, lead } = makeHub();
-  store.data.tasks.T1 = { id: "T1", lead: "L", title: "구현", stage: "doing", updatedAt: Date.now() };
+  lead.folder = "alpha";
+  const task = await hub.setTask(lead.id, { title: "구현", stage: "impl" });
   store.data.tickets.X1 = { id: "X1", lead: "L" };
   store.data.pipelines.P1 = { id: "P1", lead: "L" };
   hub.rt("L").lastText = "인계: Pax가 feat/x에서 구현 중, 다음은 리뷰";
@@ -62,12 +63,13 @@ test("a lead past the guard is swapped at the end of its turn: teammates, board,
   assert.ok(s, "a new session was made");
   assert.equal(store.data.sessions.L, undefined, "the old lead is removed");
   assert.notEqual(s.name, "Jae");
-  for (const k of ["role", "provider", "model", "effort", "perm", "cwd", "branch", "canSpawn", "prompt"]) assert.equal(s[k], lead[k], k);
+  for (const k of ["role", "provider", "model", "effort", "perm", "cwd", "branch", "canSpawn", "prompt", "folder"]) assert.equal(s[k], lead[k], k);
   assert.equal(s.parent, null);
   assert.deepEqual({ name: s.rotatedFrom.name, mtok: s.rotatedFrom.mtok }, { name: "Jae", mtok: 2 });
 
   assert.equal(store.data.sessions.K.parent, s.id, "teammate follows the lead");
-  assert.equal(store.data.tasks.T1?.lead, s.id, "board task kept and moved");
+  assert.equal(store.data.tasks[task.id]?.lead, s.id, "board task kept and moved");
+  assert.equal(store.data.tasks[task.id]?.folder, "alpha", "project survives lead replacement");
   assert.equal(store.data.tickets.X1?.lead, s.id);
   assert.equal(store.data.pipelines.P1.lead, s.id);
 
