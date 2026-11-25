@@ -178,10 +178,9 @@ test("permission matrix: Codex and agy get their own strict flag per mode, and t
       const [s] = await hub.create({ items: [{ role: "impl", model, perm, effort: "low" }], commonPrompt: "hi", worktree: false });
       const call = await until(() => bin.calls().slice(before).find(c => c.bin === row.bin));
       if (row.bin === "codex") {
-        assert.equal(call.args[0], "exec");
+        assert.deepEqual(call.args.slice(0, 3), ["app-server", "--listen", "stdio://"]);
         assert.ok(call.args.includes(row[perm]), `${perm}: ${JSON.stringify(call.args)}`);
         assert.equal(call.args.filter(a => a.startsWith("sandbox_mode=")).length, 1);
-        assert.ok(call.args.includes('model_reasoning_effort="low"'));
       } else {
         assert.equal(flagAfter(call.args, "--mode"), row[perm]);
         assert.equal(flagAfter(call.args, "--model"), model);
