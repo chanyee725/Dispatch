@@ -3,6 +3,7 @@
 // no folder part is 전체. A session's `folder` that is no longer a project (renamed, moved, deleted) counts as 미분류.
 import { isOpen } from './format.ts';
 import type { Session } from '../../../../shared/dispatch/types.ts';
+import type { BoardTask } from '../types.ts';
 
 /** 전체 = undefined, 미분류 = null, a project = its folder path. */
 export type Scope = string | null | undefined;
@@ -16,6 +17,19 @@ export const projectOf = (s: Pick<Session, 'folder'>, known: ReadonlySet<string>
 /** Sessions in a scope; 전체 keeps everything. */
 export function inScope<T extends Pick<Session, 'folder'>>(sessions: readonly T[], scope: Scope, known: ReadonlySet<string>): T[] {
   return scope === undefined ? [...sessions] : sessions.filter(s => projectOf(s, known) === scope);
+}
+
+/** Cards follow their lead or the saved folder when its session has been removed. */
+export function tasksInScope<T extends Pick<BoardTask, 'lead' | 'folder'>>(
+  tasks: T[], sessions: readonly Pick<Session, 'id' | 'folder'>[], scope: Scope, known: ReadonlySet<string>,
+): T[] {
+  if (scope === undefined) return tasks;
+  const byId = new Map(sessions.map(s => [s.id, s]));
+  return tasks.filter(t => {
+    const lead = t.lead == null ? undefined : byId.get(t.lead);
+    if (lead) return projectOf(lead, known) === scope;
+    return t.folder !== undefined && projectOf({ folder: t.folder }, known) === scope;
+  });
 }
 
 /** A project home's sessions: those whose folder is the project's path ('' = every session of this server, #778),

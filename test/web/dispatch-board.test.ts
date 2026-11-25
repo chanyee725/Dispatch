@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { DONE_LIMIT, attentionTaskIds, etaCardText, etaLine, groupByStage, span, stageSpans, taskWarn as warnOf, visibleTasks } from '../../web/src/dispatch/lib/board.ts';
+import { DONE_LIMIT, attentionTaskIds, etaLine, groupByStage, span, stageSpans, taskLeadName, taskWarn, visibleTasks } from '../../web/src/dispatch/lib/board.ts';
 import type { BoardTask } from '../../web/src/dispatch/types.ts';
 
 const MIN = 60_000;
@@ -36,14 +36,19 @@ test('span formats minutes, hours and days', () => {
 test('etaLine: minutes left, almost, late, none, done', () => {
   assert.deepEqual(etaLine({ stage: 'impl', etaAt: 100 * MIN }, 90 * MIN), { text: '10분 남음', late: false, estimated: false });
   assert.deepEqual(etaLine({ stage: 'impl', etaAt: 100 * MIN + 20_000 }, 100 * MIN), { text: '곧 끝나요', late: false, estimated: false });
+  assert.deepEqual(etaLine({ stage: 'impl', etaAt: 100 * MIN }, 100 * MIN), { text: '기한 초과', late: true, estimated: false });
   assert.deepEqual(etaLine({ stage: 'impl', etaAt: 100 * MIN }, 115 * MIN), { text: '15분 지남', late: true, estimated: false });
   assert.equal(etaLine({ stage: 'impl', etaAt: null }, 0), null);
   assert.equal(etaLine({ stage: 'done', etaAt: 5 }, 0), null);
 });
 
-test('etaLine: a server estimate says so; a passed one reads N분 지남 (#1028)', () => {
-  assert.deepEqual(etaLine({ stage: 'review', etaAt: 100 * MIN, etaEstimated: true }, 88 * MIN), { text: '약 12분 남음(예상)', late: false, estimated: true });
-  assert.deepEqual(etaLine({ stage: 'review', etaAt: 100 * MIN, etaEstimated: true }, 114 * MIN), { text: '14분 지남', late: true, estimated: true });
+test('etaLine keeps the automatic marker as a fixed deadline approaches and passes', () => {
+  const task = mk('review', 'review', 75 * MIN, { etaAt: 100 * MIN, etaEstimated: true });
+  assert.deepEqual(etaLine(task, 88 * MIN), { text: '약 12분 남음(예상)', late: false, estimated: true });
+  assert.deepEqual(etaLine(task, 99.5 * MIN), { text: '곧 끝나요(예상)', late: false, estimated: true });
+  assert.deepEqual(etaLine(task, 100.5 * MIN), { text: '기한 초과(예상)', late: true, estimated: true });
+  assert.deepEqual(etaLine(task, 114 * MIN), { text: '14분 지남(예상)', late: true, estimated: true });
+  assert.equal(task.etaAt, 100 * MIN);
 });
 
 test('stageProgress: step on 계획 → 구현 → 리뷰 → 테스트 → 머지 (#1028)', async () => {
@@ -69,32 +74,26 @@ test('완료 column lists the newest first and caps at DONE_LIMIT with a hidden 
   assert.equal(visibleTasks('impl', impl, false).shown.length, 15);
 });
 
-test('taskWarn: only blocked, stuck or late tasks carry a warning (#919)', async () => {
-  const { taskWarn } = await import('../../web/src/dispatch/lib/board.ts');
-  const now = 10_000_000;
-  assert.equal(taskWarn({ stage: 'impl', note: null, stuck: null, etaAt: now + 600_000 } as never, now), null);
-  assert.equal(taskWarn({ stage: 'impl', note: null, stuck: null, etaAt: null } as never, now), null);
-  assert.deepEqual(taskWarn({ stage: 'blocked', note: '리뷰 대기', stuck: null, etaAt: null } as never, now), { text: '리뷰 대기', tone: 'bad' });
-  assert.equal(taskWarn({ stage: 'blocked', note: '', stuck: null, etaAt: null } as never, now)?.text, '막혔어요');
-  assert.deepEqual(taskWarn({ stage: 'impl', note: null, stuck: { label: '예상 20분의 1.5배' }, etaAt: null } as never, now), { text: '예상 20분의 1.5배', tone: 'warn' });
-  assert.equal(taskWarn({ stage: 'impl', note: null, stuck: null, etaAt: now - 10 * 60_000 } as never, now)?.tone, 'warn');
+test('taskWarn keeps blocked and stuck reasons separate from ETA', () => {
+  assert.equal(taskWarn(mk('a', 'impl', 0, { etaAt: 100 * MIN })), null);
+  assert.deepEqual(taskWarn({ stage: 'blocked', note: '리뷰 대기' }), { text: '리뷰 대기', tone: 'bad' });
+  assert.equal(taskWarn({ stage: 'blocked', note: '' })?.text, '막혔어요');
+  assert.deepEqual(taskWarn({ stage: 'impl', note: '', stuck: { reason: 'over-eta', label: '예상 20분의 1.5배', stage: 'impl', etaMinutes: 20, sinceMs: 0 } }), { text: '예상 20분의 1.5배', tone: 'warn' });
 });
 
-test('attentionTaskIds: task rows (late, mismatch, merge) hide that task from the board list; session and limit rows do not', () => {
+test('attentionTaskIds finds task and merge alerts without including session and limit alerts', () => {
   const ids = attentionTaskIds([{ key: 't:a' }, { key: 'm:b' }, { key: 's:c' }, { key: 'l:five' }]);
   assert.deepEqual([...ids].sort(), ['a', 'b']);
 });
 
-test('etaLine: an estimated ETA says so; a passed one reads N분 지남 (#1028)', () => {
-  assert.deepEqual(etaLine({ stage: 'review', etaAt: 100 * MIN, etaEstimated: true }, 88 * MIN), { text: '약 12분 남음(예상)', late: false, estimated: true });
-  assert.deepEqual(etaLine({ stage: 'review', etaAt: 100 * MIN, etaEstimated: true }, 106 * MIN), { text: '6분 지남', late: true, estimated: true });
-  assert.deepEqual(warnOf({ stage: 'impl', note: '', stuck: null, etaAt: 100 * MIN } as never, 110 * MIN), { text: '예상보다 10분 지남', tone: 'warn' });
-});
-
-test('etaCardText: the card says 예상 once for estimated, recorded and passed ETAs (#1028)', () => {
-  const text = (etaAt: number, now: number, etaEstimated?: boolean) => etaCardText(etaLine({ stage: 'impl', etaAt, etaEstimated }, now)!);
-  assert.equal(text(100 * MIN, 88 * MIN, true), '약 12분 남음(예상)');
-  assert.equal(text(100 * MIN, 88 * MIN), '12분 남음');
-  assert.equal(text(100 * MIN, 106 * MIN, true), '예상보다 6분 지남');
-  for (const s of [text(100 * MIN, 88 * MIN, true), text(100 * MIN, 106 * MIN)]) assert.equal(s.split('예상').length - 1, 1);
+test('taskLeadName uses the assigned lead ID and distinguishes missing and unassigned leads', () => {
+  const sessions = new Map([
+    ['other-lead', { role: 'lead', name: 'Lead A' }],
+    ['lead', { role: 'lead', name: 'Lead B' }],
+    ['impl', { role: 'impl', name: 'Implementer' }],
+  ]);
+  assert.equal(taskLeadName('lead', sessions), 'Lead B');
+  assert.equal(taskLeadName('deleted', sessions), '관리자 확인 불가');
+  assert.equal(taskLeadName('impl', sessions), '관리자 확인 불가');
+  assert.equal(taskLeadName(null, sessions), '관리자 미배정');
 });

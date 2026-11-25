@@ -1,6 +1,12 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import { execFileSync } from "node:child_process";
+import { EventEmitter } from "node:events";
+import { mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { enterStage } from "../../server/dispatch/tasks.js";
+import { Store } from "../../server/dispatch/dispatch-store.js";
 
 const M = 60_000;
 
@@ -94,4 +100,54 @@ test("setTask fills etaAt from history on a new stage without eta_minutes", asyn
   assert.ok(t.etaAt - Date.now() > 39 * M, "the lead's ETA still ahead stays");
   assert.match(hub.boardNote("lead"), /분 남음\)/);
   assert.equal(t.stuck, null);
+});
+
+test("removing a lead keeps its board cards through a state reload", async () => {
+  const root = await mkdtemp(join(tmpdir(), "dispatch-task-retention-"));
+  const store = new Store(root);
+  const reloaded = new Store(root);
+  try {
+    const git = (...args) => execFileSync("git", args, { cwd: root, stdio: "ignore" });
+    git("init", "-q");
+    git("-c", "user.name=test", "-c", "user.email=test@example.invalid", "commit", "--allow-empty", "-qm", "init");
+    const openHub = (state) => new Hub({ root, store: state, limits: new EventEmitter() });
+    const lead = "lead-1";
+    store.data.sessions[lead] = { id: lead, provider: "claude", role: "lead", canSpawn: true, status: "idle", folder: "alpha" };
+    const now = Date.now();
+    store.data.tasks = {
+      legacy: { id: "legacy", lead, stage: "impl", createdAt: now - 2, updatedAt: now, note: "" },
+      unknown: { id: "unknown", lead: "missing", stage: "impl", createdAt: now - 1, updatedAt: now, note: "" },
+    };
+    store.data.tickets = { removed: { lead }, kept: { lead: "lead-2" } };
+    const hub = openHub(store);
+    assert.equal(store.data.tasks.legacy.folder, "alpha", "backfill from the saved lead");
+    assert.equal(store.data.tasks.unknown.folder, undefined, "leave unknown project membership unset");
+
+    const active = await hub.setTask(lead, { title: "Active", stage: "impl", eta_minutes: 4 });
+    await hub.setTask(lead, { id: active.id, stage: "test" });
+    const finished = await hub.setTask(lead, { title: "Finished" });
+    await hub.setTask(lead, { id: finished.id, stage: "done" });
+    assert.deepEqual([active.folder, finished.folder], ["alpha", "alpha"]);
+    assert.equal((await hub.setTask("missing", { id: active.id })).folder, "alpha", "updates keep the assigned project");
+    store.data.tasks.expired = { ...finished, id: "expired", updatedAt: Date.now() - 7 * 60 * M };
+    const cards = structuredClone([store.data.tasks.legacy, store.data.tasks.unknown, active, finished]);
+
+    await hub.remove(lead);
+    assert.equal(hub.get(lead), undefined);
+    assert.deepEqual(store.data.tickets, { kept: { lead: "lead-2" } });
+    assert.deepEqual(hub.tasks, cards, "only the active and recently finished cards stay visible");
+
+    await store.flush();
+    await reloaded.load();
+    const restarted = openHub(reloaded);
+    assert.equal(restarted.get(lead), undefined);
+    assert.deepEqual(restarted.tasks, cards, "ID, lead, ETA and stage history survive the reload");
+    assert.ok(reloaded.data.tasks.expired, "the age rule hides older cards without deleting them");
+    restarted.removeTask(finished.id);
+    assert.deepEqual(restarted.tasks.map(t => t.id), ["legacy", "unknown", active.id]);
+  } finally {
+    await store.close();
+    await reloaded.close();
+    await rm(root, { recursive: true, force: true });
+  }
 });

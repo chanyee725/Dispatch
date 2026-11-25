@@ -1,18 +1,18 @@
-// 작업 보드: the lead's tasks by stage (plan … blocked) with owner, ETA and the time in the current stage: a
+// 작업 보드: the lead's tasks by stage (plan … blocked) with ETA and lead name: a
 // dashboard card on the 세션 보드 (#879) that opens the full board in a side sheet.
 // Reads the live `tasks` slice of the store; shows metadata only (titles, stages, times), never transcripts.
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { ChevronRight, TriangleAlert } from 'lucide-react';
 import { Badge } from '../components/ui/badge';
 import { Button } from '../components/ui/button';
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from '../components/ui/sheet';
 import { Card, CardList, EmptyState } from '../home/dash';
 import { cn } from '../lib/utils';
-import { AttentionGroup, useAttention, useNow } from './AttentionStrip';
+import { AttentionGroup, useAttention } from './AttentionStrip';
 import { StageProgress } from './StageProgress';
-import { DONE_LIMIT, STAGES, STAGE_BG, etaCardText, etaLine, groupByStage, span, stageLabel, stageProgress, stageSpans, taskWarn, visibleTasks } from './lib/board.ts';
+import { DONE_LIMIT, STAGES, STAGE_BG, etaLine, groupByStage, span, stageLabel, stageProgress, stageSpans, taskLeadName, taskWarn, visibleTasks } from './lib/board.ts';
 import { useScoped } from './scope';
-import type { BoardTask, TaskStage } from './types';
+import type { BoardTask, Session } from './types';
 
 /** Bar colour per stage: the mix tells at a glance where a task spent its time. */
 /** How many open tasks the card lists before 전체 보기. */
@@ -20,13 +20,23 @@ const CARD_ROWS = 5;
 
 const BAR = STAGE_BG;
 
-/** "12분째"; "방금" under a minute. */
-const inStage = (ms: number) => (ms < 60_000 ? '방금' : `${span(ms)}째`);
+type TaskProps = { t: BoardTask; now: number; leadName: string };
 
-function TaskCard({ t, now }: { t: BoardTask; now: number }) {
+function TaskMeta({ t, now, leadName }: TaskProps) {
+  const eta = etaLine(t, now);
+  return (
+    <div className="flex min-w-0 items-center gap-2 text-xs text-muted-foreground">
+      <span data-eta data-estimated={eta?.estimated || undefined} className={cn('shrink-0 tabular-nums', eta?.late && 'text-destructive')}>
+        {eta?.text ?? (t.stage === 'done' ? '완료' : 'ETA 미추정')}
+      </span>
+      <span data-task-lead title={`관리자: ${leadName}`} className="ml-auto min-w-0 truncate text-right">{leadName}</span>
+    </div>
+  );
+}
+
+function TaskCard({ t, now, leadName }: TaskProps) {
   const spans = stageSpans(t, now);
   const total = spans.reduce((a, s) => a + s.ms, 0) || 1;
-  const eta = etaLine(t, now);
   const owner = t.owner || '맡은 사람 없음';
   return (
     <li data-task={t.title} data-task-id={t.id} className={cn('card-surface flex min-w-0 flex-col gap-2 px-3 py-2.5', t.stuck && 'shadow-[0_0_0_1px_var(--warn)]')}>
@@ -40,10 +50,9 @@ function TaskCard({ t, now }: { t: BoardTask; now: number }) {
       {t.stage === 'blocked' && t.note && <p data-blocked-reason className="line-clamp-2 text-xs text-destructive" title={t.note}>{t.note}</p>}
       <div className="flex min-w-0 items-center gap-2 text-2xs text-muted-foreground tabular-nums">
         <span className="min-w-0 truncate" title={owner}>{owner}</span>
-        <span data-in-stage className="ml-auto shrink-0" title="이 단계에 있은 시간">{stageLabel(t.stage)} {inStage(now - t.stageAt)}</span>
+        <StageProgress stage={t.stage} className="ml-auto text-2xs" />
       </div>
-      <StageProgress stage={t.stage} className="text-2xs" />
-      {eta && <p data-eta data-estimated={eta.estimated || undefined} className={cn('text-2xs tabular-nums', eta.late ? 'text-destructive' : 'text-muted-foreground')}>{etaCardText(eta)}</p>}
+      <TaskMeta t={t} now={now} leadName={leadName} />
       <div role="img" aria-label={`단계별 시간: ${spans.map(s => `${stageLabel(s.stage)} ${span(s.ms)}`).join(', ')}`} className="flex h-1.5 gap-px overflow-clip rounded-full bg-sunken">
         {spans.map((s, i) => <span key={i} data-bar={s.stage} style={{ flexGrow: s.ms / total }} className={cn('min-w-px basis-0', BAR[s.stage])} />)}
       </div>
@@ -51,8 +60,9 @@ function TaskCard({ t, now }: { t: BoardTask; now: number }) {
   );
 }
 
-function Board({ tasks }: { tasks: BoardTask[] }) {
-  const now = useNow(20_000);
+type BoardProps = { tasks: BoardTask[]; now: number; sessionsById: ReadonlyMap<string, Session> };
+
+function Board({ tasks, now, sessionsById }: BoardProps) {
   const [doneExpanded, setDoneExpanded] = useState(false);
   const groups = groupByStage(tasks);
   return (
@@ -66,7 +76,7 @@ function Board({ tasks }: { tasks: BoardTask[] }) {
             <Badge variant="secondary" className="rounded-md px-1.5 tabular-nums">{groups[s.id].length}</Badge>
           </header>
           <ul className="flex min-h-0 flex-col gap-2 overflow-y-auto overscroll-contain">
-            {shown.map(t => <TaskCard key={t.id} t={t} now={now} />)}
+            {shown.map(t => <TaskCard key={t.id} t={t} now={now} leadName={taskLeadName(t.lead, sessionsById)} />)}
           </ul>
           {s.id === 'done' && groups.done.length > DONE_LIMIT && (
             <Button variant="ghost" size="sm" aria-expanded={doneExpanded} onClick={() => setDoneExpanded(v => !v)}>
@@ -82,7 +92,7 @@ function Board({ tasks }: { tasks: BoardTask[] }) {
 }
 
 /** The full board in a wide side sheet; `tasks` are the scoped ones. */
-function BoardSheet({ open, onOpenChange, tasks }: { open: boolean; onOpenChange: (v: boolean) => void; tasks: BoardTask[] }) {
+function BoardSheet({ open, onOpenChange, tasks, now, sessionsById }: BoardProps & { open: boolean; onOpenChange: (v: boolean) => void }) {
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
       <SheetContent side="right" showCloseButton className="w-[min(1280px,100vw)] bg-background sm:max-w-none">
@@ -91,7 +101,7 @@ function BoardSheet({ open, onOpenChange, tasks }: { open: boolean; onOpenChange
           <SheetDescription>관리자가 적어 둔 작업을 단계별로 보여줘요.</SheetDescription>
         </SheetHeader>
         {tasks.length === 0 && <p className="px-(--overlay-x) pb-2 text-sm text-muted-foreground">아직 작업이 없어요. 관리자가 작업을 적으면 여기에 나타나요.</p>}
-        <Board tasks={tasks} />
+        <Board tasks={tasks} now={now} sessionsById={sessionsById} />
       </SheetContent>
     </Sheet>
   );
@@ -99,19 +109,19 @@ function BoardSheet({ open, onOpenChange, tasks }: { open: boolean; onOpenChange
 
 /**
  * 작업 보드 as a dashboard card (#879, #919): the stages that hold tasks as one line of chips, then the open tasks
- * that need a look first (stuck, then blocked, then the longest in their stage). A row is the title, a stage dot and
- * the time in the stage; a warning shows only while a task is blocked or late. Finished tasks fold behind one line.
+ * sorted by blocked status and time in stage. Each row shows the title, stage, ETA and lead.
+ * Finished tasks fold behind one line.
  * 전체 보기 opens the full board in the sheet. `fill`: the card takes the rest of its column and scrolls inside.
  */
 export function TaskBoardCard({ fill = false, onOpen, onUsage }: { fill?: boolean; onOpen?: (id: string) => void; onUsage?: () => void } = {}) {
   const [open, setOpen] = useState(false);
   const [showDone, setShowDone] = useState(false);
-  const { tasks } = useScoped();
+  const { tasks, sessions } = useScoped();
+  const sessionsById = useMemo(() => new Map(sessions.map(s => [s.id, s])), [sessions]);
   const attn = useAttention();
-  const now = useNow(20_000);
+  const now = attn.now;
   const groups = groupByStage(tasks);
-  // A task with a 확인 필요 row is shown there only.
-  const live = tasks.filter(t => t.stage !== 'done' && !attn.taskIds.has(t.id));
+  const live = tasks.filter(t => t.stage !== 'done');
   const rank = (t: BoardTask) => (t.stage === 'blocked' ? 0 : 1);
   const shown = [...live].sort((a, b) => rank(a) - rank(b) || a.stageAt - b.stageAt).slice(0, fill ? undefined : CARD_ROWS);
   const chips = STAGES.filter(s => s.id !== 'done' && groups[s.id].length > 0);
@@ -149,7 +159,7 @@ export function TaskBoardCard({ fill = false, onOpen, onUsage }: { fill?: boolea
             <EmptyState>진행 중인 작업이 없어요.</EmptyState>
           ) : (
             <CardList label="진행 중인 작업">
-              {shown.map(t => <TaskRow key={t.id} t={t} now={now} />)}
+              {shown.map(t => <TaskRow key={t.id} t={t} now={now} leadName={taskLeadName(t.lead, sessionsById)} showWarning={!attn.taskIds.has(t.id)} />)}
             </CardList>
           )}
           {groups.done.length > 0 && (
@@ -165,21 +175,21 @@ export function TaskBoardCard({ fill = false, onOpen, onUsage }: { fill?: boolea
               </button>
               {showDone && (
                 <CardList label="완료한 작업">
-                  {groups.done.slice(0, DONE_LIMIT).map(t => <TaskRow key={t.id} t={t} now={now} />)}
+                  {groups.done.slice(0, DONE_LIMIT).map(t => <TaskRow key={t.id} t={t} now={now} leadName={taskLeadName(t.lead, sessionsById)} />)}
                 </CardList>
               )}
             </div>
           )}
         </>
       )}
-      <BoardSheet open={open} onOpenChange={setOpen} tasks={tasks} />
+      <BoardSheet open={open} onOpenChange={setOpen} tasks={tasks} now={now} sessionsById={sessionsById} />
     </Card>
   );
 }
 
-/** One row of the card: stage dot, title, time in the stage; a small warning line only when blocked or late. */
-function TaskRow({ t, now }: { t: BoardTask; now: number }) {
-  const warn = taskWarn(t, now);
+/** A task row with a separate warning when blocked or stuck. */
+function TaskRow({ t, now, leadName, showWarning = false }: TaskProps & { showWarning?: boolean }) {
+  const warn = showWarning ? taskWarn(t) : null;
   return (
     <li data-row={t.id} className="flex min-w-0 flex-col gap-0.5 px-4 py-2">
       <div className="flex min-w-0 items-center gap-2.5">
@@ -187,8 +197,8 @@ function TaskRow({ t, now }: { t: BoardTask; now: number }) {
         {!stageProgress(t.stage) && <span role="img" aria-label={stageLabel(t.stage)} title={stageLabel(t.stage)} className={cn('size-2 shrink-0 rounded-full', BAR[t.stage])} />}
         <span className="min-w-0 flex-1 truncate text-sm" title={t.title}>{t.title}</span>
         <StageProgress stage={t.stage} />
-        <span className="shrink-0 text-xs whitespace-nowrap text-muted-foreground tabular-nums" title="이 단계에 있은 시간">{inStage(now - t.stageAt)}</span>
       </div>
+      <TaskMeta t={t} now={now} leadName={leadName} />
       {warn && (
         <p data-warn className={cn('m-0 flex min-w-0 items-center gap-1 text-xs', warn.tone === 'bad' ? 'text-destructive' : 'text-muted-foreground')}>
           <TriangleAlert aria-hidden className={cn('size-3 shrink-0', warn.tone === 'warn' && 'text-warn')} />

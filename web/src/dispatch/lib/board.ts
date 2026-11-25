@@ -1,6 +1,6 @@
 // Task board numbers (E19b): tasks grouped by stage, time per stage from the stage history, the ETA line.
 // Pure: node --test loads it directly. Inputs are the metadata the server keeps on a task; no transcript text.
-import type { BoardTask, TaskStage } from '../types.ts';
+import type { BoardTask, Session, TaskStage } from '../types.ts';
 
 /**
  * One colour per stage everywhere (2026-11-20): 구현 blue and 리뷰 amber are the role colours (--role-impl,
@@ -75,14 +75,18 @@ export function etaLine(t: Pick<BoardTask, 'stage' | 'etaAt' | 'etaEstimated'>, 
   if (t.stage === 'done' || t.etaAt == null) return null;
   const estimated = !!t.etaEstimated;
   const left = t.etaAt - now;
-  if (left >= 60_000) return { text: estimated ? `약 ${span(left)} 남음(예상)` : `${span(left)} 남음`, late: false, estimated };
-  if (left > -60_000) return { text: '곧 끝나요', late: false, estimated };
-  return { text: `${span(-left)} 지남`, late: true, estimated };
+  const marker = estimated ? '(예상)' : '';
+  if (left >= 60_000) return { text: `${estimated ? '약 ' : ''}${span(left)} 남음${marker}`, late: false, estimated };
+  if (left > 0) return { text: `곧 끝나요${marker}`, late: false, estimated };
+  if (left > -60_000) return { text: `기한 초과${marker}`, late: true, estimated };
+  return { text: `${span(-left)} 지남${marker}`, late: true, estimated };
 }
 
-/** The 작업 보드 card's ETA text, saying 예상 once: 약 N분 남음(예상), N분 남음, 곧 끝나요 or 예상보다 N분 지남 (#1028). */
-export function etaCardText(eta: { text: string; late: boolean }): string {
-  return eta.late ? `예상보다 ${eta.text}` : eta.text;
+/** Resolve the lead that owns the task by session ID. */
+export function taskLeadName(lead: BoardTask['lead'], sessions: ReadonlyMap<string, Pick<Session, 'name' | 'role'>>): string {
+  if (!lead) return '관리자 미배정';
+  const session = sessions.get(lead);
+  return session?.role === 'lead' && session.name ? session.name : '관리자 확인 불가';
 }
 
 /** The stages a task walks through in order (#1028); 완료 and 막힘 are not steps. */
@@ -104,17 +108,15 @@ export function stageProgress(stage: TaskStage): { stage: TaskStage; label: stri
 }
 
 /**
- * The one small warning a 작업 보드 row may carry (#919): why a task is blocked, or why it is late or stuck. Quiet
- * rows (on time, in progress) get none. `tone` picks the colour (막힘 red, 지연 amber).
+ * The reason a 작업 보드 row is blocked or stuck. The ETA is shown alongside the task's lead.
  */
-export function taskWarn(t: Pick<BoardTask, 'stage' | 'note' | 'stuck' | 'etaAt' | 'etaEstimated'>, now: number): { text: string; tone: 'bad' | 'warn' } | null {
+export function taskWarn(t: Pick<BoardTask, 'stage' | 'note' | 'stuck'>): { text: string; tone: 'bad' | 'warn' } | null {
   if (t.stage === 'blocked') return { text: t.note || '막혔어요', tone: 'bad' };
   if (t.stuck) return { text: t.stuck.label, tone: 'warn' };
-  const eta = etaLine(t, now);
-  return eta?.late ? { text: `예상보다 ${eta.text}`, tone: 'warn' } : null;
+  return null;
 }
 
-/** Ids of the tasks that 확인 필요 rows already show (keys `t:<id>` and `m:<id>`), so 작업 보드 lists them once (#924). */
+/** IDs of tasks whose warning already appears in 확인 필요 (keys `t:<id>` and `m:<id>`). */
 export function attentionTaskIds(items: readonly { key: string }[]): Set<string> {
   return new Set(items.filter(i => /^[tm]:/.test(i.key)).map(i => i.key.slice(2)));
 }

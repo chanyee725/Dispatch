@@ -85,6 +85,11 @@ export class Hub extends EventEmitter {
     for (const s of Object.values(store.data.sessions)) {
       if (s.folder === undefined) { s.folder = deriveFolder(s, store.data.pipelines); colored = true; }
     }
+    // Backfill cards while the saved lead still gives us the original project.
+    for (const t of Object.values(store.data.tasks || {})) {
+      const folder = t.lead == null ? undefined : this.get(t.lead)?.folder;
+      if (t.folder === undefined && folder !== undefined) { t.folder = folder; colored = true; }
+    }
     if (colored) store.save();
   }
 
@@ -348,10 +353,7 @@ export class Hub extends EventEmitter {
 
   get tasks() {
     const cut = Date.now() - 6 * 3600_000; // finished work drops off after six hours
-    const sessions = this.store.data.sessions || {};
     return Object.values(this.store.data.tasks ||= {})
-      // A removed lead's tasks have no one left to close them.
-      .filter(t => !t.lead || sessions[t.lead])
       .filter(t => t.stage !== "done" || t.updatedAt > cut)
       .sort((a, b) => a.createdAt - b.createdAt);
   }
@@ -381,7 +383,9 @@ export class Hub extends EventEmitter {
         throw Object.assign(new Error(`새 작업을 done으로 만들 수 없어요. 끝난 일은 기존 작업의 id로 닫으세요: ${open.map(x => `${x.title} (id ${x.id})`).join(", ")}`), { status: 400 });
       }
       const now = Date.now();
-      t = { id: randomUUID(), lead, title, stage: "plan", createdAt: now, stageAt: now, stages: [{ stage: "plan", at: now }], owner: null, etaAt: null, note: "" };
+      const folder = lead == null ? undefined : this.get(lead)?.folder;
+      t = { id: randomUUID(), lead, ...(folder !== undefined && { folder }), title, stage: "plan", createdAt: now,
+        stageAt: now, stages: [{ stage: "plan", at: now }], owner: null, etaAt: null, note: "" };
       all[t.id] = t;
       created = true;
     }
@@ -996,9 +1000,9 @@ export class Hub extends EventEmitter {
     this.cancelAutoRemove(id);
     this.kill(id);
     delete this.store.data.sessions[id];
-    // Its board goes with it: a removed lead can no longer close its tasks.
-    for (const bag of [this.store.data.tasks, this.store.data.tickets])
-      for (const [k, v] of Object.entries(bag || {})) if (v.lead === id) delete bag[k];
+    // Board cards keep their assigned lead ID and project after removal. Limit tickets belong to the session.
+    const tickets = this.store.data.tickets;
+    for (const [key, ticket] of Object.entries(tickets || {})) if (ticket.lead === id) delete tickets[key];
     this.live.delete(id);
     this.liveView?.drop(id);
     this.store.save();
