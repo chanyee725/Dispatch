@@ -14,7 +14,7 @@
 //   login prints a fake URL, waits $FAKE_CLI_LOGIN_MS (default 300) and writes the file, or exits with
 //   $FAKE_CLI_LOGIN_EXIT without logging in; logout removes the file. Without it, status says logged in and `codex login --with-api-key` succeeds.
 //   With $FAKE_CLI_LOGIN_IGNORE_TERM the login ignores SIGTERM (only SIGKILL stops it).
-// - codex exec / agy -p take the prompt as an argument (no stdin): one turn, then exit.
+// - Codex app-server takes one turn over stdio; agy -p takes the prompt as an argument.
 // It never talks to the network and never reads credentials.
 import { appendFileSync, existsSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { createInterface } from "node:readline";
@@ -26,9 +26,11 @@ const DEFAULT = {
     { type: "result", subtype: "success", total_cost_usd: 0.001 },
   ],
   codex: [
-    { type: "thread.started", thread_id: "fake-codex-thread" },
-    { type: "item.completed", item: { type: "agent_message", text: "fake reply" } },
-    { type: "turn.completed", usage: { input_tokens: 10, cached_input_tokens: 2, output_tokens: 5 } },
+    { method: "item/completed", params: { threadId: "fake-codex-thread", turnId: "fake-codex-turn", item: { id: "reply", type: "agentMessage", text: "fake reply" } } },
+    { method: "thread/tokenUsage/updated", params: { threadId: "fake-codex-thread", turnId: "fake-codex-turn", tokenUsage: {
+      total: { inputTokens: 10, cachedInputTokens: 2, outputTokens: 5 }, last: { totalTokens: 15 }, modelContextWindow: 272000,
+    } } },
+    { method: "turn/completed", params: { threadId: "fake-codex-thread", turn: { id: "fake-codex-turn", status: "completed" } } },
   ],
   agy: [
     { event: "init", conversation_id: "fake-agy-conversation" },
@@ -114,7 +116,28 @@ export function run(bin) {
   const status = STATUS[bin]?.[cmd];
   if (status !== undefined) { process.stdout.write(status + "\n"); return finish(); }
 
-  // codex exec / agy -p: the prompt is an argument and stdin is closed. One turn, then exit.
+  if (bin === "codex" && args[0] === "app-server") {
+    const rl = createInterface({ input: process.stdin });
+    const reply = (id, result) => emit([{ id, result }]);
+    let threadId = "fake-codex-thread";
+    let turn = Promise.resolve();
+    rl.on("line", line => {
+      const { id, method, params } = JSON.parse(line);
+      if (method === "initialize") reply(id, {});
+      if (method === "thread/start" || method === "thread/resume") {
+        threadId = params.threadId ?? threadId;
+        const type = params.sandbox === "read-only" ? "readOnly" : "workspaceWrite";
+        reply(id, { thread: { id: threadId }, approvalPolicy: params.approvalPolicy, sandbox: { type } });
+      }
+      if (method === "turn/start") {
+        const started = { id: "fake-codex-turn", status: "inProgress" };
+        turn = emit([{ id, result: { turn: started } }, { method: "turn/started", params: { threadId, turn: started } },
+          ...scenario(bin)]);
+      }
+    });
+    rl.on("close", () => turn.then(finish));
+    return;
+  }
   if (bin === "codex" || bin === "agy") return emit(scenario(bin)).then(finish);
 
   // claude -p --input-format stream-json: one turn per user line on stdin, alive until stdin ends.

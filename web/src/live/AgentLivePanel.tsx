@@ -218,7 +218,7 @@ function Body({ live, session, loading, step, now, state, onOpenLink, onChat }: 
 }) {
   if (loading) return <section><Skeleton /></section>;
   const cur = live?.current ?? null;
-  const ctx = session && session.ctxWindow > 0 ? Math.min(1, session.ctx / session.ctxWindow) : null;
+  const ctx = session && session.ctx != null && session.ctxWindow > 0 ? session.ctx / session.ctxWindow : null;
   return (
     <>
       {state === 'waiting' && (
@@ -253,16 +253,14 @@ function Body({ live, session, loading, step, now, state, onOpenLink, onChat }: 
         <section>
           <dl className="agent-live-stats">
             <div><dt>경과</dt><dd>{span(now - session.startedAt)}</dd></div>
-            <div><dt>토큰</dt><dd>{fmtK(totalTok(session.usage))}</dd></div>
+            <div><dt>누적 처리 토큰</dt><dd>{fmtK(totalTok(session.usage))}</dd></div>
             {session.cost != null && <div><dt>비용</dt><dd>{fmtUsd(session.cost)}</dd></div>}
           </dl>
-          {ctx != null && (
-            <div className="agent-live-ctx">
-              <span>컨텍스트</span>
-              <meter min={0} max={1} low={0.75} high={0.9} optimum={0} value={ctx} aria-label="컨텍스트 사용량" />
-              <span className="tabular-nums">{Math.round(ctx * 100)}%</span>
-            </div>
-          )}
+          <div className="agent-live-ctx">
+            <span>컨텍스트</span>
+            {ctx != null && <meter min={0} max={1} low={0.75} high={0.9} optimum={0} value={Math.min(1, ctx)} aria-label="컨텍스트 사용량" />}
+            <span className="col-start-3 tabular-nums">{ctx == null ? '미확인' : `${Math.round(ctx * 100)}%`}</span>
+          </div>
         </section>
       )}
       <section>

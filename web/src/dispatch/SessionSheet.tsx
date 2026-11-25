@@ -12,7 +12,7 @@ import { Textarea } from '../components/ui/textarea';
 import { cn } from '../lib/utils';
 import { DiffView } from './DiffView';
 import { ModelTag, StatusBadge } from './parts';
-import { fmtK, fmtUsd, pct, permLabel, stateOf } from './lib/format.ts';
+import { fmtK, fmtUsd, pct, permLabel, stateOf, totalTok } from './lib/format.ts';
 import { answerQuestion, answerQuestions, answersMessage, answerValue, questionSetKey, type QuestionAnswer, type QuestionItem } from './lib/question.ts';
 import { askUserQuestionItems, isQuestionTool } from '../activity/sessionRequests.ts';
 import { QuestionTabsCard } from './QuestionTabsCard';
@@ -304,7 +304,8 @@ export function Info({ s }: { s: Session }) {
     ['세션 ID', s.id],
     ['CLI 세션', s.providerSessionId ?? '—'],
   ];
-  const ratio = s.ctxWindow ? s.ctx / s.ctxWindow : null;
+  const ctx = s.ctx;
+  const ratio = ctx != null && s.ctxWindow > 0 ? ctx / s.ctxWindow : null;
   const usage: [string, number][] = [['입력', s.usage.input], ['출력', s.usage.output], ['캐시 읽기', s.usage.cacheRead], ['캐시 쓰기', s.usage.cacheWrite]];
   const section = 'border-t border-border/70 py-4 first:border-t-0 first:pt-1';
   const heading = 'm-0 mb-2.5 text-xs font-semibold text-foreground';
@@ -326,17 +327,21 @@ export function Info({ s }: { s: Session }) {
         <div className="mb-2 flex items-baseline justify-between gap-3">
           <h3 className="m-0 text-xs font-semibold text-foreground">컨텍스트</h3>
           <span className="tabular-nums text-muted-foreground">
-            <span className="font-semibold text-foreground">{pct(ratio)}</span> · {fmtK(s.ctx)} / {fmtK(s.ctxWindow)}
+            {ratio == null || ctx == null ? '미확인' : <><span className="font-semibold text-foreground">{pct(ratio)}</span> · {fmtK(ctx)} / {fmtK(s.ctxWindow)}</>}
           </span>
         </div>
-        <div className="h-1 overflow-hidden rounded-full bg-muted" aria-hidden>
-          <div className={cn('h-full rounded-full', (ratio ?? 0) >= 0.85 ? 'bg-bad' : (ratio ?? 0) >= 0.6 ? 'bg-warn' : 'bg-ok')} style={{ width: `${Math.min(100, Math.round((ratio ?? 0) * 100))}%` }} />
-        </div>
+        {ratio != null && (
+          <div className="h-1 overflow-hidden rounded-full bg-muted" aria-hidden>
+            <div className={cn('h-full rounded-full', ratio >= 0.85 ? 'bg-bad' : ratio >= 0.6 ? 'bg-warn' : 'bg-ok')} style={{ width: `${Math.min(100, Math.round(ratio * 100))}%` }} />
+          </div>
+        )}
       </section>
 
       <section aria-label="토큰과 비용" className={section}>
         <div className="mb-2.5 flex items-baseline justify-between gap-3">
-          <h3 className="m-0 text-xs font-semibold text-foreground">토큰</h3>
+          <h3 className="m-0 text-xs font-semibold text-foreground">
+            누적 처리 토큰 <span className="tabular-nums">{fmtK(totalTok(s.usage))}</span>
+          </h3>
           <span className="text-muted-foreground">
             비용 <span className="text-base font-semibold tracking-[-0.01em] text-foreground tabular-nums">{fmtUsd(s.cost)}</span>
           </span>

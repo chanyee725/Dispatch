@@ -39,7 +39,7 @@ export function sessionState(s, pending = 0) {
 
 /** Share of the context window in use (0–1), or null when the window is unknown. */
 export function ctxShare(s) {
-  return s?.ctxWindow > 0 && s.ctx >= 0 ? s.ctx / s.ctxWindow : null;
+  return s?.ctxWindow > 0 && Number.isFinite(s.ctx) && s.ctx >= 0 ? s.ctx / s.ctxWindow : null;
 }
 
 /** True when the session is at or over the team's context guard (`ctxHandoff`, percent; 0 = off). */

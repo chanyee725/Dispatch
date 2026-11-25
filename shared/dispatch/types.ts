@@ -56,7 +56,7 @@ export interface Session {
    *  user's answer; null or absent otherwise (#886). */
   ask?: string | null;
   turns: number;
-  ctx: number;
+  ctx: number | null;
   ctxWindow: number;
   usage: Usage;
   cost: number | null;

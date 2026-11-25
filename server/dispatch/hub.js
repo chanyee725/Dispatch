@@ -71,6 +71,12 @@ export class Hub extends EventEmitter {
         s.status = "done"; s.interrupted = false;
         continue;
       }
+      // Older Codex sessions stored turn throughput in ctx. Keep their usage totals.
+      const legacyContext = !s.ctxReported && (s.ctx != null || s.ctxWindow !== 0 || s.ctxHigh != null);
+      if (s.provider === "openai" && (legacyContext || ["running", "starting", "waiting"].includes(s.status))) {
+        Object.assign(s, { ctx: null, ctxWindow: 0, ctxHigh: null });
+        colored = true;
+      }
       if (s.status === "running" || s.status === "waiting" || s.status === "starting") { s.status = "idle"; s.interrupted = true; }
     }
     // Sessions from before the folder field (E505c) get one from the plan they are still linked to, else null; saved so it stays.
@@ -621,7 +627,7 @@ export class Hub extends EventEmitter {
       prompt: it.prompt ?? role.prompt, canSpawn: !!role.canSpawn,
       cwd: wd.cwd, branch: wd.branch, worktree: wd.worktree, parent, folder,
       status: "starting", startedAt: Date.now(), updatedAt: Date.now(),
-      last: "", turns: 0, ctx: 0, ctxWindow: model.contextWindow,
+      last: "", turns: 0, ctx: model.provider === "openai" ? null : 0, ctxWindow: model.provider === "openai" ? 0 : model.contextWindow,
       usage: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
       cost: model.provider === "claude" ? 0 : null,
       providerSessionId: it.resume != null && model.provider === "claude" && RESUME_ID.test(String(it.resume)) ? String(it.resume) : null,
@@ -811,7 +817,8 @@ export class Hub extends EventEmitter {
     s.rotations = (s.rotations ?? 0) + 1;
     s.providerSessionId = null;
     s.turnsSinceRotate = 0;
-    s.ctx = 0;
+    s.ctx = s.provider === "openai" ? null : 0;
+    if (s.provider === "openai") s.ctxWindow = 0;
     s.ctxHigh = null;
     r.ctxNoticed = false;
     this.start(s, note, images);

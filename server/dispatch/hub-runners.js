@@ -3,8 +3,9 @@ import { redact } from "./redact.js";
 import { CHILD_PROMPT, SPAWN_PROMPT, WRITING } from "./roles.js";
 import { replyStyle } from "./style.js";
 import { effectiveRoles } from "./settings.js";
+import { codexTurn } from "./codex-turn.js";
 import { isQuotaError } from "./limits.js";
-import { checkKey } from "./state.js";
+import { checkKey, ctxOver } from "./state.js";
 import { badRequest, EFFORT_WORDS, AGY_MODES, CODEX_SANDBOX, checkPerm, checkEffort, MCP_SCRIPT, sessionEnv, clip, userContent, onJsonLines, activityOf } from "./hub-util.js";
 
 /** Bash rules the Claude CLI refuses for a role: `gh pr create` outside the PR role, `gh pr merge` outside the merge role. */
@@ -72,23 +73,25 @@ export class HubRunners {
   }
 
   /** @this {import("./hub-util.js").HubThis} */
-  attach(s, proc) {
+  attach(s, proc, exitEvent = "exit") {
     const r = this.rt(s.id);
     r.proc = proc;
     r.ran = true; // see alive(): a per-turn CLI keeps its team alive between turns
     let stderr = "";
     proc.stderr.on("data", d => { stderr = (stderr + d).slice(-2000); });
     proc.on("error", e => {
+      if (r.proc !== proc) return;
       r.proc = null;
       this.touch(s, { status: "error", error: e.code === "ENOENT" ? "CLI를 찾을 수 없어요" : e.message });
     });
-    proc.on("exit", code => {
+    proc.on(exitEvent, code => {
       if (r.proc !== proc) return;
       r.proc = null;
       r.perms.clear();
       if (s._killed || s.status === "done") return this.touch(s, { status: "done" });
-      if (code && code !== 130 && s.status !== "idle") {
-        const err = stderr.trim().split("\n").slice(-3).join(" ").slice(0, 300) || `exit ${code}`;
+      if (exitEvent === "close" && s.status === "error") return;
+      if (s.status !== "idle" && ((code && code !== 130) || (exitEvent === "close" && code === 0))) {
+        const err = stderr.trim().split("\n").slice(-3).join(" ").slice(0, 300) || (code === 0 ? "Codex 턴 종료 이벤트를 받지 못했어요" : `exit ${code}`);
         this.push(s, { kind: "error", text: err });
         return this.touch(s, { status: "error", error: err });
       }
@@ -210,68 +213,72 @@ export class HubRunners {
     const sandbox = CODEX_SANDBOX[s.perm];
     if (!sandbox) throw badRequest("알 수 없는 권한 모드예요");
     const first = !s.providerSessionId;
-    const args = ["exec", ...(first ? [] : ["resume", s.providerSessionId]), "--json", "--skip-git-repo-check",
-      "-m", s.model, "-c", `sandbox_mode="${sandbox}"`];
-    if (s.effort) args.push("-c", `model_reasoning_effort="${checkEffort({ efforts: EFFORT_WORDS }, s.effort)}"`);
-    {
-      const env = Object.entries(this.mcpEnv(s)).map(([k, v]) => `${k}=${JSON.stringify(v)}`).join(",");
-      args.push("-c", `mcp_servers.dispatch.command=${JSON.stringify(process.execPath)}`,
-        "-c", `mcp_servers.dispatch.args=[${JSON.stringify(MCP_SCRIPT)}]`,
-        "-c", `mcp_servers.dispatch.env={${env}}`,
-        "-c", `mcp_servers.dispatch.default_tools_approval_mode="approve"`);
-    }
-    // Codex has no system-prompt flag in exec mode, so the role prompt leads the first turn.
+    const args = ["app-server", "--listen", "stdio://", "-c", `sandbox_mode="${sandbox}"`];
+    const env = Object.entries(this.mcpEnv(s)).map(([k, v]) => `${k}=${JSON.stringify(v)}`).join(",");
+    args.push("-c", `mcp_servers.dispatch.command=${JSON.stringify(process.execPath)}`,
+      "-c", `mcp_servers.dispatch.args=[${JSON.stringify(MCP_SCRIPT)}]`,
+      "-c", `mcp_servers.dispatch.env={${env}}`,
+      "-c", `mcp_servers.dispatch.default_tools_approval_mode="approve"`);
     const system = this.systemPrompt(s);
-    args.push(first && system ? `[역할]\n${system}\n\n[작업]\n${prompt}` : prompt);
-    const proc = this.spawnCli("codex", args, { cwd: s.cwd, env: sessionEnv(s), stdio: ["ignore", "pipe", "pipe"] });
-    this.attach(s, proc);
-    onJsonLines(proc.stdout, m => this.onCodex(s, m));
-    this.touch(s, { status: "running", error: null });
+    const text = first && system ? `[역할]\n${system}\n\n[작업]\n${prompt}` : prompt;
+    const proc = this.spawnCli("codex", args, { cwd: s.cwd, env: sessionEnv(s), stdio: ["pipe", "pipe", "pipe"] });
+    const runtime = this.rt(s.id);
+    this.attach(s, proc, "close");
+    this.cancelAutoRemove(s.id);
+    runtime.lastText = "";
+    this.touch(s, { status: "running", error: null, ctx: null, ctxWindow: 0, ctxHigh: null });
+    codexTurn(proc, {
+      threadId: s.providerSessionId, cwd: s.cwd, model: s.model, sandbox, text,
+      effort: s.effort ? checkEffort({ efforts: EFFORT_WORDS }, s.effort) : null,
+      active: () => runtime.proc === proc && !s._killed && s.status !== "done",
+      started: providerSessionId => this.touch(s, { providerSessionId }),
+      usage: (delta, ctx, ctxWindow) => {
+        if (delta) {
+          for (const k in delta) s.usage[k] += delta[k];
+          this.store.addDaily(s.model, s.role, delta);
+          this.checkLong(s);
+        }
+        s.ctxReported = true;
+        s.ctx = ctx;
+        s.ctxWindow = ctxWindow;
+        if (ctxOver(s, this.team())) this.checkCtx(s);
+        else s.ctxHigh = null;
+        this.touch(s);
+      },
+      item: it => this.onCodexItem(s, it),
+      finish: (status, error) => {
+        if (status === "completed") {
+          this.touch(s, { status: "idle", turns: s.turns + 1, turnsSinceRotate: (s.turnsSinceRotate ?? s.turns ?? 0) + 1 });
+          this.endTurn(s);
+        } else if (status === "interrupted") {
+          this.touch(s, { status: "idle" });
+        } else {
+          this.push(s, { kind: "error", text: clip(error, 400) });
+          this.touch(s, { status: "error", error: clip(error, 300) });
+        }
+      },
+    });
   }
 
   /** @this {import("./hub-util.js").HubThis} */
-  onCodex(s, m) {
-    if (/^(item|turn\.started)/.test(m.type || "")) this.cancelAutoRemove(s.id);
-    switch (m.type) {
-      case "thread.started":
-        this.touch(s, { providerSessionId: m.thread_id });
-        break;
-      case "item.completed": {
-        const it = m.item || {};
-        if (it.type === "agent_message") { this.push(s, { kind: "assistant", text: it.text }); s.last = redact(clip(it.text, 400)); this.rt(s.id).lastText = it.text; }
-        else if (it.type === "command_execution") {
-          // Codex reports a command only once it has finished: the tool entry is final (no result follows it, so
-          // nothing may pair a later result with it) and carries the outcome itself.
-          this.push(s, { kind: "tool", name: "shell", text: clip(it.command, 600), final: true, error: typeof it.exit_code === "number" && it.exit_code !== 0 });
-          if (it.aggregated_output) this.push(s, { kind: "tool_result", text: clip(it.aggregated_output, 1500), error: it.exit_code !== 0, final: true });
-          const key = typeof it.exit_code === "number" && checkKey(it.command);
-          if (key) this.noteCheck(s, { key, kind: activityOf("shell", it.command) }, it.exit_code === 0);
-        } else if (it.type === "file_change") this.push(s, { kind: "tool", name: "edit", text: clip((it.changes || []).map(c => `${c.kind} ${c.path}`).join("\n"), 600), final: true });
-        else if (it.type === "mcp_tool_call") this.push(s, { kind: "tool", name: `${it.server}.${it.tool}`, text: clip(JSON.stringify(it.arguments), 600), final: true, error: it.status === "failed" });
-        else if (it.type === "error") this.push(s, { kind: "system", text: clip(it.message, 400) });
-        this.touch(s);
-        break;
-      }
-      case "turn.completed": {
-        const u = m.usage || {};
-        const cached = u.cached_input_tokens || 0;
-        const delta = { input: Math.max(0, (u.input_tokens || 0) - cached), output: (u.output_tokens || 0),
-          cacheRead: cached, cacheWrite: u.cache_write_input_tokens || 0 };
-        for (const k in delta) s.usage[k] += delta[k];
-        s.ctx = (u.input_tokens || 0) + (u.output_tokens || 0); this.checkCtx(s); this.checkLong(s);
-        this.store.addDaily(s.model, s.role, delta);
-        this.touch(s, { status: "idle", turns: s.turns + 1, turnsSinceRotate: (s.turnsSinceRotate ?? s.turns ?? 0) + 1 });
-        this.endTurn(s);
-        break;
-      }
-      case "turn.failed":
-        this.push(s, { kind: "error", text: clip(m.error?.message, 400) });
-        this.touch(s, { status: "error", error: clip(m.error?.message, 300) });
-        break;
-      case "error":
-        this.push(s, { kind: "error", text: clip(m.message, 400) });
-        break;
-    }
+  onCodexItem(s, it) {
+    this.cancelAutoRemove(s.id);
+    if (it.type === "agentMessage" && typeof it.text === "string") {
+      this.push(s, { kind: "assistant", text: it.text });
+      s.last = redact(clip(it.text, 400));
+      this.rt(s.id).lastText = it.text;
+    } else if (it.type === "commandExecution") {
+      const error = it.status === "failed" || it.status === "declined" || (typeof it.exitCode === "number" && it.exitCode !== 0);
+      this.push(s, { kind: "tool", name: "shell", text: clip(it.command, 600), final: true, error });
+      if (it.aggregatedOutput) this.push(s, { kind: "tool_result", text: clip(it.aggregatedOutput, 1500), error, final: true });
+      const key = typeof it.exitCode === "number" && checkKey(it.command);
+      if (key) this.noteCheck(s, { key, kind: activityOf("shell", it.command) }, !error);
+    } else if (it.type === "fileChange") {
+      this.push(s, { kind: "tool", name: "edit", text: clip((it.changes || []).map(c => `${c.kind.type} ${c.path}`).join("\n"), 600), final: true });
+    } else if (it.type === "mcpToolCall") {
+      this.push(s, { kind: "tool", name: `${it.server}.${it.tool}`, text: clip(JSON.stringify(it.arguments), 600), final: true, error: it.status === "failed" });
+    } else return;
+    this.touch(s);
   }
 
   /** @this {import("./hub-util.js").HubThis} */
