@@ -19,6 +19,7 @@ import { createBranchTree, createLiveBranches } from "./live-branches.js";
 import { createIssueList } from "./issues.js";
 import { createAccountsComment } from "./pr-comment.js";
 import { findProject, OFF_MESSAGES } from "./project.js";
+import { listServiceProjects } from "./service-projects.js";
 import { claimState } from "./state-migrate.js";
 import { SharedLimits } from "./limits.js";
 import { codexModels, staticModels } from "./models.js";
@@ -157,8 +158,14 @@ export async function createDispatch({ root, broadcast, port, workspaceDir, layo
     return { days };
   }
 
-  // Only this project: other servers are no longer found by registry files or port scans.
+  // The identity endpoint stays local so peer lookups never recurse.
   const projects = async () => [{ port: hub.port, name: path.basename(root), path: tilde(root), current: true }];
+  const serviceProjects = () => listServiceProjects({
+    root,
+    port: hub.port,
+    // Loaded inside the lookup so a slow settings read stays within its deadline.
+    workspaces: async () => (await userDefaults.current()).workspaces ?? [],
+  });
 
   // Harness profiles per mode (#748), stored in ~/.dispatch/drawing.json as `modeProfiles`.
   const isConnected = provider => !!providers[provider]?.connected;
@@ -184,7 +191,7 @@ export async function createDispatch({ root, broadcast, port, workspaceDir, layo
 
   const d = {
     modeProfiles,
-    root, store, hub, ledger, models, broadcast, snapshot, usage, projects, saveUserDefaults,
+    root, store, hub, ledger, models, broadcast, snapshot, usage, projects, serviceProjects, saveUserDefaults,
     providers: () => providers, refreshProviders, setEnabled,
     // The logged-in account email per provider for 설정 > 모델 연결 (#1023). Claude only: Codex and agy print none
     // without reading their credential files. The CLI is asked only once a status check found it logged in, so no
