@@ -8,8 +8,6 @@ export type ChatSummary = { id: string; title: string; createdAt: number; update
 export const HISTORY_CHANGED = 'dispatch:chat-history-changed';
 /** Asks the chat dock to resume a conversation: detail = { cliSessionId } (sent by openChatSession in web/src/chat/index.ts, heard by ChatDock). */
 export const OPEN_CHAT_SESSION = 'dispatch:open-chat-session';
-/** Asks the chat dock to open on its current conversation (sent by openChat in web/src/chat/index.ts, for `#chat`). */
-export const OPEN_CHAT = 'dispatch:open-chat';
 
 async function call<T>(method: string, url: string): Promise<T> {
   const res = await fetch(url, { method, headers: method === 'GET' ? {} : { 'x-drawing': '1', 'x-drawing-client': 'app' } });
