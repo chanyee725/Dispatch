@@ -8,6 +8,8 @@ export type TaskStage = 'plan' | 'impl' | 'review' | 'test' | 'merge' | 'done' |
 /** A lead's task board row (set_task). Stage history is time and stage only. */
 export interface BoardTask {
   id: string; lead: string | null; title: string; stage: TaskStage; owner: string | null;
+  /** Assigned project path, null for an unfiled lead, absent when the assignment is unknown. */
+  folder?: string | null;
   createdAt: number; stageAt: number; updatedAt: number; etaAt: number | null; note: string;
   stages?: { stage: TaskStage; at: number }[];
   /** etaAt is the server's guess from finished tasks' stage times (#1028), not one the lead set. */

@@ -35,6 +35,8 @@ test('작업 보드 shows tasks by stage and follows live changes', { skip: !ON 
   git('commit', '-qm', 'init');
   const ws = join(repo, 'ws');
   mkdirSync(ws);
+  mkdirSync(join(ws, 'alpha'));
+  mkdirSync(join(ws, 'beta'));
 
   const fake = fakeCliBin({ scenario: [{ type: 'system', subtype: 'init', session_id: 'fake-board' }, { type: 'result', subtype: 'success' }] });
   const port = await freePort();
@@ -69,9 +71,10 @@ test('작업 보드 shows tasks by stage and follows live changes', { skip: !ON 
     };
 
     at('seed tasks');
-    const { sessions: [lead] } = await call('POST', '/api/sessions', {
-      items: [{ role: 'lead', provider: 'claude', task: 'check the board' }], worktree: false,
-    });
+    const makeLead = async (folder) => (await call('POST', '/api/sessions', {
+      items: [{ role: 'lead', provider: 'claude', task: 'check the board' }], worktree: false, folder,
+    })).sessions[0];
+    const lead = await makeLead('alpha');
     const task = await call('POST', '/api/tasks', { lead: lead.id, title: '로그인 화면 만들기', stage: 'impl', owner: 'Ivy', eta_minutes: 4 });
     await call('POST', '/api/tasks', { title: '결제 검토', stage: 'review', owner: 'Rae' });
     await call('POST', '/api/tasks', { title: '배포 막힘', stage: 'blocked', note: '키가 없어요' });
@@ -170,17 +173,60 @@ test('작업 보드 shows tasks by stage and follows live changes', { skip: !ON 
     const current = (await call('GET', '/api/tasks')).tasks.find((item) => item.id === task.id);
     assert.equal(current.etaAt, task.etaAt);
 
-    at('removed lead keeps the card visible after a page reload');
+    at('pick the project with two leads');
+    const peer = await makeLead('alpha');
+    const otherLead = await makeLead('beta');
+    const peerTask = await call('POST', '/api/tasks', { lead: peer.id, title: '같은 프로젝트 작업', stage: 'impl' });
+    const otherTask = await call('POST', '/api/tasks', { lead: otherLead.id, title: '다른 프로젝트 작업', stage: 'impl' });
+    // An assignment with no remaining session and no known project is only visible under 전체.
+    const unknown = await call('POST', '/api/tasks', { lead: 'missing', title: '프로젝트 미상 작업', stage: 'impl' });
+    const finished = await call('POST', '/api/tasks', { lead: lead.id, title: '완료한 프로젝트 작업' });
+    await call('POST', '/api/tasks', { id: finished.id, stage: 'done' });
+    const rowFor = ({ id }) => page.locator(`[data-row="${id}"]`);
+    const showDone = () => page.getByRole('button', { name: /^완료 \d+개$/ }).click();
+    await page.goto(`${BASE}/#board&folder=alpha`);
+    await rowFor(peerTask).waitFor();
+    await showDone();
+    await rowFor(finished).waitFor();
+    assert.equal(await rowFor(otherTask).count(), 0);
+    assert.equal(await rowFor(unknown).count(), 0);
+
+    at('removed lead keeps both cards in the selected project after a page reload');
     await call('POST', `/api/sessions/${lead.id}/remove`);
-    await row.locator('[data-task-lead]').filter({ hasText: /^관리자 확인 불가$/ }).waitFor();
+    await row.locator('[data-task-lead]').filter({ hasText: /^관리자 확인 불가$/ }).waitFor({ timeout: 5000 });
     await page.reload();
     await row.locator('[data-task-lead]').filter({ hasText: /^관리자 확인 불가$/ }).waitFor();
     await rowEta.filter({ hasText: /^기한 초과$/ }).waitFor();
     await page.getByRole('button', { name: '전체 보기', exact: true }).click();
     const retained = board.locator('[data-stage="test"]').locator('[data-task="로그인 화면 만들기"]');
     await retained.locator('[data-task-lead]').filter({ hasText: /^관리자 확인 불가$/ }).waitFor();
+    await board.locator('[data-stage="done"]').locator('[data-task="완료한 프로젝트 작업"]').waitFor();
+    await card('같은 프로젝트 작업').waitFor();
     assert.deepEqual(await retained.locator('[data-bar]').evaluateAll((els) => els.map((el) => el.getAttribute('data-bar'))), spans);
     assert.deepEqual((await call('GET', '/api/tasks')).tasks.find((item) => item.id === task.id), current);
+    await page.keyboard.press('Escape');
+    await board.waitFor({ state: 'detached' });
+
+    at('the other project excludes retained and unknown cards');
+    await page.goto(`${BASE}/#board&folder=beta`);
+    await rowFor(otherTask).waitFor();
+    await page.getByRole('button', { name: '전체 보기', exact: true }).click();
+    await card('다른 프로젝트 작업').waitFor();
+    for (const title of ['로그인 화면 만들기', '완료한 프로젝트 작업', '같은 프로젝트 작업', '프로젝트 미상 작업']) {
+      assert.equal(await card(title).count(), 0, title);
+    }
+    await page.keyboard.press('Escape');
+    await board.waitFor({ state: 'detached' });
+
+    at('all projects show the retained cards, and explicit removal still works');
+    await page.goto(`${BASE}/#board`);
+    await row.waitFor();
+    await rowFor(unknown).waitFor();
+    await showDone();
+    await rowFor(finished).waitFor();
+    await call('POST', `/api/tasks/${finished.id}/remove`);
+    await rowFor(finished).waitFor({ state: 'detached' });
+    await row.waitFor();
     assert.deepEqual(errors, []);
   } catch (e) {
     const shot = join(tmpdir(), `dispatch-board-fail-${Date.now()}.png`);
