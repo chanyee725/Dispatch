@@ -3,6 +3,7 @@ import { mkdir, mkdtemp, rm, symlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
+import { setImmediate } from 'node:timers/promises';
 import { listServiceProjects } from '../../server/dispatch/service-projects.js';
 
 async function fixtureHome(t) {
@@ -212,4 +213,34 @@ test('a slow settings read counts toward the deadline and starts no scan after i
   assert.deepEqual((await listServiceProjects({ ...query, deployments: [], workspaces: [{ path: peers[0].path }] }))
     .map((entry) => entry.port), [4100, 4101]);
   assert.deepEqual(calls, [4101]);
+});
+
+test('a request joining after a slow settings read keeps its own deadline', { timeout: 5_000 }, async (t) => {
+  const { peers, query } = await peerFixture(t, 1);
+  const settings = Promise.withResolvers();
+  const started = Promise.withResolvers();
+  const release = Promise.withResolvers();
+  const fetchPeer = t.mock.method(globalThis, 'fetch', async (_url, { signal }) => {
+    started.resolve();
+    await release.promise;
+    signal.throwIfAborted();
+    return Response.json({ projects: peers });
+  });
+  t.mock.timers.enable({ apis: ['setTimeout'] });
+
+  const first = listServiceProjects({ ...query, workspaces: () => settings.promise });
+  t.mock.timers.tick(1_000);
+  const second = listServiceProjects(query);
+  await started.promise;
+  settings.resolve([]);
+  await setImmediate();
+
+  t.mock.timers.tick(500);
+  const resultAtDeadline = await Promise.race([first, setImmediate()]);
+  release.resolve();
+  const [, discovered] = await Promise.all([first, second]);
+
+  assert.deepEqual(resultAtDeadline, [{ name: 'Dispatch', port: 4100, current: true }]);
+  assert.deepEqual(discovered.map((entry) => entry.port), [4100, 4101]);
+  assert.equal(fetchPeer.mock.callCount(), 1);
 });

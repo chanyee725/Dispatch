@@ -140,9 +140,13 @@ export async function listServiceProjects({ root, port, workspaces, deployments 
   const candidates = [...deployments, ...(entries ?? []).map((entry) => entry.path)];
   const key = JSON.stringify([root, port, candidates]);
   if (activeLookup) {
-    clearTimeout(timer);
     // Share matching lookups without handing peers from one workspace list to another.
-    return activeLookup.key === key ? activeLookup.result : [current];
+    try {
+      if (activeLookup.key !== key) return [current];
+      return await Promise.race([activeLookup.result, deadline.then(() => [current])]);
+    } finally {
+      clearTimeout(timer);
+    }
   }
 
   const peers = [];
