@@ -3,5 +3,5 @@
 import { TeamFieldsForm } from './shared';
 
 export default function TeamSection() {
-  return <TeamFieldsForm section="team" title="관리자와 팀" hint="관리자가 대화를 이어 가는 주기와 팀 크기예요. 새로 여는 세션부터 적용돼요." testId="settings-section-team" />;
+  return <TeamFieldsForm section="team" title="관리자와 팀" hint="관리자가 대화를 이어 가는 주기, 팀 크기, 메시지 대기열을 설정해요." testId="settings-section-team" />;
 }

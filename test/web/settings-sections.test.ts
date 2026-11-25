@@ -12,7 +12,7 @@ test('each section shows its own fields', () => {
     const f = sectionFields(s);
     return [...f.numbers.map((n) => n.id), ...f.toggles.map((t) => t.id)];
   };
-  assert.deepEqual(ids('team'), ['rotateLead', 'rotateOthers', 'maxChildren', 'autoRemoveGraceSec', 'autoRemoveDone', 'autoRotateLong']);
+  assert.deepEqual(ids('team'), ['rotateLead', 'rotateOthers', 'maxChildren', 'maxLeadInbox', 'autoRemoveGraceSec', 'autoRemoveDone', 'autoRotateLong']);
   assert.deepEqual(ids('folders'), ['shareDeps', 'dropWorktrees']);
   assert.deepEqual(ids('stuck'), ['stuckFails', 'stuckSilentMinutes', 'stuckMismatchMinutes', 'stuckEtaRatio']);
 });
@@ -154,4 +154,15 @@ test('unsaved input stays unsaved while the session stream drops and reconnects 
   assert.equal(settingsLoad(status, true, false).kind, 'ok');
   const fresh = teamValues({}, [{ id: 'lead', model: 'claude-sonnet-5-5' }]);
   assert.equal(sectionDirty(fresh, resyncTeamForm(saved, fresh, edited), 'team'), true);
+});
+
+test('관리자와 팀 saves the inbox limit and rejects out-of-range input', () => {
+  const form = teamForm(saved);
+  assert.equal(form.texts.maxLeadInbox, '20');
+  form.texts.maxLeadInbox = '7';
+  const change = sectionSave(saved, form, 'team');
+  assert.deepEqual(change.kind === 'save' && change.patch, { maxLeadInbox: 7 });
+  form.texts.maxLeadInbox = '101';
+  const invalid = sectionSave(saved, form, 'team');
+  assert.equal(invalid.kind === 'invalid' && invalid.first, 'maxLeadInbox');
 });

@@ -67,6 +67,8 @@ export interface Session {
   /** What a running session is doing right now ("e2e 실행"), and since when; null when idle. */
   activity?: { label: string; since: number } | null;
   pending: Pending[];
+  /** Waiting teammate messages in the lead’s in-memory inbox. */
+  leadInboxCount?: number;
   /** Server-decided state; older servers omit it (see stateOf). */
   state?: SessionState;
   /** When the session entered its current state. */
@@ -160,6 +162,7 @@ export interface TeamSettings {
   /** Swap a session past `handoffMTokens` for a fresh one between turns (#969). */
   autoRotateLong?: boolean;
   maxChildren: number;
+  maxLeadInbox?: number;
   replyStyle: boolean;
   shareDeps: boolean;
   dropWorktrees: boolean;
