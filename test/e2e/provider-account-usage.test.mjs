@@ -95,12 +95,17 @@ test('account usage shows verified windows, missing data, stale values and keybo
   const expired = { connection: 'connected', status: 'partial', updatedAt: now - 120_000,
     windows: [{ label: '5시간', used: 0.37, reset: now - 60_000 }, { label: '주간', used: 0.45, reset: null }] };
   const noUsage = { connection: 'unverified', status: 'unavailable', windows: [] };
+  const claudeUsage = { connection: 'connected', status: 'partial', updatedAt: now - 86_400_000,
+    windows: [{ label: '5시간', used: 0.65, reset: null }] };
+  await page.route('**/api/usage/limits/claude', route => route.fulfill({ json: claudeUsage }));
   let geminiState = noUsage;
   let codexState = expired;
   await page.route('**/api/usage/limits/openai', route => codexState
     ? route.fulfill({ json: codexState }) : route.fulfill({ status: 503, json: { error: 'fixture detail' } }));
   await page.route('**/api/usage/limits/gemini', route => route.fulfill({ json: geminiState }));
   await page.reload();
+  await claude.getByRole('progressbar', { name: 'Claude 5시간 65%' }).waitFor();
+  await claude.getByRole('status').getByText(/분 전 숫자예요/).waitFor({ timeout: 5_000 });
   await codex.getByRole('status').getByText(/분 전 숫자예요/).waitFor();
   await codex.getByText('초기화 시각을 몰라요.').waitFor();
   await codex.getByRole('progressbar', { name: 'OpenAI Codex 5시간 37%' }).waitFor();
@@ -109,7 +114,10 @@ test('account usage shows verified windows, missing data, stale values and keybo
 
   geminiState = { ...noUsage, reached: true, reset: now + 3600_000 };
   codexState = null;
+  claudeUsage.updatedAt = now - 60_000;
   await page.reload();
+  await claude.getByRole('progressbar', { name: 'Claude 5시간 65%' }).waitFor();
+  assert.equal(await claude.getByRole('status').getByText(/분 전 숫자예요/).count(), 0);
   await gemini.getByText(/한도에 닿았어요.*사용률은 알려주지 않아요/).waitFor();
   await codex.getByRole('status').getByText('사용량을 불러오지 못했어요.').waitFor();
   await codex.getByText('연결됨', { exact: true }).waitFor();

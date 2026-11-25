@@ -63,6 +63,19 @@ type AccountLoad = {
   showRetry: boolean;
 };
 
+const dayMinutes = 24 * 60;
+
+function windowMinutes(label: AccountWindow['label']) {
+  if (label === '일간') return dayMinutes;
+  if (label === '주간' || label === 'Fable 주간') return 7 * dayMinutes;
+  // When the monthly reset is unknown, allow for the longest calendar month.
+  if (label === '월간') return 31 * dayMinutes;
+  const match = /^([1-9]\d*)(분|시간|일)$/.exec(label ?? '');
+  if (!match) return null;
+  const [, count, unit] = match;
+  return Number(count) * (unit === '일' ? dayMinutes : unit === '시간' ? 60 : 1);
+}
+
 const initialAccountLoad: AccountLoad = { failed: false, pending: false, showRetry: false };
 const usageNotes = {
   empty: '아직 사용량 정보가 없어요. 세션이 돌면 채워져요.',
@@ -141,8 +154,14 @@ function LimitsPanel() {
           const shown = disconnected ? undefined : load.previous;
           const data = disconnected ? undefined : load.data;
           const rows = shown?.windows ?? [];
-          const stale = rows.length > 0 && (load.failed || rows.some(w => w.reset != null && w.reset <= now));
           const age = shown?.updatedAt == null ? null : Math.max(0, Math.floor((now - shown.updatedAt) / 60_000));
+          const stale = rows.some(({ label, reset }) => {
+            if (load.failed) return true;
+            if (reset != null) return reset <= now;
+            if (age == null) return false;
+            const minutes = windowMinutes(label);
+            return minutes != null && age >= minutes;
+          });
           const partial = shown?.status === 'partial';
           const expected = ['5시간', '주간'];
           const missing = partial && id !== 'gemini' && rows.some(w => w.label != null && expected.includes(w.label))
