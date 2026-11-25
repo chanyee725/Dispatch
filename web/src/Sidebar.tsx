@@ -20,7 +20,7 @@ import {
   useSidebar,
 } from './components/ui/sidebar';
 import { projectOf, UNFILED } from './dispatch/lib/folder';
-import { isOpen, stateOf, STATE, TONE_TEXT } from './dispatch/lib/format';
+import { isOpen, stateOf, STATE } from './dispatch/lib/format';
 import { api, useDispatch } from './dispatch/store';
 import { useProjectList } from './dispatch/useProjectList';
 import { openAgentLive, useAgentLiveTarget } from './live/store';
@@ -147,7 +147,7 @@ function SidebarSessions({ all, sessions }: { all: readonly Session[]; sessions:
                 >
                   <span className={NAME} title={s.name}>{s.name}</span>
                   <span className="max-w-[40%] truncate text-muted-foreground" title={team}>{team}</span>
-                  <SidebarMenuBadge className={TONE_TEXT[state.tone]}>{state.label}</SidebarMenuBadge>
+                  <SidebarMenuBadge className="text-sidebar-foreground">{state.label}</SidebarMenuBadge>
                 </SidebarMenuButton>
               </SidebarMenuItem>
             );
