@@ -89,13 +89,14 @@ export class HubRunners {
       r.proc = null;
       r.perms.clear();
       if (s._killed || s.status === "done") return this.touch(s, { status: "done" });
-      if (exitEvent === "close" && s.status === "error") return;
-      if (s.status !== "idle" && ((code && code !== 130) || (exitEvent === "close" && code === 0))) {
+      if (s.status === "error") return;
+      if (s.status !== "idle" && ((code && code !== 130) || (s.provider === "openai" && code === 0))) {
         const err = stderr.trim().split("\n").slice(-3).join(" ").slice(0, 300) || (code === 0 ? "Codex 턴 종료 이벤트를 받지 못했어요" : `exit ${code}`);
         this.push(s, { kind: "error", text: err });
         return this.touch(s, { status: "error", error: err });
       }
       this.touch(s, { status: "idle" });
+      if (s.provider === "openai") this.drainLeadInbox(s);
     });
   }
 
@@ -118,8 +119,11 @@ export class HubRunners {
     // DISPATCH_URL / DISPATCH_SESSION let the plugin's length hook (hooks/long-session.mjs) find this session.
     const proc = this.spawnCli("claude", args, { cwd: s.cwd, env: { ...sessionEnv(s), DISPATCH_URL: `http://127.0.0.1:${this.port}`, DISPATCH_SESSION: s.id }, stdio: ["pipe", "pipe", "pipe"] });
     s._costBase = s.cost;
-    this.attach(s, proc);
-    onJsonLines(proc.stdout, m => this.onClaude(s, m));
+    this.attach(s, proc, "close");
+    this.rt(s.id).pauseInterrupted = false;
+    onJsonLines(proc.stdout, m => {
+      if (this.live.get(s.id)?.proc === proc && !s._killed) this.onClaude(s, m);
+    });
     proc.stdin.write(JSON.stringify({ type: "user", message: { role: "user", content: userContent(prompt, images) } }) + "\n");
     this.touch(s, { status: "running", error: null });
   }
@@ -199,7 +203,11 @@ export class HubRunners {
         }
         const win = Object.values(m.modelUsage || {})[0]?.contextWindow;
         if (win) s.ctxWindow = win;
-        if (m.is_error) this.push(s, { kind: "error", text: clip(m.result || m.subtype, 400) });
+        if (m.is_error) {
+          if (s.canSpawn && !r.pauseInterrupted) r.leadInboxHeld = true;
+          this.push(s, { kind: "error", text: clip(m.result || m.subtype, 400) });
+        }
+        r.pauseInterrupted = false;
         this.touch(s, { status: "idle", turns: s.turns + 1, turnsSinceRotate: (s.turnsSinceRotate ?? s.turns ?? 0) + 1 });
         this.endTurn(s);
         break;
@@ -297,7 +305,7 @@ export class HubRunners {
     // Same environment as Claude/Codex (headless Playwright, own git env), plus the MCP variables.
     const env = { ...sessionEnv(s), ...this.mcpEnv(s) };
     const proc = this.spawnCli("agy", args, { cwd: s.cwd, env, stdio: ["ignore", "pipe", "pipe"] });
-    this.attach(s, proc);
+    this.attach(s, proc, "close");
     // One agy process is one turn. Its answer arrives as text_delta chunks; they add up in `turn.text`.
     const turn = { text: "", ended: false };
     this.rt(s.id).agyTurn = turn;
@@ -307,7 +315,9 @@ export class HubRunners {
     // stopAll) gives code null and is handled elsewhere; an old process closing after rotate() must not
     // touch the new turn. A failed exit is left to attach().
     proc.on("close", code => {
-      if (code === 0 && !turn.ended && this.rt(s.id).agyTurn === turn && !s._killed && s.status !== "done") this.endGeminiTurn(s, turn);
+      if (this.live.get(s.id)?.agyTurn !== turn || s._killed || s.status === "done") return;
+      if (code === 0 && !turn.ended) this.endGeminiTurn(s, turn);
+      else this.drainLeadInbox(s);
     });
     this.touch(s, { status: "running", error: null });
   }

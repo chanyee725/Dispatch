@@ -84,7 +84,8 @@ test("a message to the teammate, a new turn or a permission request cancels the 
   await flush();
   assert.ok(store.data.sessions.K, "kept: the lead wrote to it");
 
-  // Its next report re-arms; a permission request then cancels.
+  // The lead finished its turn. The next report re-arms; a permission request then cancels.
+  hub.onClaude(hub.get("L"), { type: "result" });
   finish();
   hub.touch(kid, { status: "waiting" });
   mock.timers.tick(200_000);
@@ -92,6 +93,7 @@ test("a message to the teammate, a new turn or a permission request cancels the 
   assert.ok(store.data.sessions.K, "kept: waiting on a permission");
 
   // The next turn's report re-arms, and the full grace counts from there.
+  hub.onClaude(hub.get("L"), { type: "result" });
   finish();
   mock.timers.tick(119_000);
   await flush();
@@ -233,6 +235,7 @@ test("work after the report keeps the teammate even while its status still reads
   assert.ok(store.data.sessions.K, "init cancels the timer");
 
   // Any transcript event after the report blocks the removal even if the timer was not cancelled.
+  hub.onClaude(hub.get("L"), { type: "result" });
   finish();
   hub.push(kid, { kind: "tool", name: "Bash", text: "npm test" });
   assert.equal(kid.status, "idle");
@@ -241,6 +244,7 @@ test("work after the report keeps the teammate even while its status still reads
   assert.ok(store.data.sessions.K, "kept: it is working");
 
   // The next report re-arms and, with no work after it, the removal goes ahead.
+  hub.onClaude(hub.get("L"), { type: "result" });
   finish();
   mock.timers.tick(120_000);
   await flush();

@@ -15,6 +15,8 @@ export const TEAM_DEFAULTS = () => ({
   rotateOthers: envNum("DISPATCH_ROTATE_TURNS", 10),
   /** Open teammates one lead may hold at once. */
   maxChildren: 8,
+  /** Waiting teammate messages per lead (the current turn is excluded). */
+  maxLeadInbox: 20,
   /** Append the reply-style guide to every session's prompt. */
   replyStyle: process.env.DISPATCH_REPLY_STYLE !== "off",
   /** Give a new worktree the project's node_modules as hard links. */
@@ -94,6 +96,7 @@ export function patchTeam(store, patch, { roles, models }) {
     next.handoffMTokens = n;
   }
   if ("autoRemoveGraceSec" in patch) next.autoRemoveGraceSec = int(patch.autoRemoveGraceSec, 3, 3600);
+  if ("maxLeadInbox" in patch) next.maxLeadInbox = int(patch.maxLeadInbox, 1, 100);
   if ("maxChildren" in patch) next.maxChildren = int(patch.maxChildren, 1, 16);
   if ("stuckFails" in patch) next.stuckFails = int(patch.stuckFails, 0, 20);
   if ("stuckSilentMinutes" in patch) next.stuckSilentMinutes = int(patch.stuckSilentMinutes, 0, 240);

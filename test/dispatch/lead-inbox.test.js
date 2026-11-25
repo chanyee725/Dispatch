@@ -1,0 +1,250 @@
+import assert from "node:assert/strict";
+import { EventEmitter } from "node:events";
+import { test } from "node:test";
+import { PassThrough, Readable } from "node:stream";
+import { Hub } from "../../server/dispatch/hub.js";
+import { adapt, routeTable } from "../../server/dispatch/routes.js";
+import { patchTeam } from "../../server/dispatch/settings.js";
+
+function fixture({ provider = "claude", limit = 4 } = {}) {
+  const store = { data: { seq: 0, sessions: {}, tasks: {}, settings: { guard: { enabled: false }, team: { maxLeadInbox: limit, rotateLead: 0 } } }, save() {} };
+  const usage = { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 };
+  const models = [{ id: "fake", provider, contextWindow: 100_000 }];
+  const hub = new Hub({ root: "/tmp", store, models, roles: [], port: 0, limits: Object.assign(new EventEmitter(), { claude: {} }) });
+  hub.refreshCodex = async () => {};
+  hub.boardNote = () => "";
+  const add = (id, parent = null) => (store.data.sessions[id] = {
+    id, parent, name: id, roleName: parent ? "팀원" : "관리자", canSpawn: !parent, perm: "auto", provider, model: "fake",
+    turns: 0, status: parent ? "idle" : "running", usage: { ...usage }, startedAt: Date.now(),
+  });
+  const lead = add("lead");
+  const a = add("a", lead.id), b = add("b", lead.id);
+  const work = [];
+  const attach = (lead) => {
+    const proc = Object.assign(new EventEmitter(), {
+      stdin: { write: (line) => { const { message } = JSON.parse(line); if (message) work.push(message.content); } },
+      stdout: new PassThrough(), stderr: new EventEmitter(), kill() {},
+    });
+    hub.attach(lead, proc, provider === "claude" ? "exit" : "close");
+    return proc;
+  };
+  const proc = attach(lead);
+  hub.start = (s, text) => {
+    work.push(text);
+    attach(s);
+    hub.touch(s, { status: "running" });
+  };
+  const report = (s, text) => { hub.rt(s.id).lastText = text; hub.reportToParent(s); };
+  const done = (s = lead) => hub.onClaude(s, { type: "result" });
+  const inboxCount = (s = lead) => hub.publicSession(s).leadInboxCount;
+  const messages = () => work.map(text => text.split("\n")[1]);
+  return { hub, store, lead, a, b, work, report, done, proc, inboxCount, add, attach, messages };
+}
+
+test("busy Claude lead accepts burst traffic FIFO and drains one item per completed turn", () => {
+  const { hub, lead, a, b, done, report, inboxCount, messages } = fixture();
+  hub.messageLead(a.id, "first", "one");
+  report(b, "second");
+  hub.messageLead(a.id, "third", "three");
+  assert.equal(inboxCount(), 3);
+  assert.deepEqual(messages(), []);
+  assert.deepEqual(hub.transcript(lead.id), []);
+  for (const [index, text] of ["first", "second", "third"].entries()) {
+    done();
+    assert.equal(inboxCount(), 2 - index);
+    assert.equal(messages().at(-1), text);
+    assert.equal(messages().length, index + 1);
+  }
+  done();
+  assert.deepEqual(messages(), ["first", "second", "third"]);
+  assert.equal(hub.transcript(lead.id).filter(e => e.kind === "user").length, 3);
+});
+
+test("Codex and Gemini wait for the old process to close before starting the next queued turn", () => {
+  for (const provider of ["openai", "gemini"]) {
+    const { hub, lead, a, b, proc, report, inboxCount, messages } = fixture({ provider });
+    if (provider === "gemini") {
+      hub.spawnCli = () => proc;
+      hub.startGemini(lead, "lead turn");
+    }
+    report(a, "first");
+    report(b, "second");
+    for (let index = 0; index < 3; index++) hub.checkTeams();
+    assert.deepEqual(hub.transcript(lead.id), [], provider);
+    if (provider === "gemini") {
+      proc.stdout.write(JSON.stringify({ event: "result", result: { status: "OK", response: "finished" } }) + "\n");
+    } else {
+      hub.touch(lead, { status: "idle" });
+      hub.endTurn(lead);
+    }
+    assert.equal(lead.status, "idle", provider);
+    assert.equal(inboxCount(), 2, provider);
+    assert.deepEqual(messages(), [], provider);
+    proc.emit("close", 0);
+    assert.deepEqual(messages(), ["first"], provider);
+    assert.equal(inboxCount(), 1, provider);
+  }
+});
+
+test("full requests are explicit, sender reports stay pending in cross-sender order, and retries are idempotent", () => {
+  const { hub, store, lead, a, b, done, report, inboxCount, messages } = fixture({ limit: 1 });
+  assert.deepEqual(hub.messageLead(a.id, "same text", "one"), { ok: true });
+  assert.deepEqual(hub.messageLead(a.id, "same text", "one"), { ok: true, duplicate: true });
+  assert.throws(() => hub.messageLead(a.id, "same text", "two"), e => e.status === 429 && e.code === "lead_inbox_full" && e.waiting === 1 && e.limit === 1);
+  report(b, "private-pending report B");
+  report(a, "private-pending report A");
+  assert.equal(inboxCount(), 1);
+  assert.equal(hub.rt(b.id).pendingReports.length, 1);
+  assert.equal(hub.autoRemoveBlocked(b), "report");
+  assert.doesNotMatch(JSON.stringify({ state: store.data, session: hub.publicSession(lead) }), /private-pending|same text/);
+  for (let index = 0; index < 3; index++) done();
+  assert.deepEqual(messages(), ["same text", "private-pending report B", "private-pending report A"]);
+  assert.equal(hub.rt(b.id).pendingReports.length, 0);
+  assert.equal(inboxCount(), 0);
+  assert.deepEqual(hub.messageLead(a.id, "same text", "one"), { ok: true, duplicate: true });
+  assert.deepEqual(hub.messageLead(a.id, "same text", "two"), { ok: true });
+  done();
+  assert.deepEqual(messages(), ["same text", "private-pending report B", "private-pending report A", "same text"]);
+});
+
+test("a team hold, Claude quota, and provider guard prevent draining until the hold clears", () => {
+  const { hub, lead, a, done, inboxCount, messages } = fixture();
+  let teamHeld = true, providerHeld = true, paused = true;
+  hub.holdTeam = () => teamHeld;
+  hub.pausedFor = () => paused;
+  hub.providerHold = () => providerHeld ? "Provider quota" : null;
+  hub.messageLead(a.id, "held");
+  done();
+  assert.equal(inboxCount(), 1);
+  teamHeld = false;
+  hub.checkTeams();
+  paused = false;
+  hub.checkTeams();
+  assert.deepEqual(messages(), []);
+  providerHeld = false;
+  hub.checkTeams();
+  assert.equal(lead.status, "running");
+  assert.deepEqual(messages(), ["held"]);
+});
+
+test("a cancel or an errored turn holds the remaining inbox until a manual instruction succeeds", () => {
+  for (const outcome of ["cancel", "error"]) {
+    const { hub, lead, a, done, inboxCount, messages } = fixture();
+    hub.messageLead(a.id, outcome);
+    if (outcome === "cancel") { hub.interrupt(lead.id); done(); }
+    else hub.onClaude(lead, { type: "result", is_error: true, result: "failed" });
+    hub.checkTeams();
+    assert.equal(inboxCount(), 1);
+    assert.deepEqual(messages(), []);
+    hub.send(lead.id, "continue");
+    done();
+    assert.deepEqual(messages(), [undefined, outcome]);
+  }
+});
+
+test("a queued report follows a reparent, including after its old lead is killed", () => {
+  for (const killed of [false, true]) {
+    const { hub, lead, a, add, attach, report, inboxCount, messages } = fixture();
+    const newLead = add("other");
+    attach(newLead);
+    report(a, "move report");
+    if (killed) hub.kill(lead.id);
+    hub.setParent(a.id, newLead.id);
+    assert.equal(inboxCount(), 0);
+    assert.equal(inboxCount(newLead), 1);
+    assert.deepEqual(messages(), []);
+    hub.onClaude(newLead, { type: "result" });
+    assert.deepEqual(messages(), ["move report"]);
+  }
+});
+
+test("if sending fails before dispatch, the head stays queued and the retry only appends once", () => {
+  const { hub, lead, a, proc, done, inboxCount, messages } = fixture();
+  hub.messageLead(a.id, "retry");
+  const write = proc.stdin.write;
+  proc.stdin.write = () => { throw new Error("pipe unavailable"); };
+  done();
+  hub.checkTeams();
+  assert.equal(inboxCount(), 1);
+  assert.deepEqual(hub.transcript(lead.id), []);
+  proc.stdin.write = write;
+  hub.checkTeams();
+  assert.equal(inboxCount(), 0);
+  assert.deepEqual(messages(), ["retry"]);
+  assert.equal(hub.transcript(lead.id).filter(e => e.kind === "user").length, 1);
+});
+
+test("maxLeadInbox is validated as a team setting", () => {
+  const { store } = fixture();
+  const options = { roles: [], models: [] };
+  assert.equal(patchTeam(store, { maxLeadInbox: 1 }, options).maxLeadInbox, 1);
+  assert.equal(patchTeam(store, { maxLeadInbox: 100 }, options).maxLeadInbox, 100);
+  for (const value of [0, 101, "invalid"]) {
+    assert.throws(() => patchTeam(store, { maxLeadInbox: value }, options), e => e.status === 400);
+  }
+});
+
+test("lead replacement moves the queue with its teammates and board tasks, and runs the handoff first", () => {
+  const { hub, lead, a, b, done, report, inboxCount, work, store } = fixture({ limit: 1 });
+  store.data.settings.team.handoffMTokens = 2;
+  lead.usage.input = 2_000_000;
+  store.data.tasks.T = { lead: lead.id };
+  hub.messageLead(a.id, "first", "one");
+  report(b, "second");
+  done();
+  const successor = hub.sessions.find(s => s.rotatedFrom?.id === lead.id);
+  assert.ok(successor);
+  assert.equal(a.parent, successor.id);
+  assert.equal(b.parent, successor.id);
+  assert.equal(store.data.tasks.T.lead, successor.id);
+  assert.equal(inboxCount(successor), 1);
+  assert.equal(work.length, 1);
+  assert.match(work[0], /이전 세션/);
+  assert.doesNotMatch(work[0], /first|second/);
+  assert.deepEqual(hub.messageLead(a.id, "first", "one"), { ok: true, duplicate: true });
+  done(successor);
+  done(successor);
+  assert.match(work[1], /\nfirst$/);
+  assert.match(work[2], /\nsecond$/);
+  assert.equal(inboxCount(successor), 0);
+});
+
+test("the HTTP route returns structured backpressure with no payload, and retries the same ID safely", async () => {
+  const { hub, a, done } = fixture({ limit: 1 });
+  const pathname = `/api/sessions/${a.id}/to-lead`;
+  const entry = routeTable({ hub, root: "/tmp", store: {}, models: [] })
+    .find(([method, path]) => method === "POST" && path.test(pathname));
+  const route = adapt(entry);
+  const post = async (body) => {
+    const req = Readable.from([JSON.stringify(body)]);
+    const result = {};
+    const res = {
+      writeHead: (status) => { result.status = status; },
+      end: (text) => { result.body = JSON.parse(text); },
+    };
+    await route.handler(req, res, null, route.path.exec(pathname));
+    return result;
+  };
+  assert.deepEqual(await post({ text: "queued", messageId: "one" }), { status: 200, body: { ok: true } });
+  const full = await post({ text: "keep at sender", messageId: "two" });
+  assert.equal(full.status, 429);
+  assert.equal(full.body.code, "lead_inbox_full");
+  assert.equal(full.body.waiting, 1);
+  assert.equal(full.body.limit, 1);
+  assert.doesNotMatch(JSON.stringify(full.body), /keep at sender/);
+  done();
+  assert.deepEqual(await post({ text: "keep at sender", messageId: "two" }), { status: 200, body: { ok: true } });
+  assert.deepEqual(await post({ text: "keep at sender", messageId: "two" }), { status: 200, body: { ok: true, duplicate: true } });
+});
+
+test("repeated quota interrupts of one teammate turn enqueue one handoff", () => {
+  const { hub, a, done, attach, inboxCount, work } = fixture();
+  attach(a);
+  hub.touch(a, { status: "running" });
+  hub.interrupt(a.id, { pause: true });
+  hub.interrupt(a.id, { pause: true });
+  assert.equal(inboxCount(), 1);
+  done();
+  assert.equal(work.length, 1);
+  assert.match(work[0], /팀원\) 중단/);
+});

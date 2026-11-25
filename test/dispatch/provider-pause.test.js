@@ -51,15 +51,15 @@ test("Claude pause refuses only Claude follow-ups and preserves other provider h
 
 test("reports to an available provider are delivered while Claude reports wait", () => {
   const { hub, add } = fixture();
-  add("o", "openai"); add("c", "claude");
+  add("o", "openai").status = "idle"; add("c", "claude").status = "idle";
   const a = add("a", "gemini", "o"), b = add("b", "openai", "c");
-  hub.rt(a.id).pendingReport = "ready"; hub.rt(b.id).pendingReport = "wait";
   const sent = [];
   hub.send = id => sent.push(id); hub.boardNote = () => ""; hub.armAutoRemove = () => {};
-  hub.deliverReport(a); hub.deliverReport(b);
+  hub.queueLeadReport(a, "ready"); hub.queueLeadReport(b, "wait");
   assert.deepEqual(sent, ["o"]);
-  assert.equal(hub.rt(a.id).pendingReport, null);
-  assert.equal(hub.rt(b.id).pendingReport, "wait");
+  assert.equal(hub.rt(a.id).pendingReports.length, 0);
+  assert.equal(hub.rt(b.id).pendingReports.length, 1);
+  assert.equal(hub.publicSession(hub.get("c")).leadInboxCount, 1);
 });
 
 test("restart resumes only available providers during a Claude pause", () => {

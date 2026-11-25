@@ -60,14 +60,14 @@ export class HubTickets {
       for (const s of this.sessions) {
         if (s.provider === "claude" && (s.status === "running" || s.status === "starting" || s.status === "waiting")) {
           this.push(s, { kind: "info", text: `사용량 한도(${hit.reason})로 일시정지 — 티켓으로 저장됨` });
-          this.interrupt(s.id);
+          this.interrupt(s.id, { pause: true });
         }
       }
     }
     // While paused, a session that still runs (e.g. started before the hit was seen) is stopped too.
     if (hit) for (const s of this.sessions) if (s.provider === "claude" && s.status === "running" && !this.rt(s.id).pauseNoted) {
       this.rt(s.id).pauseNoted = true;
-      this.interrupt(s.id);
+      this.interrupt(s.id, { pause: true });
     }
     if (!hit) for (const s of this.sessions) if (this.live.get(s.id)?.pauseNoted) this.rt(s.id).pauseNoted = false;
     // Reset passed and no limit is hit any more: resume.
@@ -103,7 +103,6 @@ export class HubTickets {
     this.checkTickets(now);
     const leads = this.sessions.filter(s => s.canSpawn && isOpenStatus(s.status));
     for (const s of this.sessions) {
-      if (this.live.get(s.id)?.pendingReport) this.deliverReport(s);
       let stall = null;
       if (isOpenStatus(s.status) && !s.canSpawn && !s.parent && leads.length) {
         stall = { reason: "관리자에 연결되지 않아 보고가 전달되지 않아요", since: s.startedAt };
@@ -118,36 +117,26 @@ export class HubTickets {
       this.refreshStuck(s, now);
     }
     // A lead left idle past the length guard (the setting just turned on, a failed try): swap it now (#969).
-    for (const s of this.sessions) if (!s.parent && this.replaceDue(s)) this.replaceSession(s);
+    for (const s of this.sessions) {
+      if (!s.parent && !this.live.get(s.id)?.leadInboxHeld && this.replaceDue(s) && this.replaceSession(s)) continue;
+      if (!s.canSpawn || s.status === "done") continue;
+      if (this.fillLeadInbox(s)) this.emit("session", this.publicSession(s));
+      this.drainLeadInbox(s);
+    }
     this.checkTaskStuck(now);
   }
 
   // A child's turn ended: hand its last answer to the lead, so a lead that went idle wakes up instead of
-  // waiting to poll. Children have no Dispatch tools of their own to report with.
-  // A report waits in pendingReport until it reaches a lead: a session attached later, or a Codex lead
-  // busy mid-turn, gets it from setParent() or the watchdog.
+  // waiting to poll.
   /** @this {import("./hub-util.js").HubThis} */
   reportToParent(s) {
     const r = this.live.get(s.id);
     if (!r?.lastText) return;
-    r.pendingReport = `[${s.name}(${s.roleName}) 보고${s.branch ? ` · ${s.branch}` : ""}]\n${clip(r.lastText, 2500)}`;
-    // The length-guard note (checkLong) travels with the report instead of waking the lead on its own.
-    if (s.longNote) {
-      r.pendingReport += `\n\n${s.longNote}`; s.longNote = null;
-      // The lead has been told (#969): if it keeps the teammate, its next turn goes to a fresh session.
-      if (s.longRun) { s.longRun.told = true; this.store.save(); }
-    }
+    let report = `[${s.name}(${s.roleName}) 보고${s.branch ? ` · ${s.branch}` : ""}]\n${clip(redact(r.lastText), 2500)}`;
+    const tellsLong = Boolean(s.longNote);
+    // The length-guard note rides with the report.
+    if (tellsLong) { report += `\n\n${s.longNote}`; s.longNote = null; }
     r.lastText = null;
-    this.deliverReport(s);
-  }
-
-  /** @this {import("./hub-util.js").HubThis} */
-  deliverReport(s) {
-    const r = this.live.get(s.id), parent = s.parent && this.get(s.parent);
-    if (!r?.pendingReport || !parent || parent.status === "done") return;
-    if (this.pausedFor(parent)) return; // kept; delivered after the reset
-    if (this.holdTeam?.(parent.id)) return; // kept; delivered after 이어서 하기
-    try { this.send(parent.id, r.pendingReport + this.boardNote(parent.id)); r.pendingReport = null; } catch { return; /* retried by checkTeams */ }
-    this.armAutoRemove(s);
+    this.queueLeadReport(s, report, { tellsLong });
   }
 }

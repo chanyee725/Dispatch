@@ -137,5 +137,5 @@ export function mixin(target, ...sources) {
 /**
  * `this` inside the mixin methods (type-only, for checkJs): Hub with every mixin's members.
  * @typedef {import("./hub.js").Hub & import("./hub-runners.js").HubRunners & import("./hub-tickets.js").HubTickets
- *   & import("./hub-auto-remove.js").HubAutoRemove} HubThis
+ *   & import("./hub-auto-remove.js").HubAutoRemove & import("./hub-lead-inbox.js").HubLeadInbox} HubThis
  */
