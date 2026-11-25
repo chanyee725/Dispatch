@@ -8,6 +8,7 @@ import { Slot as SlotPrimitive } from 'radix-ui';
 import { cn } from '../../lib/utils';
 import { FOCUS_RING } from '../../lib/focus';
 import { Sheet, SheetContent, SheetDescription, SheetTitle } from './sheet';
+import { ResizeHandle } from './resize-handle';
 import { keyWidth, useSidebarWidth, SIDEBAR_DEFAULT, SIDEBAR_MAX, SIDEBAR_MIN } from '../../lib/sidebarWidth';
 
 /** The drawer below 768px keeps the design width; only the desktop column is resizable. */
@@ -115,65 +116,24 @@ function Sidebar({ className, children, label, ...props }: React.ComponentProps<
   );
 }
 
-/**
- * The sidebar's right edge (#934): drag, ←/→ (Shift for bigger steps) or Home to resize, double-click for the default.
- * A WAI-ARIA window splitter: a focusable separator with its value. Quiet until hovered, focused or dragged,
- * then a 1px line in the ring colour; the 8px hit area straddles the edge.
- */
+/** The sidebar's right edge (#934): drag, arrow keys, Home or double-click. */
 function SidebarResizeHandle() {
   const { width, previewWidth, commitWidth } = useSidebar();
-  const drag = React.useRef<{ x: number; from: number; to: number } | null>(null);
-  const [dragging, setDragging] = React.useState(false);
-  const end = () => {
-    const d = drag.current;
-    if (!d) return;
-    drag.current = null;
-    setDragging(false);
-    commitWidth(d.to);
-  };
   return (
-    <div
-      role="separator"
-      aria-orientation="vertical"
-      aria-label="사이드바 너비"
-      aria-valuemin={SIDEBAR_MIN}
-      aria-valuemax={SIDEBAR_MAX}
-      aria-valuenow={width}
-      aria-valuetext={`${width}px`}
-      tabIndex={0}
+    <ResizeHandle
+      orientation="vertical"
+      label="사이드바 너비"
       title="드래그하거나 ←/→로 너비를 바꿔요. 더블클릭하면 처음 너비로 돌아가요."
-      data-slot="sidebar-resize"
-      data-dragging={dragging ? '' : undefined}
-      className="group/resize absolute inset-y-0 -right-1 z-20 w-2 cursor-col-resize touch-none outline-none select-none"
-      onPointerDown={(e) => {
-        if (e.button !== 0) return;
-        e.preventDefault(); // no text selection while dragging
-        e.currentTarget.setPointerCapture(e.pointerId);
-        drag.current = { x: e.clientX, from: width, to: width };
-        setDragging(true);
-      }}
-      onPointerMove={(e) => {
-        const d = drag.current;
-        if (!d) return;
-        d.to = Math.min(SIDEBAR_MAX, Math.max(SIDEBAR_MIN, d.from + e.clientX - d.x));
-        previewWidth(d.to);
-      }}
-      onPointerUp={end}
-      onPointerCancel={end}
-      onLostPointerCapture={end}
-      onDoubleClick={() => commitWidth(SIDEBAR_DEFAULT)}
-      onKeyDown={(e) => {
-        const next = keyWidth(width, e.key, e.shiftKey);
-        if (next === null) return;
-        e.preventDefault();
-        commitWidth(next);
-      }}
-    >
-      <span
-        aria-hidden
-        className="pointer-events-none absolute inset-y-0 left-1/2 w-px -translate-x-1/2 bg-transparent transition-colors duration-150 group-hover/resize:bg-foreground/20 group-focus-visible/resize:w-0.5 group-focus-visible/resize:bg-ring group-data-dragging/resize:bg-ring motion-reduce:transition-none forced-colors:group-focus-visible/resize:bg-[Highlight]"
-      />
-    </div>
+      slot="sidebar-resize"
+      className="absolute inset-y-0 -right-1 z-20 w-2 touch-none"
+      value={width}
+      min={SIDEBAR_MIN}
+      max={SIDEBAR_MAX}
+      onPreview={previewWidth}
+      onCommit={commitWidth}
+      sizeForKey={(key, shift) => keyWidth(width, key, shift)}
+      reset={SIDEBAR_DEFAULT}
+    />
   );
 }
 
