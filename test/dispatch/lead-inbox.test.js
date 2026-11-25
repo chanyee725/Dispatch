@@ -4,6 +4,7 @@ import { test } from "node:test";
 import { PassThrough, Readable } from "node:stream";
 import { diskView } from "../../server/dispatch/dispatch-store.js";
 import { Hub } from "../../server/dispatch/hub.js";
+import { onJsonLines } from "../../server/dispatch/hub-util.js";
 import { adapt, routeTable } from "../../server/dispatch/routes.js";
 import { patchTeam } from "../../server/dispatch/settings.js";
 
@@ -347,15 +348,19 @@ for (const provider of ["claude", "gemini"]) {
   });
 }
 
-test("Codex thread readiness does not consume a report when turn/start is rejected", () => {
-  const { hub, lead, a, add, report, inboxCount } = fixture({ provider: "openai" });
+test("Codex keeps a rotated handoff and pending report until turn/start is accepted on retry", () => {
+  const { hub, store, lead, a, add, report, inboxCount } = fixture({ provider: "openai" });
   delete hub.start;
   hub.rt(lead.id).proc = null;
-  hub.touch(lead, { status: "idle" });
+  hub.rt(lead.id).lastText = "old handoff summary";
+  store.data.settings.team.rotateLead = 2;
+  hub.touch(lead, { status: "idle", providerSessionId: "old-thread", turnsSinceRotate: 2 });
   const start = () => {
     const proc = Object.assign(new EventEmitter(), {
-      stdin: new PassThrough(), stdout: new PassThrough(), stderr: new PassThrough(),
+      stdin: new PassThrough(), stdout: new PassThrough(), stderr: new PassThrough(), kill() {},
     });
+    const requests = [];
+    onJsonLines(proc.stdin, message => requests.push(message));
     hub.spawnCli = () => proc;
     const ready = () => {
       for (const message of [
@@ -363,12 +368,15 @@ test("Codex thread readiness does not consume a report when turn/start is reject
         { id: 2, result: { thread: { id: "thread" }, approvalPolicy: "never", sandbox: { type: "workspaceWrite" } } },
       ]) proc.stdout.write(JSON.stringify(message) + "\n");
     };
-    return { proc, ready };
+    const prompt = () => requests.find(message => message.method === "turn/start").params.input[0].text;
+    return { proc, ready, requests, prompt };
   };
 
   const first = start();
   report(a, "codex pending");
   first.ready();
+  assert.equal(first.requests[2].method, "thread/start");
+  assert.match(first.prompt(), /old handoff summary[\s\S]*codex pending$/);
   assert.equal(inboxCount(), 1);
   first.proc.stdout.write(JSON.stringify({ id: 3, error: { message: "turn rejected" } }) + "\n");
   first.proc.emit("close", 0);
@@ -381,12 +389,25 @@ test("Codex thread readiness does not consume a report when turn/start is reject
   hub.messageLead(newer.id, "later");
   hub.messageSession(lead.id, "resume");
   retry.ready();
+  assert.equal(retry.requests[2].method, "thread/resume");
+  assert.match(retry.prompt(), /^\[역할\][\s\S]*old handoff summary[\s\S]*codex pending$/);
+  assert.equal(inboxCount(), 3);
   retry.proc.stdout.write(JSON.stringify({ id: 3, result: { turn: { id: "turn" } } }) + "\n");
   assert.equal(inboxCount(), 2);
   assert.equal(hub.rt(newer.id).pendingReports.length, 1);
   const user = hub.transcript(lead.id).filter(e => e.kind === "user");
   assert.equal(user.length, 1);
   assert.match(user[0].text, /codex pending$/);
+
+  const next = start();
+  retry.proc.stdout.write(JSON.stringify({
+    method: "turn/completed", params: { threadId: "thread", turn: { id: "turn", status: "completed" } },
+  }) + "\n");
+  retry.proc.emit("close", 0);
+  next.ready();
+  assert.match(next.prompt(), /later$/);
+  assert.doesNotMatch(next.prompt(), /old handoff summary/);
+  assert.equal(lead.rotations, 1);
   hub.cancelAutoRemove(a.id);
 });
 

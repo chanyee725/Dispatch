@@ -247,7 +247,10 @@ export class HubRunners {
     // checkPerm (in start) already refused manual and acceptEdits; the sandbox never runs looser than the mode.
     const sandbox = CODEX_SANDBOX[s.perm];
     if (!sandbox) throw badRequest("알 수 없는 권한 모드예요");
-    const first = !s.providerSessionId;
+    const runtime = this.rt(s.id);
+    const handoff = runtime.codexHandoff;
+    if (handoff) prompt = handoff + prompt;
+    const first = !s.providerSessionId || !!handoff;
     const args = ["app-server", "--listen", "stdio://", "-c", `sandbox_mode="${sandbox}"`];
     const env = Object.entries(this.mcpEnv(s)).map(([k, v]) => `${k}=${JSON.stringify(v)}`).join(",");
     args.push("-c", `mcp_servers.dispatch.command=${JSON.stringify(process.execPath)}`,
@@ -257,7 +260,6 @@ export class HubRunners {
     const system = this.systemPrompt(s);
     const text = first && system ? `[역할]\n${system}\n\n[작업]\n${prompt}` : prompt;
     const proc = this.spawnCli("codex", args, { cwd: s.cwd, env: sessionEnv(s), stdio: ["pipe", "pipe", "pipe"] });
-    const runtime = this.rt(s.id);
     const settleStart = this.attach(s, proc, "close", onStart);
     this.cancelAutoRemove(s.id);
     runtime.lastText = "";
@@ -267,7 +269,10 @@ export class HubRunners {
       effort: s.effort ? checkEffort({ efforts: EFFORT_WORDS }, s.effort) : null,
       active: () => runtime.proc === proc && !s._killed && s.status !== "done",
       started: providerSessionId => this.touch(s, { providerSessionId }),
-      accepted: () => settleStart(true),
+      accepted: () => {
+        if (handoff && runtime.codexHandoff === handoff) runtime.codexHandoff = null;
+        settleStart(true);
+      },
       usage: (delta, ctx, ctxWindow) => {
         if (delta) {
           for (const k in delta) s.usage[k] += delta[k];

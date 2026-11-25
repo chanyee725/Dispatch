@@ -847,7 +847,7 @@ export class Hub extends EventEmitter {
     old?.kill("SIGTERM");
     const { last, team } = this.handoffParts(s, r.lastText);
     const why = s.ctxHigh ? `컨텍스트를 ${s.ctxHigh.pct}% 써서` : `컨텍스트를 줄이려고 ${s.turnsSinceRotate ?? s.turns}턴 만에`;
-    const note = `[Dispatch] ${why} 새 CLI 세션으로 이어 간다. 이전 대화는 이 세션에 없다. 필요한 상태는 작업 폴더·브랜치·git log·docs로 다시 확인하라.\n\n[직전 내 응답]\n${last || "(없음)"}${team}\n\n[이어서 할 일]\n${text}`;
+    const handoff = `[Dispatch] ${why} 새 CLI 세션으로 이어 간다. 이전 대화는 이 세션에 없다. 필요한 상태는 작업 폴더·브랜치·git log·docs로 다시 확인하라.\n\n[직전 내 응답]\n${last || "(없음)"}${team}\n\n[이어서 할 일]\n`;
     this.push(s, { kind: "info", text: s.ctxHigh
       ? `새 세션으로 이어 감 (컨텍스트 ${s.ctxHigh.pct}%, 대화 요약을 넘김)`
       : `새 세션으로 이어 감 (${s.turnsSinceRotate ?? s.turns}턴, 대화 요약을 넘김)` });
@@ -858,7 +858,9 @@ export class Hub extends EventEmitter {
     if (s.provider === "openai") s.ctxWindow = 0;
     s.ctxHigh = null;
     r.ctxNoticed = false;
-    this.start(s, note, images, onStart);
+    // Codex may create the thread yet reject its first turn. Keep the handoff for retries.
+    if (s.provider === "openai") r.codexHandoff = handoff;
+    this.start(s, s.provider === "openai" ? text : handoff + text, images, onStart);
   }
 
   /* ---------------- Auto-replace long sessions (#969) ---------------- */
