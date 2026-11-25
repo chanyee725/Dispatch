@@ -9,7 +9,7 @@ export function ChatHistoryField() {
   const hint = useId();
   const [busy, setBusy] = useState(false);
   const run = async () => {
-    const ok = await askConfirm({ title: '대화 기록을 모두 지울까요?', body: '사이드바 기록에 있는 지난 대화가 전부 사라져요. 되돌릴 수 없어요.', ok: '모두 지우기', danger: true });
+    const ok = await askConfirm({ title: '대화 기록을 모두 지울까요?', body: '이 프로젝트에 저장된 지난 대화가 전부 사라져요. 되돌릴 수 없어요.', ok: '모두 지우기', danger: true });
     if (!ok) return;
     setBusy(true);
     try {

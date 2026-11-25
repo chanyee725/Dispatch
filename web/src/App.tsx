@@ -1,12 +1,11 @@
-// The app shell: the sidebar (project folders, saved chats, models, settings, theme) and the 세션 보드 beside it, with
-// the agent live panel, the chat dock, dialogs and toasts over them. The address picks the board's tab and scope
-// (`#board…`, projectNav.ts); `#chat` opens the chat dock.
+// The app shell: the sidebar (project folders, models, settings, theme) and the 세션 보드 beside it, with
+// the agent live panel, dialogs and toasts over them. The address picks the board's tab and scope
+// (`#board…`, projectNav.ts).
 import { lazy, Suspense, useCallback, useState } from 'react';
 import { Sidebar } from './Sidebar';
 import { SidebarInset, SidebarProvider } from './components/ui/sidebar';
 import { ActivityAlerts } from './activity/ActivityAlerts';
 import { AgentLiveHost } from './live/AgentLivePanel';
-import { ChatDock } from './chat/ChatDock';
 import { Toaster } from './components/ui/sonner';
 import type { BoardExtra, BoardSection, Section } from './projectNav';
 import { LazyBoundary } from './LazyBoundary';
@@ -74,7 +73,6 @@ export function App() {
       <Sidebar project={projectName} section={section} onSection={showSection} themePref={themePref} onThemePref={setThemePref} systemTheme={systemTheme} />
       <ActivityAlerts onSession={openBoardSession} />
       <AgentLiveHost />
-      <ChatDock folder={section.folder ?? null} />
       <AppDialogHost />
       <Toaster dark={dark} />
       <SidebarInset>
