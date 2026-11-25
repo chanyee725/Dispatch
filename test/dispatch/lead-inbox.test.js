@@ -41,6 +41,22 @@ function fixture({ provider = "claude", limit = 4 } = {}) {
   return { hub, store, lead, a, b, work, report, done, proc, inboxCount, add, attach, messages };
 }
 
+function messagePost(hub, pathname) {
+  const entry = routeTable({ hub, root: "/tmp", store: {}, models: [] })
+    .find(([method, path]) => method === "POST" && path.test(pathname));
+  const route = adapt(entry);
+  return async (body) => {
+    const req = Readable.from([JSON.stringify(body)]);
+    const result = {};
+    const res = {
+      writeHead: (status) => { result.status = status; },
+      end: (text) => { result.body = JSON.parse(text); },
+    };
+    await route.handler(req, res, null, route.path.exec(pathname));
+    return result;
+  };
+}
+
 test("busy Claude lead accepts burst traffic FIFO and drains one item per completed turn", () => {
   const { hub, lead, a, b, done, report, inboxCount, messages } = fixture();
   hub.messageLead(a.id, "first", "one");
@@ -127,18 +143,23 @@ test("a team hold, Claude quota, and provider guard prevent draining until the h
   assert.deepEqual(messages(), ["held"]);
 });
 
-test("a cancel or an errored turn holds the remaining inbox until a manual instruction succeeds", () => {
+test("a cancel or an errored turn holds the inbox until a new user instruction resumes FIFO", () => {
   for (const outcome of ["cancel", "error"]) {
-    const { hub, lead, a, done, inboxCount, messages } = fixture();
+    const { hub, lead, a, done, inboxCount, messages } = fixture({ limit: outcome === "error" ? 1 : 4 });
     hub.messageLead(a.id, outcome);
-    if (outcome === "cancel") { hub.interrupt(lead.id); done(); }
+    if (outcome === "cancel") hub.interrupt(lead.id);
     else hub.onClaude(lead, { type: "result", is_error: true, result: "failed" });
     hub.checkTeams();
     assert.equal(inboxCount(), 1);
     assert.deepEqual(messages(), []);
-    hub.send(lead.id, "continue");
+    if (outcome === "error") {
+      assert.throws(() => hub.messageSession(lead.id, "continue"), { status: 429, code: "lead_inbox_full" });
+    }
+    hub.messageSession(lead.id, "continue");
+    if (outcome === "cancel") done();
+    assert.deepEqual(messages(), [outcome]);
     done();
-    assert.deepEqual(messages(), [undefined, outcome]);
+    assert.deepEqual(messages(), [outcome, undefined]);
   }
 });
 
@@ -156,6 +177,34 @@ test("a queued report follows a reparent, including after its old lead is killed
     hub.onClaude(newLead, { type: "result" });
     assert.deepEqual(messages(), ["move report"]);
   }
+});
+
+test("accepted explicit messages follow a reparent ahead of newer items even when the new inbox is full", () => {
+  const { hub, lead, a, b, add, attach, done, report, inboxCount, work } = fixture({ limit: 2 });
+  const next = add("next");
+  attach(next);
+  assert.deepEqual(hub.messageLead(a.id, "same", "first"), { ok: true });
+  report(a, "report between");
+  hub.setParent(a.id, null);
+  assert.equal(hub.rt(a.id).pendingReports.length, 2);
+  assert.equal(inboxCount(lead), 0);
+  hub.messageSession(next.id, "new lead instruction");
+  hub.setParent(b.id, next.id);
+  report(b, "new lead report");
+  hub.setParent(a.id, next.id);
+  assert.deepEqual(hub.messageLead(a.id, "same", "first"), { ok: true, duplicate: true });
+  assert.throws(() => hub.messageLead(a.id, "same", "second"), { status: 429, code: "lead_inbox_full" });
+  done(lead);
+  assert.deepEqual(work, []);
+  for (const text of [/\nsame$/, /\nreport between$/, /^new lead instruction$/, /\nnew lead report$/]) {
+    done(next);
+    assert.match(work.at(-1), text);
+  }
+  assert.equal(hub.rt(a.id).pendingReports.length, 0);
+  hub.messageLead(a.id, "same", "second");
+  done(next);
+  assert.match(work.at(-1), /\nsame$/);
+  assert.equal(hub.transcript(next.id).filter(e => e.kind === "user").length, 5);
 });
 
 test("if sending fails before dispatch, the head stays queued and the retry only appends once", () => {
@@ -185,11 +234,12 @@ test("maxLeadInbox is validated as a team setting", () => {
 });
 
 test("lead replacement moves the queue with its teammates and board tasks, and runs the handoff first", () => {
-  const { hub, lead, a, b, done, report, inboxCount, work, store } = fixture({ limit: 1 });
+  const { hub, lead, a, b, done, report, inboxCount, work, store } = fixture({ limit: 2 });
   store.data.settings.team.handoffMTokens = 2;
   lead.usage.input = 2_000_000;
   store.data.tasks.T = { lead: lead.id };
   hub.messageLead(a.id, "first", "one");
+  hub.messageSession(lead.id, "user instruction", { messageId: "user-1" });
   report(b, "second");
   done();
   const successor = hub.sessions.find(s => s.rotatedFrom?.id === lead.id);
@@ -197,34 +247,24 @@ test("lead replacement moves the queue with its teammates and board tasks, and r
   assert.equal(a.parent, successor.id);
   assert.equal(b.parent, successor.id);
   assert.equal(store.data.tasks.T.lead, successor.id);
-  assert.equal(inboxCount(successor), 1);
+  assert.equal(inboxCount(successor), 2);
   assert.equal(work.length, 1);
   assert.match(work[0], /이전 세션/);
-  assert.doesNotMatch(work[0], /first|second/);
+  assert.doesNotMatch(work[0], /first|second|user instruction/);
   assert.deepEqual(hub.messageLead(a.id, "first", "one"), { ok: true, duplicate: true });
+  assert.deepEqual(hub.messageSession(successor.id, "user instruction", { messageId: "user-1" }), { ok: true, duplicate: true });
+  done(successor);
   done(successor);
   done(successor);
   assert.match(work[1], /\nfirst$/);
-  assert.match(work[2], /\nsecond$/);
+  assert.equal(work[2], "user instruction");
+  assert.match(work[3], /\nsecond$/);
   assert.equal(inboxCount(successor), 0);
 });
 
 test("the HTTP route returns structured backpressure with no payload, and retries the same ID safely", async () => {
   const { hub, a, done } = fixture({ limit: 1 });
-  const pathname = `/api/sessions/${a.id}/to-lead`;
-  const entry = routeTable({ hub, root: "/tmp", store: {}, models: [] })
-    .find(([method, path]) => method === "POST" && path.test(pathname));
-  const route = adapt(entry);
-  const post = async (body) => {
-    const req = Readable.from([JSON.stringify(body)]);
-    const result = {};
-    const res = {
-      writeHead: (status) => { result.status = status; },
-      end: (text) => { result.body = JSON.parse(text); },
-    };
-    await route.handler(req, res, null, route.path.exec(pathname));
-    return result;
-  };
+  const post = messagePost(hub, `/api/sessions/${a.id}/to-lead`);
   assert.deepEqual(await post({ text: "queued", messageId: "one" }), { status: 200, body: { ok: true } });
   const full = await post({ text: "keep at sender", messageId: "two" });
   assert.equal(full.status, 429);
@@ -235,6 +275,45 @@ test("the HTTP route returns structured backpressure with no payload, and retrie
   done();
   assert.deepEqual(await post({ text: "keep at sender", messageId: "two" }), { status: 200, body: { ok: true } });
   assert.deepEqual(await post({ text: "keep at sender", messageId: "two" }), { status: 200, body: { ok: true, duplicate: true } });
+});
+
+test("busy lead HTTP user requests share report FIFO and backpressure while guards hold delivery", async () => {
+  const { hub, lead, a, done, report, inboxCount, work } = fixture({ limit: 3 });
+  const post = messagePost(hub, `/api/sessions/${lead.id}/message`);
+  const postUser = messageId => post({ text: "same instruction", messageId });
+  const accepted = { status: 200, body: { ok: true } };
+  const duplicate = { status: 200, body: { ok: true, duplicate: true } };
+  assert.deepEqual(await postUser("user-1"), accepted);
+  report(a, "teammate report");
+  assert.deepEqual(await postUser("user-2"), accepted);
+  assert.deepEqual(await postUser("user-1"), duplicate);
+  const full = await postUser("user-3");
+  assert.equal(full.status, 429);
+  assert.deepEqual([full.body.code, full.body.waiting, full.body.limit], ["lead_inbox_full", 3, 3]);
+  assert.deepEqual(hub.transcript(lead.id), []);
+  hub.pausedFor = () => true;
+  done();
+  assert.equal(inboxCount(), 3);
+  assert.deepEqual(work, []);
+  hub.pausedFor = () => false;
+  hub.checkTeams();
+  assert.deepEqual(work, ["same instruction"]);
+  assert.deepEqual(await postUser("user-3"), accepted);
+  assert.deepEqual(await postUser("user-1"), duplicate);
+  done();
+  assert.match(work.at(-1), /\nteammate report$/);
+  done();
+  done();
+  assert.equal(inboxCount(), 0);
+  assert.deepEqual(work.filter(text => text === "same instruction"), Array(3).fill("same instruction"));
+  assert.equal(hub.transcript(lead.id).filter(e => e.kind === "user").length, 4);
+
+  const worker = fixture({ provider: "openai" });
+  worker.attach(worker.a);
+  worker.hub.touch(worker.a, { status: "running" });
+  const busy = await messagePost(worker.hub, `/api/sessions/${worker.a.id}/message`)({ text: "worker instruction" });
+  assert.equal(busy.status, 400);
+  assert.deepEqual(worker.hub.transcript(worker.a.id), []);
 });
 
 test("repeated quota interrupts of one teammate turn enqueue one handoff", () => {

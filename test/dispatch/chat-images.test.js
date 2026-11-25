@@ -33,15 +33,15 @@ test("checkImages: count, type, size and base64 shape are enforced", () => {
   for (const t of IMAGE_LIMITS.types) assert.equal(checkImages([{ mediaType: t, data: "AAAA" }])[0].mediaType, t);
 });
 
-test("message route passes images to hub.send and keeps text-only calls unchanged", async () => {
+test("message route passes validated images and the request ID to the hub", async () => {
   const calls = [];
-  const hub = { send: (...a) => calls.push(a) };
+  const hub = { messageSession: (...a) => calls.push(a) };
   const table = routeTable({ root: "/x", store: {}, hub, models: [], broadcast: () => {} });
   const entry = table.find(([m, re]) => m === "POST" && re.test("/api/sessions/a1/message"));
   assert.ok(entry[3].maxBody >= IMAGE_LIMITS.max * IMAGE_LIMITS.base64Bytes, "the route reads a body big enough for 4 images");
   await entry[2](["a1"], { text: "hi" });
-  await entry[2](["a1"], { images: [png] });
-  assert.deepEqual(calls, [["a1", "hi", undefined], ["a1", "", { images: [png] }]]);
+  await entry[2](["a1"], { images: [png], messageId: "image-1" });
+  assert.deepEqual(calls, [["a1", "hi", { images: null, messageId: undefined }], ["a1", "", { images: [png], messageId: "image-1" }]]);
 });
 
 test("userContent: plain text without images, image blocks then text with them", () => {

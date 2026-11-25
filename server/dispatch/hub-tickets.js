@@ -120,7 +120,6 @@ export class HubTickets {
     for (const s of this.sessions) {
       if (!s.parent && !this.live.get(s.id)?.leadInboxHeld && this.replaceDue(s) && this.replaceSession(s)) continue;
       if (!s.canSpawn || s.status === "done") continue;
-      if (this.fillLeadInbox(s)) this.emit("session", this.publicSession(s));
       this.drainLeadInbox(s);
     }
     this.checkTaskStuck(now);

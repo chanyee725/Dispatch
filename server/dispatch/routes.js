@@ -179,8 +179,7 @@ export function routeTable(d) {
     ["GET", /^\/api\/sessions\/([\w-]+)\/diff$/, async ([id]) => diff(session(id).cwd, root)],
     ["POST", /^\/api\/sessions\/([\w-]+)\/message$/, async ([id], b) => {
       const { text, images } = messageBody(b);
-      hub.send(id, text, images ? { images } : undefined);
-      return { ok: true };
+      return hub.messageSession(id, text, { images, messageId: b?.messageId });
     }, { maxBody: MESSAGE_BODY }],
     ["POST", /^\/api\/sessions\/([\w-]+)\/interrupt$/, async ([id]) => { hub.interrupt(id); return { ok: true }; }],
     ["POST", /^\/api\/sessions\/([\w-]+)\/kill$/, async ([id]) => { hub.kill(id); return { ok: true }; }],

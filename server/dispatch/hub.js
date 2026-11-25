@@ -134,7 +134,7 @@ export class Hub extends EventEmitter {
     recordState(h, state, s.stateSince ?? Date.now());
     if (h[h.length - 1][1] !== before) this.store.save();
     const { history: _h, ...rest } = s;
-    return { ...rest, pending, leadInboxCount: r?.leadInbox.length ?? 0, activity: busy ? r?.activity ?? null : null,
+    return { ...rest, pending, leadInboxCount: s.canSpawn ? this.leadInboxSize(s) : 0, activity: busy ? r?.activity ?? null : null,
       attention: attentionOf(s, state, pending.length, s.stateSince), ...this.burn?.fields(s, this.sessions) };
   }
 
@@ -697,6 +697,7 @@ export class Hub extends EventEmitter {
     // Whoever writes to a teammate in its grace period keeps it: the auto-remove timer stops once the
     // message went out. A refused message (a running Codex or Gemini turn) leaves the timer armed.
     r.leadInboxHeld = false;
+    r.leadInboxResume = false;
     r.interruptReported = false;
     this.cancelAutoRemove(id);
   }
@@ -901,6 +902,7 @@ export class Hub extends EventEmitter {
     nr.pendingReports = r.pendingReports.splice(0);
     for (const report of nr.pendingReports) report.sender = s.id;
     nr.acceptedLeadMessages = r.acceptedLeadMessages;
+    nr.acceptedLeadInstructions = r.acceptedLeadInstructions;
     const said = `누적 ${mtok}M 토큰이라 새 세션 ${s.name}로 바꿨어요`;
     this.push(s, { kind: "info", text: `${said} (이전 세션 ${old.name})` });
     this.push(s, { kind: "user", text: note, label: "인계" });
@@ -917,7 +919,10 @@ export class Hub extends EventEmitter {
   interrupt(id, { pause = false } = {}) {
     const s = this.get(id), r = this.live.get(id);
     if (!s || !r?.proc) return;
-    if (s.canSpawn && !pause) r.leadInboxHeld = true;
+    if (s.canSpawn && !pause) {
+      r.leadInboxHeld = true;
+      r.leadInboxResume = false;
+    }
     if (pause && s.provider === "claude") r.pauseInterrupted = true;
     this.handoffOnInterrupt(s);
     if (r.agyTurn) r.agyTurn.ended = true; // agy: the [중단] note is this turn's only report
@@ -947,7 +952,10 @@ export class Hub extends EventEmitter {
     const s = this.get(id), r = this.live.get(id);
     if (!s) return;
     s._killed = true;
-    this.unqueueLeadReports(s);
+    if (r?.leadInbox.length) {
+      const cancelled = r.leadInbox.splice(0).length;
+      this.push(s, { kind: "info", text: `세션을 종료해 대기 중인 사용자 메시지 ${cancelled}건을 취소했어요.` });
+    }
     r?.proc?.kill("SIGTERM");
     r?.perms.clear();
     this.touch(s, { status: "done" });
@@ -1043,11 +1051,9 @@ export class Hub extends EventEmitter {
     }
     const previous = s.parent && this.get(s.parent);
     const next = parent && this.get(parent);
-    if (previous && previous !== next) this.unqueueLeadReports(previous, s.id);
     this.touch(s, { parent: parent || null });
     for (const lead of new Set([previous, next])) {
       if (!lead || lead.status === "done") continue;
-      this.fillLeadInbox(lead);
       this.emit("session", this.publicSession(lead));
       this.drainLeadInbox(lead);
     }
