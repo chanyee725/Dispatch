@@ -13,24 +13,26 @@ type ResizeHandleProps = {
   value: number;
   onPreview: (size: number) => void;
   onCommit: (size: number) => void;
+  onCancel?: () => void;
   sizeForKey: (key: string, shift: boolean) => number | null;
   reset?: number;
 };
 
 /** A focusable separator. Its orientation describes the divider, perpendicular to the drag axis. */
 export function ResizeHandle({
-  orientation, label, controls, title, slot, className, min, max, value, onPreview, onCommit, sizeForKey, reset,
+  orientation, label, controls, title, slot, className, min, max, value, onPreview, onCommit, onCancel, sizeForKey, reset,
 }: ResizeHandleProps) {
   const horizontal = orientation === 'horizontal';
-  const drag = useRef<{ pointer: number; origin: number; initial: number; next: number } | null>(null);
+  const drag = useRef<{ pointer: number; origin: number; initial: number; next: number | null } | null>(null);
   const [dragging, setDragging] = useState(false);
   const position = (e: PointerEvent<HTMLDivElement>) => horizontal ? e.clientY : e.clientX;
-  const end = (e: PointerEvent<HTMLDivElement>) => {
+  const end = (e: PointerEvent<HTMLDivElement>, canceled = false) => {
     const current = drag.current;
     if (!current || current.pointer !== e.pointerId) return;
     drag.current = null;
     setDragging(false);
-    onCommit(current.next);
+    if (canceled && onCancel) onCancel();
+    else if (current.next !== null) onCommit(Math.min(max, Math.max(min, current.next)));
   };
 
   return (
@@ -43,7 +45,8 @@ export function ResizeHandle({
       aria-valuemax={max}
       aria-valuenow={value}
       aria-valuetext={`${value}px`}
-      tabIndex={0}
+      aria-disabled={max === min || undefined}
+      tabIndex={max === min ? -1 : 0}
       title={title}
       data-slot={slot}
       data-dragging={dragging ? '' : undefined}
@@ -53,10 +56,10 @@ export function ResizeHandle({
         className,
       )}
       onPointerDown={(e) => {
-        if (e.button !== 0 || drag.current) return;
+        if (max === min || e.button !== 0 || drag.current) return;
         e.preventDefault();
         e.currentTarget.setPointerCapture(e.pointerId);
-        drag.current = { pointer: e.pointerId, origin: position(e), initial: value, next: value };
+        drag.current = { pointer: e.pointerId, origin: position(e), initial: value, next: null };
         setDragging(true);
       }}
       onPointerMove={(e) => {
@@ -65,13 +68,13 @@ export function ResizeHandle({
         current.next = Math.min(max, Math.max(min, current.initial + position(e) - current.origin));
         onPreview(current.next);
       }}
-      onPointerUp={end}
-      onPointerCancel={end}
-      onLostPointerCapture={end}
+      onPointerUp={(e) => end(e)}
+      onPointerCancel={(e) => end(e, true)}
+      onLostPointerCapture={(e) => end(e, true)}
       onDoubleClick={reset === undefined ? undefined : () => onCommit(reset)}
       onKeyDown={(e) => {
         const next = sizeForKey(e.key, e.shiftKey);
-        if (next === null) return;
+        if (max === min || next === null) return;
         e.preventDefault();
         onCommit(next);
       }}

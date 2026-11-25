@@ -30,12 +30,15 @@ export function writeSize(key: string, size: number, s: Storage | null = storage
 }
 
 export function useResizeSize(key: string, fallback: number, normalize: (size: number) => number) {
-  const [size, setSize] = useState(() => readSize(key, fallback, normalize));
-  const preview = useCallback((size: number) => setSize(normalize(size)), [normalize]);
+  const [savedSize, setSavedSize] = useState(() => readSize(key, fallback, normalize));
+  const [previewSize, setPreviewSize] = useState<number | null>(null);
+  const preview = useCallback((size: number) => setPreviewSize(normalize(size)), [normalize]);
+  const cancel = useCallback(() => setPreviewSize(null), []);
   const commit = useCallback((size: number) => {
     const next = normalize(size);
-    setSize(next);
+    setSavedSize(next);
+    setPreviewSize(null);
     writeSize(key, next);
   }, [key, normalize]);
-  return { size, preview, commit };
+  return { size: previewSize ?? savedSize, preview, commit, cancel };
 }
