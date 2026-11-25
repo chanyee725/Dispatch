@@ -5,7 +5,7 @@
 // `#board=timeline` opens this same screen and scrolls to the 타임라인 card.
 // Rendered by App.tsx for `section.kind === 'board'` (the /dispatch address redirects there).
 // Loaded lazily so the editor bundle does not carry it. Numbers and names only: no transcript text is read here.
-import { lazy, Suspense, useEffect, useId, useMemo, useRef, useState, type ReactNode } from 'react';
+import { lazy, Suspense, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { ArrowLeft, MoreHorizontal, Plus } from 'lucide-react';
 import { LazyBoundary } from '../LazyBoundary';
 import { Alert } from '../components/ui/alert';
@@ -23,13 +23,14 @@ import { AlwaysOnView } from './AlwaysOnView';
 import { BranchesPage } from './BranchesView';
 import { SummaryLine } from './AttentionStrip';
 import { CreateSessionDialog } from './CreateSessionDialog';
-import { boardGroups, type BoardGroup } from './lib/boardGroups.ts';
+import { boardOrganizations } from './lib/boardOrganizations.ts';
+import { byUrgency } from './lib/order.ts';
 import { presenceOf } from './lib/presence.ts';
 import { SessionCard, SessionGrid } from '../home/SessionCard';
 import { TRAIL } from '../live/origin';
 import { knownFolders, scopePending, type Scope } from './lib/folder.ts';
 import { isOpen, stateOf } from './lib/format.ts';
-import { ScopeProvider, useScope, useScoped } from './scope';
+import { ScopeProvider, useScoped } from './scope';
 import { openAgentLive, useAgentLiveTarget } from '../live/store';
 import { TimelineCard } from './TimelineCard';
 import { TaskBoardCard } from './TaskBoard';
@@ -125,7 +126,7 @@ export default function SessionBoard(p: BoardProps) {
           {/* The live region stays mounted so the notice is read when it appears. */}
           <div role="status">
             {listState === 'failed' && !unavailable && ready && (
-              <p className="m-0 border-b px-4 py-2 text-sm text-muted-foreground">프로젝트 목록을 불러오지 못했어요. 작업 폴더 이름으로 묶어서 보여 줘요.</p>
+              <p className="m-0 border-b px-4 py-2 text-sm text-muted-foreground">프로젝트 목록을 불러오지 못했어요.</p>
             )}
           </div>
           {unavailable ? (
@@ -139,10 +140,7 @@ export default function SessionBoard(p: BoardProps) {
               {/* No 프로젝트 card: this server holds one project (#778). Left 60%: 세션; right 40%: 작업 보드, whose card
                   takes the spare height so neither column leaves an empty band (#879). */}
               <DashColumn label="세션" fill>
-                <SessionsCard
-                  onCreate={() => setCreating(true)}
-                  byCwd={listState === 'failed'}
-                />
+                <SessionsCard onCreate={() => setCreating(true)} />
                 <TimelineCard projectId={scope} onOpen={(id) => openSession(id)} focus={p.tab === 'timeline'} />
               </DashColumn>
               {/* Sticky on a wide pane: 작업 보드 stays in view while 세션 scrolls. */}
@@ -279,32 +277,49 @@ function Skeleton() {
   );
 }
 
-/** 세션 card: the summary line, then the picked project's sessions as the dashboard's session cards,
- *  under a small title per project (#919). Finished sessions fold behind one link per group. */
-function SessionsCard({
-  onCreate,
-  byCwd,
-  actions,
-}: {
-  onCreate: () => void;
-  byCwd: boolean;
-  actions?: ReactNode;
-}) {
-  const { sessions, scope, pending } = useScoped();
-  const { known, names } = useScope();
-  // What each session works on (#912): issue title (the issue feed, while PR tracking is on), board task, branch, or the
-  // lead's own summary.
+/** The organization filter applies to the session cards within the current project scope. */
+function SessionsCard({ onCreate }: { onCreate: () => void }) {
+  const { sessions, pending } = useScoped();
+  const all = useDispatch((s) => s.sessions);
+  const { leads, descendants } = useMemo(() => boardOrganizations(sessions, all), [sessions, all]);
+  const [pickedLead, setPickedLead] = useState<string | null>(null);
+  const lead = leads.find((s) => s.id === pickedLead);
+  useEffect(() => {
+    if (pickedLead && !lead && !pending) setPickedLead(null);
+  }, [pickedLead, lead, pending]);
+
+  const visible = lead ? descendants.get(lead.id) ?? [] : sessions;
+  const live = byUrgency(visible.filter((s) => stateOf(s) !== 'done'), stateOf);
+  const done = visible.filter((s) => stateOf(s) === 'done').sort((a, b) => b.updatedAt - a.updatedAt);
+
+  // What each session works on (#912): issue title, board task, branch, or the lead's own summary.
   const tasks = useDispatch((s) => s.tasks);
   const issues = useIssues(usePrTrackingOn());
   const summaries = useMemo(() => {
     const titleOf = issueTitles(issues && issues !== 'failed' && issues.ok ? issues.issues : null);
     return new Map(sessions.map((s) => [s.id, taskSummary(s, titleOf, tasks)]));
   }, [sessions, tasks, issues]);
-  const groups = useMemo(() => boardGroups(sessions, { known, names, stateOf, byCwd }), [sessions, known, names, byCwd]);
+
   return (
-    <Card id="sessions" fill={1} title="세션" count={pending ? undefined : sessions.filter(isOpen).length} actions={actions}>
+    <Card id="sessions" fill={1} title="세션" count={pending ? undefined : sessions.filter(isOpen).length}>
       <div className="flex min-w-0 flex-col gap-4">
-        <SummaryLine />
+        <div className="flex min-w-0 flex-wrap items-center justify-between gap-x-4 gap-y-2">
+          <SummaryLine />
+          <div role="group" aria-label="관리자 필터" className="ml-auto flex min-w-0 max-w-full flex-wrap justify-end gap-1">
+            {[{ id: null, name: '전체' }, ...leads].map(({ id, name }) => (
+              <Button
+                key={id ?? ''}
+                size="sm"
+                variant="ghost"
+                aria-pressed={id === (lead?.id ?? null)}
+                onClick={() => setPickedLead(id)}
+                className="min-w-0 max-w-full text-muted-foreground aria-pressed:bg-muted aria-pressed:text-foreground pointer-coarse:min-h-11"
+              >
+                <span className="truncate" title={name}>{name}</span>
+              </Button>
+            ))}
+          </div>
+        </div>
         {pending ? null : sessions.length === 0 ? (
           <EmptyState
             className="px-0 py-2"
@@ -316,48 +331,40 @@ function SessionsCard({
           >
             실행 중인 세션이 없어요. 새 세션을 만들면 여기에 보여요.
           </EmptyState>
+        ) : visible.length === 0 ? (
+          <EmptyState className="px-0 py-2">하위 세션이 없어요.</EmptyState>
         ) : (
-          <div className="flex flex-col gap-5">
-            {groups.map((g) => (
-              <Group key={g.key ?? '\0'} g={g} scoped={scope !== undefined} summaries={summaries} />
-            ))}
-          </div>
+          <SessionList key={lead?.id ?? ''} label={lead ? `${lead.name} 하위 세션` : '전체 세션'} live={live} done={done} summaries={summaries} />
         )}
       </div>
     </Card>
   );
 }
 
-function Group({ g, scoped, summaries }: { g: BoardGroup<Session>; scoped: boolean; summaries: Map<string, TaskSummary | null> }) {
-  const head = useId();
+function SessionList({ label, live, done, summaries }: { label: string; live: Session[]; done: Session[]; summaries: Map<string, TaskSummary | null> }) {
   const [showDone, setShowDone] = useState(false);
-  const shown = [...g.live, ...(showDone ? g.done : [])];
+  const shown = showDone ? [...live, ...done] : live;
   return (
-    <section aria-labelledby={head} className="flex min-w-0 flex-col">
-      {/* One project: no title needed. Several: a small title with the live count. */}
-      <h3 id={head} className={cn('m-0 truncate px-0.5 text-xs font-medium text-muted-foreground', scoped && 'sr-only')}>
-        {g.label}
-        <span className="ml-1.5 tabular-nums">{g.live.length}</span>
-      </h3>
+    <div className="flex min-w-0 flex-col">
       {shown.length > 0 && (
         <div className="-mx-2">
-          <SessionGrid label={`${g.label} 세션`}>
+          <SessionGrid label={label}>
             {shown.map((s) => (
               <SessionCard key={s.id} agent={presenceOf(s, stateOf)} leadInboxCount={s.canSpawn ? s.leadInboxCount : undefined} summary={summaries.get(s.id) ?? null} title={null} onOpen={() => undefined} trail={TRAIL.board} />
             ))}
           </SessionGrid>
         </div>
       )}
-      {g.done.length > 0 && (
+      {done.length > 0 && (
         <button
           type="button"
           aria-expanded={showDone}
           onClick={() => setShowDone((v) => !v)}
           className="h-8 self-start rounded-md px-2 text-left text-xs text-muted-foreground tabular-nums hover:bg-muted/60 hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
         >
-          {showDone ? '끝난 세션 숨기기' : `끝난 세션 ${g.done.length}개 보기`}
+          {showDone ? '끝난 세션 숨기기' : `끝난 세션 ${done.length}개 보기`}
         </button>
       )}
-    </section>
+    </div>
   );
 }
