@@ -27,7 +27,9 @@ const freePort = () =>
     s.on('error', fail);
   });
 
-test('설정 modal: sections, save team settings, a role model and limits, remembered section, 390px', { skip: !ON && 'set DRAW_E2E=1, CHROME and PLAYWRIGHT_CORE to run', timeout: 120_000 }, async (t) => {
+const options = { skip: !ON && 'set DRAW_E2E=1, CHROME and PLAYWRIGHT_CORE to run', timeout: 120_000 };
+
+async function openSettingsBrowser(t) {
   const { chromium } = await import(pathToFileURL(join(process.env.PLAYWRIGHT_CORE, 'index.mjs')).href);
   const repo = mkdtempSync(join(tmpdir(), 'draw-settings-'));
   const home = mkdtempSync(join(tmpdir(), 'draw-settings-home-'));
@@ -64,6 +66,50 @@ test('설정 modal: sections, save team settings, a role model and limits, remem
   const state = async () => (await (await fetch(`${BASE}/api/state`)).json());
 
   browser = await chromium.launch({ headless: true, executablePath: process.env.CHROME });
+  return { BASE, state, browser };
+}
+
+test('관리자와 팀 saves the lead cleanup toggle', options, async (t) => {
+  const { BASE, state, browser } = await openSettingsBrowser(t);
+  const page = await browser.newPage({ viewport: { width: 1440, height: 860 } });
+  const openTeam = async () => {
+    await page.getByRole('button', { name: '설정', exact: true }).click();
+    const dialog = page.getByRole('dialog', { name: '설정' });
+    await dialog.getByRole('button', { name: '관리자와 팀', exact: true }).click();
+    return dialog.getByRole('form', { name: '관리자와 팀' });
+  };
+  const toggle = (team) => team.getByLabel('끝난 관리자 자동 정리', { exact: true });
+  const save = async (team, expected) => {
+    const posted = page.waitForResponse((res) => res.url() === `${BASE}/api/settings` && res.request().method() === 'POST');
+    await team.getByRole('button', { name: '저장' }).click();
+    const result = await posted;
+    assert.equal(result.status(), 200);
+    assert.deepEqual(result.request().postDataJSON(), { team: { autoRemoveFinishedLeads: expected } });
+    await team.getByText('저장했어요.').waitFor();
+    assert.equal((await state()).settings.team.autoRemoveFinishedLeads, expected);
+  };
+
+  await page.goto(BASE);
+  let team = await openTeam();
+  assert.equal(await toggle(team).isChecked(), false);
+  const hint = await toggle(team).getAttribute('aria-describedby');
+  assert.match(await team.locator(`#${hint}`).innerText(), /기본값 꺼짐/);
+  assert.equal((await state()).settings.team.autoRemoveFinishedLeads, false);
+  await toggle(team).press('Space');
+  assert.equal(await toggle(team).isChecked(), true);
+  await save(team, true);
+  if (SHOTS) await page.screenshot({ path: join(SHOTS, 'settings-lead-cleanup-1440.png') });
+
+  await page.reload();
+  team = await openTeam();
+  assert.equal(await toggle(team).isChecked(), true);
+  await team.getByText('끝난 관리자 자동 정리', { exact: true }).click();
+  assert.equal(await toggle(team).isChecked(), false);
+  await save(team, false);
+});
+
+test('설정 modal: sections, save team settings, a role model and limits, remembered section, 390px', options, async (t) => {
+  const { BASE, state, browser } = await openSettingsBrowser(t);
   const errors = [];
   const page = await browser.newPage({ viewport: { width: 1440, height: 860 } });
   page.on('pageerror', (e) => errors.push(String(e.stack).slice(0, 400)));

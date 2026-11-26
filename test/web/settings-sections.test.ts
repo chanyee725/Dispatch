@@ -12,7 +12,7 @@ test('each section shows its own fields', () => {
     const f = sectionFields(s);
     return [...f.numbers.map((n) => n.id), ...f.toggles.map((t) => t.id)];
   };
-  assert.deepEqual(ids('team'), ['rotateLead', 'rotateOthers', 'maxChildren', 'maxLeadInbox', 'autoRemoveGraceSec', 'autoRemoveDone', 'autoRotateLong']);
+  assert.deepEqual(ids('team'), ['rotateLead', 'rotateOthers', 'maxChildren', 'maxLeadInbox', 'autoRemoveGraceSec', 'autoRemoveDone', 'autoRemoveFinishedLeads', 'autoRotateLong']);
   assert.deepEqual(ids('folders'), ['shareDeps', 'dropWorktrees']);
   assert.deepEqual(ids('stuck'), ['stuckFails', 'stuckSilentMinutes', 'stuckMismatchMinutes', 'stuckEtaRatio']);
 });
@@ -64,6 +64,21 @@ test('관리자와 팀 saves auto-remove: the switch and a grace of 3~3600 s (#6
   const reset = resetSection(form, 'team');
   assert.equal(reset.texts.autoRemoveGraceSec, '120');
   assert.equal(reset.toggles.autoRemoveDone, true);
+});
+
+test('관리자와 팀 saves lead cleanup independently and defaults to off', () => {
+  const form = teamForm(saved);
+  assert.equal(form.toggles.autoRemoveFinishedLeads, false);
+  form.toggles.autoRemoveFinishedLeads = true;
+  assert.equal(sectionDirty(saved, form, 'team'), true);
+  const enabled = sectionSave(saved, form, 'team');
+  assert.deepEqual(enabled.kind === 'save' && enabled.patch, { autoRemoveFinishedLeads: true });
+  assert.deepEqual(sectionSave(saved, form, 'folders'), { kind: 'unchanged' });
+
+  const on = teamValues({ autoRemoveFinishedLeads: true }, []);
+  const reset = resetSection(teamForm(on), 'team');
+  const disabled = sectionSave(on, reset, 'team');
+  assert.deepEqual(disabled.kind === 'save' && disabled.patch, { autoRemoveFinishedLeads: false });
 });
 
 test('an untouched section has nothing to save', () => {
