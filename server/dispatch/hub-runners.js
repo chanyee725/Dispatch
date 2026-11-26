@@ -209,12 +209,10 @@ export class HubRunners {
         break;
       case "rate_limit_event": {
         const w = m.rate_limit_info?.unifiedWindows || {};
-        const fableWin = w.seven_day_overage_included;
-        const l = this.limits;
-        this.shared.setClaude({
-          five: w.five_hour?.utilization ?? l.five, fiveReset: w.five_hour?.resetsAt ? w.five_hour.resetsAt * 1000 : l.fiveReset,
-          seven: w.seven_day?.utilization ?? l.seven, sevenReset: w.seven_day?.resetsAt ? w.seven_day.resetsAt * 1000 : l.sevenReset,
-          fable: fableWin?.utilization ?? l.fable, fableReset: fableWin?.resetsAt ? fableWin.resetsAt * 1000 : l.fableReset,
+        this.shared.observeClaude({
+          five: w.five_hour,
+          seven: w.seven_day,
+          fable: w.seven_day_overage_included,
         }).catch(e => console.error("limits:", e.message)).finally(() => {
           this.emit("limits", this.limits);
           this.checkTickets();
