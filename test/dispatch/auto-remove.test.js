@@ -103,6 +103,61 @@ test("a message to the teammate, a new turn or a permission request cancels the 
   assert.equal(store.data.sessions.K, undefined);
 });
 
+for (const batch of [false, true]) {
+  test(`Claude ${batch ? "batched" : "separate"} follow-ups keep the teammate through turns without init (#42)`, async () => {
+    const { hub, store, kid, kidProc, lead, leadProc } = makeHub({ autoRemoveGraceSec: 10 });
+    const result = { type: "result" };
+    const reply = text => hub.onClaude(kid, { type: "assistant", message: { content: [{ type: "text", text }] } });
+    const replay = line => hub.onClaude(kid, { ...line, isReplay: true });
+
+    hub.touch(kid, { status: "running" });
+    reply("First answer");
+    hub.send(kid.id, "First follow-up");
+    hub.send(kid.id, "Second follow-up");
+    const [first, second] = kidProc.lines;
+    assert.deepEqual(kidProc.lines.map(line => line.message.content), ["First follow-up", "Second follow-up"]);
+    hub.onClaude(kid, result);
+    assert.match(said(leadProc), /First answer/);
+    mock.timers.tick(10_000);
+    await flush();
+    assert.ok(store.data.sessions.K, "kept while the next turn waits for its first event");
+
+    hub.onClaude(lead, result);
+    replay(first);
+    if (!batch) {
+      reply("Second answer");
+      hub.onClaude(kid, result);
+      mock.timers.tick(10_000);
+      await flush();
+      assert.ok(store.data.sessions.K, "kept while the last turn waits for its first event");
+      hub.onClaude(lead, result);
+    }
+    replay(second);
+    reply("Final answer");
+    hub.onClaude(kid, result);
+    assert.match(said(leadProc), /Final answer/);
+    replay(second); // A duplicate acknowledgment must not cancel the final grace period.
+    mock.timers.tick(9_999);
+    assert.ok(store.data.sessions.K, "kept during the final grace period");
+    mock.timers.tick(1);
+    await flush();
+    assert.equal(store.data.sessions.K, undefined, "removed after the final report");
+  });
+}
+
+test("a failed mid-turn Claude write does not block cleanup of the original turn", async () => {
+  const { hub, store, kid, kidProc, finish } = makeHub({ autoRemoveGraceSec: 10 });
+  let completeWrite;
+  kidProc.stdin.write = (_line, callback) => { completeWrite = callback; };
+  hub.touch(kid, { status: "running" });
+  hub.send(kid.id, "Follow-up");
+  completeWrite(new Error("broken pipe"));
+  finish();
+  mock.timers.tick(10_000);
+  await flush();
+  assert.equal(store.data.sessions.K, undefined);
+});
+
 test("a message refused while a Codex teammate runs leaves the timer armed (#635)", async () => {
   const { hub, store, kid, finish } = makeHub();
   finish();
