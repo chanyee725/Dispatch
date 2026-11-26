@@ -3,6 +3,7 @@ export class LeadCleanup {
   constructor(hub) {
     this.hub = hub;
     this.pending = new Map();
+    this.config = hub.team();
     for (const event of ["session", "tasks", "tickets", "removed"]) {
       hub.on(event, () => this.reconcile());
     }
@@ -12,9 +13,10 @@ export class LeadCleanup {
   blocked(lead, { explicit = false, endingTurn = false } = {}) {
     if (!lead?.canSpawn) return "not-lead";
     const { hub } = this;
+    if (this.stopped) return "status";
     const runtime = hub.live.get(lead.id);
     if (lead.asksUser || runtime?.perms.size || runtime?.leadInbox.length ||
-        runtime?.leadInboxHeld || lead.interrupted || hub.holdTeam?.(lead.id)) return "waiting";
+        runtime?.leadInboxHeld || runtime?.drainingLeadInbox || lead.interrupted || hub.holdTeam?.(lead.id)) return "waiting";
     if (lead.status !== "idle" && !(endingTurn && lead.status === "running")) return "status";
     if (Object.values(hub.store.data.tickets || {}).some(t => t.lead === lead.id && t.status === "open")) return "ticket";
 
@@ -37,6 +39,7 @@ export class LeadCleanup {
     if (!job) this.pending.set(id, job = { lead, timer: null });
     // Promote an already armed automatic job without extending its grace period.
     job.explicit = true;
+    if (lead.status === "running") job.reportAfterTurn = lead.turns ?? 0;
     this.refresh(lead);
     return { ok: true };
   }
@@ -47,7 +50,29 @@ export class LeadCleanup {
     this.pending.delete(id);
   }
 
+  settingsChanged() {
+    this.config = this.hub.team();
+    this.reconcile();
+  }
+
+  automaticEnabled() {
+    // A save in progress can suspend cleanup immediately, and only a successful save can enable it.
+    return this.config.autoRemoveFinishedLeads === true && this.hub.team().autoRemoveFinishedLeads === true;
+  }
+
+  stop() {
+    this.stopped = true;
+    for (const id of this.pending.keys()) this.cancel(id);
+  }
+
+  scheduled(lead) {
+    const job = this.pending.get(lead.id);
+    return !!job?.timer && !this.blocked(lead, { explicit: job.explicit }) &&
+      (job.explicit || this.automaticEnabled());
+  }
+
   reconcile() {
+    if (!this.pending.size && !this.automaticEnabled()) return;
     for (const [id, job] of this.pending) {
       if (this.hub.get(id) !== job.lead) this.cancel(id);
     }
@@ -62,14 +87,22 @@ export class LeadCleanup {
     if (job?.removing) return;
     const explicit = job?.explicit === true;
     // A finish request made inside a running turn waits until that turn posts its final answer.
-    if (this.blocked(lead, { explicit, endingTurn: explicit && !job.timer }) ||
-        (!explicit && this.hub.team().autoRemoveFinishedLeads !== true)) {
+    if ((!explicit && !this.automaticEnabled()) ||
+        this.blocked(lead, { explicit, endingTurn: explicit && !job.timer })) {
       this.cancel(id);
       return;
     }
     if (lead.status !== "idle" || job?.timer) return;
+    if (job?.reportAfterTurn !== undefined) {
+      const answer = this.hub.live.get(id)?.lastText;
+      if ((lead.turns ?? 0) <= job.reportAfterTurn || !answer?.trim()) {
+        this.cancel(id);
+        return;
+      }
+      delete job.reportAfterTurn;
+    }
     if (!job) this.pending.set(id, job = { lead, timer: null });
-    job.timer = setTimeout(() => this.expire(id, job), this.hub.team().autoRemoveGraceSec * 1000);
+    job.timer = setTimeout(() => this.expire(id, job), this.config.autoRemoveGraceSec * 1000);
     job.timer.unref?.();
   }
 
@@ -77,7 +110,7 @@ export class LeadCleanup {
     if (this.pending.get(id) !== job) return;
     const { hub } = this;
     if (hub.get(id) !== job.lead || this.blocked(job.lead, { explicit: job.explicit }) ||
-        (!job.explicit && hub.team().autoRemoveFinishedLeads !== true)) {
+        (!job.explicit && !this.automaticEnabled())) {
       this.cancel(id);
       return;
     }

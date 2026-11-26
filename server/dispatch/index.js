@@ -30,7 +30,7 @@ import { effectiveRoles, teamSettings } from "./settings.js";
 import { UserDefaults } from "../user-defaults.js";
 
 /** Hub events forwarded to the shared SSE stream; none collides with Drawing's `workspace`. */
-export const HUB_EVENTS = ["session", "message", "live", "limits", "removed", "tasks", "tickets"];
+export const HUB_EVENTS = ["session", "message", "live", "limits", "removed", "tasks", "tickets", "leadFinished"];
 
 
 /** The git top level that holds dir, or null when dir is not in a git work tree. */
@@ -221,7 +221,11 @@ export async function createDispatch({ root, broadcast, port, workspaceDir, layo
     routes: routeTable(d).map(adapt),
     /** Runs once the server listens (the Hub needs the port for MCP and hook URLs). */
     async listening() {
-      every(30_000, "teams", () => hub.checkTeams());
+      every(30_000, "teams", () => {
+        hub.checkTeams();
+        hub.leadCleanup.reconcile();
+      });
+      hub.leadCleanup.reconcile();
       // Burn rates are per 30 minutes of wall time; recompute them even when no session event arrives.
       every(60_000, "burn", () => hub.refreshBurn());
       // Another server may have written newer limits; the Hub broadcasts a "limits" event when it did.
@@ -235,6 +239,7 @@ export async function createDispatch({ root, broadcast, port, workspaceDir, layo
     },
     async close() {
       closed = true;
+      hub.leadCleanup.stop();
       // A running CLI login must not outlive the server (it could still log the CLI in).
       await Promise.all(PROVIDER_IDS.map(id => Promise.resolve(dep.cancelLogin(id)).catch(() => {})));
       for (const t of timers) clearInterval(t);

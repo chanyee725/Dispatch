@@ -2,7 +2,6 @@ import { EventEmitter } from "node:events";
 import { afterEach, beforeEach, mock, test } from "node:test";
 import assert from "node:assert/strict";
 import { Hub } from "../../server/dispatch/hub.js";
-import { LeadCleanup } from "../../server/dispatch/lead-cleanup.js";
 import { patchTeam, teamSettings } from "../../server/dispatch/settings.js";
 
 function fixture({ automatic = true, status = "idle", card = true } = {}) {
@@ -17,7 +16,7 @@ function fixture({ automatic = true, status = "idle", card = true } = {}) {
   lead.status = status;
   const events = [];
   hub.on("leadFinished", e => events.push(e));
-  const cleanup = new LeadCleanup(hub);
+  const cleanup = hub.leadCleanup;
   return { hub, lead, tasks, tickets, sessions, cleanup, team, events };
 }
 
@@ -50,7 +49,8 @@ test("explicit finish works with auto cleanup disabled and waits for the final t
   assert.deepEqual(cleanup.request(lead.id), { ok: true });
   mock.timers.tick(240_000);
   assert.ok(sessions.L);
-  hub.touch(lead, { status: "idle", last: "done" });
+  hub.rt("L").lastText = "done";
+  hub.touch(lead, { status: "idle", turns: 1 });
   mock.timers.tick(119_999);
   assert.ok(sessions.L);
   mock.timers.tick(1);
@@ -99,6 +99,36 @@ for (const [label, reason, block] of blockers) {
   });
 }
 
+test("an interrupted turn or a completed turn without a report does not finalize an explicit request", () => {
+  for (const turns of [0, 1]) {
+    const { hub, lead, sessions, cleanup, events } = fixture({ status: "running", automatic: false, card: false });
+    assert.deepEqual(cleanup.request("L"), { ok: true });
+    hub.touch(lead, { status: "idle", turns });
+    mock.timers.tick(120_000);
+    assert.ok(sessions.L);
+    assert.deepEqual(events, []);
+  }
+});
+
+test("updating the commit of a closed card revokes its previous merge evidence", async () => {
+  const { hub, cleanup, tasks, sessions } = fixture();
+  cleanup.reconcile();
+  await hub.setTask("L", { id: "T", commit: "fix/pending" });
+  assert.equal(tasks.T.mergeCheck, null);
+  mock.timers.tick(120_000);
+  assert.ok(sessions.L);
+  assert.deepEqual(cleanup.request("L"), { ok: false, reason: "board" });
+});
+
+test("shutdown cancels the grace period before any removal", () => {
+  const { hub, cleanup, sessions, events } = fixture();
+  cleanup.reconcile();
+  hub.stopAll();
+  mock.timers.tick(120_000);
+  assert.ok(sessions.L);
+  assert.deepEqual(events, []);
+});
+
 test("a new turn during the explicit grace period cancels that request", () => {
   const { hub, lead, sessions, cleanup, events } = fixture({ automatic: false });
   assert.deepEqual(cleanup.request("L"), { ok: true });
@@ -114,7 +144,7 @@ test("a question in the final answer cancels an explicit finish requested in tha
   const { hub, lead, sessions, cleanup, events } = fixture({ status: "running" });
   assert.deepEqual(cleanup.request("L"), { ok: true });
   hub.rt("L").lastText = "어느 쪽으로 할까요?";
-  hub.touch(lead, { status: "idle" });
+  hub.touch(lead, { status: "idle", turns: 1 });
   mock.timers.tick(120_000);
   assert.ok(sessions.L);
   assert.deepEqual(events, []);

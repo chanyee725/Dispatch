@@ -162,6 +162,7 @@ export function routeTable(d) {
       store.save();
       const settings = { ...store.data.settings, team: teamSettings(store) };
       broadcast("settings", settings);
+      if (b.team) hub.leadCleanup.settingsChanged();
       // Role default models live in the snapshot's roles, so a model change re-sends the snapshot.
       if (b.team?.roleModels) broadcast("snapshot", await d.snapshot());
       return settings;
@@ -185,6 +186,10 @@ export function routeTable(d) {
     ["POST", /^\/api\/sessions\/([\w-]+)\/interrupt$/, async ([id]) => { hub.interrupt(id); return { ok: true }; }],
     ["POST", /^\/api\/sessions\/([\w-]+)\/kill$/, async ([id]) => { hub.kill(id); return { ok: true }; }],
     ["POST", /^\/api\/sessions\/([\w-]+)\/remove$/, async ([id]) => { hub.remove(id); return { ok: true }; }],
+    ["POST", /^\/api\/sessions\/([\w-]+)\/finish$/, async ([id]) => {
+      session(id);
+      return hub.leadCleanup.request(id);
+    }],
     ["POST", /^\/api\/sessions\/clear$/, async () => ({ removed: hub.clearAll() })],
     ["POST", /^\/api\/sessions\/clear-done$/, async () => ({ removed: hub.clearDone() })],
     ["GET", /^\/api\/limits$/, async () => hub.providerLimits()],

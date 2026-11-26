@@ -193,6 +193,15 @@ const LEAD_TOOLS = [
     run: async ({ issue, pr }) => api("POST", `/api/issues/${Number(issue)}/accounts/comment`, pr == null ? {} : { pr }),
   },
   {
+    name: "finish",
+    description: "내 관리자 세션의 정리를 예약한다. 성공하면 이번 턴의 마지막 답변으로 결과를 보고한다. 답변이 끝나고 유예 시간이 지나면 세션을 정리한다. ok: false면 reason에 남은 조건이 온다.",
+    inputSchema: { type: "object", properties: {} },
+    run: async () => {
+      if (!PARENT || !/^[\w-]+$/.test(PARENT)) throw new Error("관리자 세션이 필요해요");
+      return api("POST", `/api/sessions/${PARENT}/finish`);
+    },
+  },
+  {
     name: "stop_session",
     description: "세션을 끝낸다. 다시 쓸 일이 없으면 remove: true로 목록에서도 지운다.",
     inputSchema: { type: "object", required: ["session_id"], properties: { session_id: { type: "string" }, remove: { type: "boolean", description: "목록에서도 지움 (기본 false)" } } },

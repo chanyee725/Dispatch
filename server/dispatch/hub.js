@@ -22,6 +22,7 @@ import {
   mixin, badRequest, PROVIDERS, UNSUPPORTED_MODEL, PROVIDER_NAMES, checkPerm, checkEffort, MAX_TRANSCRIPT, RESUME_TEXT, isOpenStatus, clip, RESUME_ID, userContent, activityOf, maskedPerm,
 } from "./hub-util.js";
 import { HubAutoRemove } from "./hub-auto-remove.js";
+import { LeadCleanup } from "./lead-cleanup.js";
 import { HubLeadInbox } from "./hub-lead-inbox.js";
 import { HubTickets } from "./hub-tickets.js";
 import { HubRunners } from "./hub-runners.js";
@@ -91,6 +92,7 @@ export class Hub extends EventEmitter {
       if (t.folder === undefined && folder !== undefined) { t.folder = folder; colored = true; }
     }
     if (colored) store.save();
+    this.leadCleanup = new LeadCleanup(this);
   }
 
   get port() { return this.portOf(); }
@@ -366,6 +368,7 @@ export class Hub extends EventEmitter {
   async setTask(lead, input) {
     const STAGES = ["plan", "impl", "review", "test", "merge", "done", "blocked"];
     const all = (this.store.data.tasks ||= {});
+    const previousCommit = input.id ? all[input.id]?.commit : undefined;
     const title = redact(String(input.title || "").trim()).slice(0, 120);
     // A step id ties the task to a step of the lead's approved plan; checked before anything changes.
     const step = input.step === undefined ? undefined : input.step ? String(input.step).trim() : null;
@@ -417,6 +420,8 @@ export class Hub extends EventEmitter {
       // A new stage without eta_minutes: estimate from finished tasks of this project (#1028).
       defaultEta(t, Object.values(all));
     }
+    // Editing a closed card's commit invalidates its old merge proof.
+    if (t.stage === "done" && !stage && input.commit !== undefined && t.commit !== previousCommit) t.mergeCheck = null;
     if (t.stage === "done") { t.etaAt = null; t.etaEstimated = false; }
     if (input.note !== undefined) t.note = redact(String(input.note || "")).slice(0, 200);
     t.updatedAt = Date.now();
@@ -878,7 +883,7 @@ export class Hub extends EventEmitter {
     const t = this.team();
     if (!s || !t.autoRotateLong || !longOver(s, t) || s.status !== "idle" || s._killed) return false;
     const r = this.live.get(s.id);
-    if (r?.replacing || r?.drainingLeadInbox || r?.perms?.size || s.asksUser) return false;
+    if (r?.replacing || r?.drainingLeadInbox || r?.perms?.size || s.asksUser || this.leadCleanup.scheduled(s)) return false;
     if (s.parent && !s.longRun?.told) return false;
     if (this.pausedFor(s) || this.runBlock(s) || this.holdTeam?.(s.parent ?? s.id)) return false;
     if (s.provider === "claude" && this.guardCheck(1)) return false;
@@ -1107,6 +1112,7 @@ export class Hub extends EventEmitter {
 
   stopAll() {
     this.stopping = true;
+    this.leadCleanup.stop();
     for (const r of this.live.values()) r.proc?.kill("SIGTERM");
   }
 }
