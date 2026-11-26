@@ -79,20 +79,21 @@ test('agent live view opens from a board card, closes by button and Esc, bottom 
 
   browser = await chromium.launch({ headless: true, executablePath: process.env.CHROME });
   const errors = [];
-  const page = await browser.newPage({ viewport: { width: 1280, height: 800 } });
+  const page = await browser.newPage({ viewport: { width: 1280, height: 800 }, reducedMotion: 'reduce' });
   page.on('pageerror', (e) => errors.push(String(e.stack).slice(0, 400)));
   await page.goto(`${BASE}/dispatch`);
-  const open = page.locator(`[data-session-live="${s.id}"]`);
+  const card = page.locator(`[data-agent="${s.id}"]`);
+  const open = card.getByRole('button');
   await open.waitFor({ timeout: 15_000 });
-  // The board row is the trigger itself (#731): its accessible name is the session's own text.
+  // The board card's button opens the live view.
   const panel = page.locator(`dialog[data-agent-live="${s.id}"]`);
   const isOpen = () => panel.evaluate((el) => el.matches(':popover-open')).catch(() => false);
 
-  // 1. The card button opens a right-docked 400px panel; focus moves into it; the hash names the agent.
+  // 1. The card button opens the right-docked panel; focus moves into it; the hash names the agent.
   await open.click();
   await panel.waitFor();
   assert.equal(await isOpen(), true, 'panel open');
-  assert.equal(await open.getAttribute('aria-expanded'), 'true');
+  assert.equal(await card.getAttribute('aria-current'), 'true');
   const box = await panel.boundingBox();
   // #905: 460px, 8px off the right edge, floating 24px above the bottom.
   assert.ok(Math.abs(box.width - 460) <= 1 && Math.abs(box.x + box.width - 1272) <= 1 && Math.abs(box.y + box.height - 776) <= 1, `floating 460px panel: ${JSON.stringify(box)}`);
@@ -109,8 +110,8 @@ test('agent live view opens from a board card, closes by button and Esc, bottom 
   // 2. The close button closes it and focus returns to the card's button.
   await panel.getByRole('button', { name: '닫기' }).first().click();
   await page.waitForFunction((id) => !document.querySelector(`dialog[data-agent-live="${id}"]:popover-open`), s.id);
-  assert.equal(await open.getAttribute('aria-expanded'), 'false');
-  await page.waitForFunction((id) => document.activeElement?.getAttribute('data-session-live') === id, s.id, { timeout: 3000 }); // focus returns in the next frame
+  assert.equal(await card.getAttribute('aria-current'), null);
+  await page.waitForFunction((id) => document.activeElement?.matches(`button[data-agent-live="${id}"]`), s.id, { timeout: 3000 }); // focus returns in the next frame
 
   // 3. Esc closes it (pressed once focus has moved into the panel: Esc is handled there).
   await open.click();
@@ -133,7 +134,7 @@ test('agent live view opens from a board card, closes by button and Esc, bottom 
   const chatTab = panel.getByRole('tab', { name: '대화', exact: true });
   await chatTab.click();
   assert.equal(await chatTab.getAttribute('aria-selected'), 'true');
-  await panel.locator('[data-session-tab="chat"]').waitFor({ timeout: 10_000 });
+  await panel.locator('[data-session-tab="chat"]').getByRole('textbox').waitFor({ timeout: 10_000 });
   assert.ok(await page.evaluate((id) => !!document.querySelector(`dialog[data-agent-live="${id}"]:popover-open`), s.id), 'panel stays open');
   assert.equal(await page.locator('[data-slot=sheet-content]').count(), 0, 'no session sheet over the panel');
   if (SHOTS) await page.screenshot({ path: join(SHOTS, 'agent-live-chat-1280.png') });
