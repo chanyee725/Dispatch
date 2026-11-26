@@ -1,4 +1,5 @@
-// Headless check that a saved session with a retired provider still opens and can be removed from the board.
+// Headless check of a saved session whose provider no longer runs (E508c, #532): its sheet hides the message box,
+// shows the read-only note, and the empty-chat copy does not promise to resume it.
 // Run on request: DRAW_E2E=1 CHROME=/path/to/chrome-headless-shell PLAYWRIGHT_CORE=/path/to/node_modules/playwright-core npm test
 // The server gets a scratch HOME and a PATH of fake agent CLIs; it refuses to go on unless its log names its port and workspace.
 import { test } from 'node:test';
@@ -23,7 +24,7 @@ const freePort = () =>
     s.on('error', fail);
   });
 
-test('a saved session with a retired provider opens and can be removed without chat', { skip: !ON && 'set DRAW_E2E=1, CHROME and PLAYWRIGHT_CORE to run', timeout: 120_000 }, async (t) => {
+test('a saved session of a provider that no longer runs opens read-only', { skip: !ON && 'set DRAW_E2E=1, CHROME and PLAYWRIGHT_CORE to run', timeout: 120_000 }, async (t) => {
   const { chromium } = await import(pathToFileURL(join(process.env.PLAYWRIGHT_CORE, 'index.mjs')).href);
   const repo = mkdtempSync(join(tmpdir(), 'draw-readonly-'));
   const home = mkdtempSync(join(tmpdir(), 'draw-readonly-home-'));
@@ -80,21 +81,24 @@ test('a saved session with a retired provider opens and can be removed without c
     at('open the saved session');
     // The server closes it (done) on load, so it sits behind the 끝난 세션 toggle (#731 board).
     await page.getByRole('button', { name: /끝난 세션 1개 보기/ }).click();
-    const card = page.locator('[data-session-board] [data-agent="legacy-1"]');
-    await card.locator('button[data-agent-live="legacy-1"]').click();
+    // #731 rows add a screen-reader state after the name, so open the row itself.
+    await page.locator('[data-session="legacy-1"]').filter({ hasText: 'Old' }).click();
+    // #728: a row opens the live view first; #905: its 대화 tab shows the chat inside the panel.
     const live = page.locator('dialog[data-agent-live="legacy-1"]');
-    await live.getByRole('tab', { name: '정보', exact: true }).click();
-    const info = live.locator('[data-session-tab="info"]');
-    await info.getByText('legacy-1', { exact: true }).waitFor();
+    await live.getByRole('tab', { name: '대화', exact: true }).click();
+    const sheet = live.locator('[data-session-tab="chat"]');
+    await sheet.waitFor();
 
-    at('remove the finished session from the board');
-    assert.equal(await live.getByRole('tab', { name: '대화', exact: true }).count(), 0);
-    assert.equal(await live.getByRole('button', { name: '중단' }).isEnabled(), false);
-    await live.getByRole('button', { name: '목록에서 지우기' }).click();
-    const confirm = page.getByRole('dialog', { name: '목록에서 지울까요?' });
-    await confirm.getByRole('button', { name: '지우기', exact: true }).click();
-    await live.waitFor({ state: 'detached' });
-    await card.waitFor({ state: 'detached' });
+    at('read-only note instead of the message box');
+    const note = sheet.getByRole('note');
+    await note.waitFor();
+    assert.equal(await note.innerText(), '이 세션은 더 이상 이어서 실행할 수 없어요. 대화만 볼 수 있어요.');
+    assert.equal(await sheet.locator('textarea').count(), 0, 'no message box');
+
+    at('empty chat does not offer to resume');
+    const empty = sheet.getByText('이번 서버 실행 중에 주고받은 대화가 없어요.', { exact: true });
+    await empty.waitFor();
+    assert.equal(await sheet.getByText(/이어서 실행해요/).count(), 0);
     assert.deepEqual(errors, []);
   } catch (e) {
     const shot = join(tmpdir(), `dispatch-readonly-fail-${Date.now()}.png`);

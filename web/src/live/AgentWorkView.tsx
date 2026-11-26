@@ -17,7 +17,7 @@ interface Props {
   step?: string;
   statusLabel?: string;
   files: readonly LiveFile[];
-  /** The panel is open. */
+  /** The panel is on screen (not hidden under a session sheet). */
   shown: boolean;
   /** A code file a link asked to see: shows that file unfolded. */
   reveal?: string | null;
@@ -176,7 +176,7 @@ function FilePatch({ c }: { c: ChangedFile }) {
           </div>
         ),
       )}
-      {lines.length > MAX_LINES && <p className="agent-work-note">{lines.length - MAX_LINES}줄 더 있어요. 변경사항 탭에서 전체를 볼 수 있어요.</p>}
+      {lines.length > MAX_LINES && <p className="agent-work-note">{lines.length - MAX_LINES}줄 더 있어요. 대화 보기의 변경사항에서 전체를 볼 수 있어요.</p>}
     </div>
   );
 }
