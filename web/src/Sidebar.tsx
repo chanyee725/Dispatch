@@ -1,6 +1,6 @@
 // App sidebar: board navigation, running Dispatch services, model status, settings and theme.
 import { ChartColumn, FolderClosed, GitBranch, LayoutGrid } from 'lucide-react';
-import { useEffect, useState, type ComponentType } from 'react';
+import { useEffect, useId, useState, type ComponentType } from 'react';
 import {
   Sidebar as SidebarRoot,
   SidebarContent,
@@ -9,6 +9,7 @@ import {
   SidebarGroupLabel,
   SidebarHeader,
   SidebarMenu,
+  SidebarMenuBadge,
   SidebarMenuButton,
   SidebarMenuItem,
   useSidebar,
@@ -47,6 +48,11 @@ function Row({ id, label, icon: Icon, current, onClick }: {
 
 type ServiceProject = { name: string; port: number; current: boolean };
 const SERVICE_REFRESH_MS = 15_000;
+const SERVICE_LABELS = new Map([
+  ['keeper2-bridge', 'Keeper2 Bridge'],
+  ['sim-client', 'Sim Client'],
+  ['sim-studio', 'Sim Studio'],
+]);
 
 function useServiceProjects(online: boolean) {
   const [projects, setProjects] = useState<ServiceProject[] | null>(null);
@@ -76,6 +82,8 @@ export function Sidebar(p: Props) {
   const online = useDispatch((state) => state.online);
   const unavailable = useDispatch((state) => state.unavailable);
   const projects = useServiceProjects(online);
+  const projectLabelId = useId();
+  const names = new Map<string, number>();
   const s = p.section;
   const board = (tab: BoardTab, folder?: string | null) => p.onSection({ kind: 'board', tab, folder });
   return (
@@ -90,26 +98,35 @@ export function Sidebar(p: Props) {
           <Row id="usage" label="사용량" icon={ChartColumn} current={s.tab === 'usage'} onClick={() => board('usage', s.folder)} />
         </SidebarMenu>
         <SidebarGroup className="mt-3">
-          <SidebarGroupLabel>프로젝트</SidebarGroupLabel>
-          {projects?.length ? (
-            <SidebarMenu aria-label="실행 중인 프로젝트">
-              {projects.map(({ name, port, current }) => (
-                <SidebarMenuItem key={port}>
-                  <SidebarMenuButton asChild aria-current={current ? 'location' : undefined} className="aria-[current=location]:font-semibold">
-                    <a href={current ? '/#board' : `http://127.0.0.1:${port}/#board`} onClick={() => { if (isMobile) setOpenMobile(false); }}>
-                      <FolderClosed aria-hidden />
-                      <span className={NAME} title={name}>{name}</span>
-                      <span className="shrink-0 text-xs text-muted-foreground tabular-nums">:{port}</span>
-                    </a>
-                  </SidebarMenuButton>
-                </SidebarMenuItem>
-              ))}
-            </SidebarMenu>
-          ) : (
-            <p className="px-2 py-1 text-xs text-muted-foreground">
-              {unavailable || projects ? '확인된 서비스가 없어요.' : ready && !online ? '다시 연결하는 중이에요…' : '서비스를 확인하는 중이에요…'}
-            </p>
-          )}
+          <nav aria-labelledby={projectLabelId}>
+            <SidebarGroupLabel>
+              <span id={projectLabelId}>프로젝트</span>
+              {projects && <SidebarMenuBadge>{projects.length}</SidebarMenuBadge>}
+            </SidebarGroupLabel>
+            {projects?.length ? (
+              <SidebarMenu>
+                {projects.map(({ name, port, current }) => {
+                  const occurrence = names.get(name) ?? 0;
+                  names.set(name, occurrence + 1);
+                  const label = SERVICE_LABELS.get(name) ?? name;
+                  return (
+                    <SidebarMenuItem key={`${name}:${occurrence}`}>
+                      <SidebarMenuButton asChild aria-current={current ? 'location' : undefined} className="aria-[current=location]:font-semibold">
+                        <a href={current ? '/#board' : `http://127.0.0.1:${port}/#board`} onClick={() => { if (isMobile) setOpenMobile(false); }}>
+                          <FolderClosed aria-hidden />
+                          <span className={NAME} title={label}>{label}</span>
+                        </a>
+                      </SidebarMenuButton>
+                    </SidebarMenuItem>
+                  );
+                })}
+              </SidebarMenu>
+            ) : (
+              <p className="px-2 py-1 text-xs text-muted-foreground">
+                {unavailable || projects ? '확인된 서비스가 없어요.' : ready && !online ? '다시 연결하는 중이에요…' : '서비스를 확인하는 중이에요…'}
+              </p>
+            )}
+          </nav>
         </SidebarGroup>
       </SidebarContent>
       <SidebarFooter>

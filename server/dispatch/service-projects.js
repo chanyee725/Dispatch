@@ -1,6 +1,7 @@
 import { constants } from 'node:fs';
 import { lstat, open, realpath } from 'node:fs/promises';
 import { basename, dirname, isAbsolute, join, relative, resolve, sep } from 'node:path';
+import { pidAlive } from '../lock.js';
 import { expandHome } from '../user-defaults.js';
 
 // These deployments already register their assigned ports via start.sh.
@@ -18,27 +19,55 @@ const MAX_RESPONSE_BYTES = 64 * 1024;
 const BATCH_SIZE = 8;
 let activeLookup;
 
-async function registeredPort(dir, signal) {
+async function readMetadata(path, limit, signal) {
   let file;
   try {
     signal.throwIfAborted();
-    if (!(await lstat(dir)).isDirectory()) return null;
-    signal.throwIfAborted();
-    file = await open(join(dir, 'server.port'), constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK);
+    file = await open(path, constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK);
     signal.throwIfAborted();
     if (!(await file.stat()).isFile()) return null;
     signal.throwIfAborted();
-    const buf = Buffer.alloc(32);
+    const buf = Buffer.alloc(limit);
     const { bytesRead } = await file.read(buf);
-    if (bytesRead === buf.length) return null;
-    const value = buf.subarray(0, bytesRead).toString('utf8').trim();
-    const port = Number(value);
-    return /^\d+$/.test(value) && port > 0 && port <= 65535 ? port : null;
+    return bytesRead < limit ? buf.subarray(0, bytesRead).toString('utf8').trim() : null;
   } catch {
     return null;
   } finally {
     await file?.close().catch(() => {});
   }
+}
+
+async function registeredService(dir, signal) {
+  try {
+    signal.throwIfAborted();
+    if (!(await lstat(dir)).isDirectory()) return null;
+    const portText = await readMetadata(join(dir, 'server.port'), 32, signal);
+    const port = Number(portText);
+    if (!/^\d+$/.test(portText ?? '') || port < 1 || port > 65535) return null;
+
+    const pidText = await readMetadata(join(dir, 'server.pid'), 32, signal);
+    const pid = Number(pidText);
+    if (!/^\d+$/.test(pidText ?? '') || pid > 0x7fffffff || !pidAlive(pid)) return null;
+
+    const locks = join(dir, '.drawing');
+    if (!(await lstat(locks)).isDirectory()) return null;
+    const lockText = await readMetadata(join(locks, 'server.lock'), 128, signal);
+    if (!lockText) return null;
+    const lock = JSON.parse(lockText);
+    return lock?.pid === pid && lock.port === port ? { pid, port } : null;
+  } catch {
+    return null;
+  }
+}
+
+async function currentProject(root, port, signal) {
+  for (const stateDir of STATE_DIRS) {
+    const service = await registeredService(join(root, stateDir), signal);
+    if (service?.pid === process.pid && service.port === port) {
+      return { name: basename(root), port, current: true };
+    }
+  }
+  return null;
 }
 
 async function readService(port, lookupSignal) {
@@ -94,16 +123,18 @@ async function scanServices(root, port, candidates, peers, signal) {
     await Promise.all(dirs.slice(i, i + BATCH_SIZE).map(async (dir, offset) => {
       const name = basename(dir);
       for (const stateDir of STATE_DIRS) {
-        const peerPort = await registeredPort(join(dir, stateDir), signal);
+        const service = await registeredService(join(dir, stateDir), signal);
         if (signal.aborted) return;
-        if (!peerPort || peerPort === port) continue;
+        if (!service || service.port === port) continue;
+        const peerPort = service.port;
         if (!probes.has(peerPort)) probes.set(peerPort, readService(peerPort, signal));
         const state = await probes.get(peerPort);
         if (signal.aborted) return;
-        if (Array.isArray(state?.projects) && state.projects.some((p) =>
-          p?.current === true && p.port === peerPort && p.name === name && expandHome(p.path) === dir,
-        )) {
-          peers[i + offset] = { name, port: peerPort, current: false };
+        const reported = Array.isArray(state?.projects) ? state.projects.filter((p) => p?.current === true) : [];
+        const [project] = reported;
+        if (reported.length === 1 && project.port === peerPort && project.name === name &&
+            expandHome(project.path) === dir && pidAlive(service.pid)) {
+          peers[i + offset] = { name: project.name, port: peerPort, current: false };
           return;
         }
       }
@@ -112,11 +143,10 @@ async function scanServices(root, port, candidates, peers, signal) {
 }
 
 /**
- * The current server and registered peers whose loopback response identifies the same project root.
+ * Only skill-registered servers, with peer identities confirmed against their project roots.
  * `workspaces` may be a loader; its wait counts toward the same deadline as the scan.
  */
 export async function listServiceProjects({ root, port, workspaces, deployments = DEPLOYMENTS }) {
-  const current = { name: basename(root), port, current: true };
   const controller = new AbortController();
   let timer;
   const deadline = new Promise((resolve) => {
@@ -126,24 +156,25 @@ export async function listServiceProjects({ root, port, workspaces, deployments 
     }, LOOKUP_TIMEOUT_MS);
   });
 
-  let entries;
-  try {
-    const load = Promise.resolve().then(() => (typeof workspaces === 'function' ? workspaces() : workspaces));
-    entries = await Promise.race([load, deadline]);
-  } catch {
-    // Unreadable settings still leave the registered deployments to check.
-    entries = [];
-  }
+  // The current server is already answering this request. Its registration must still match
+  // this process. Unreadable settings leave the known deployment roots available.
+  const load = Promise.resolve()
+    .then(() => (typeof workspaces === 'function' ? workspaces() : workspaces))
+    .catch(() => []);
+  const current = await Promise.race([currentProject(root, port, controller.signal), deadline]);
+  const local = current ? [current] : [];
+  const entries = await Promise.race([load, deadline]);
   // A slow settings read must not start a scan after the deadline.
-  if (controller.signal.aborted) return [current];
+  if (controller.signal.aborted) return local;
 
   const candidates = [...deployments, ...(entries ?? []).map((entry) => entry.path)];
   const key = JSON.stringify([root, port, candidates]);
+  const projectList = (peers) => [...local, ...peers].sort((a, b) => a.name.localeCompare(b.name));
   if (activeLookup) {
     // Share matching lookups without handing peers from one workspace list to another.
     try {
-      if (activeLookup.key !== key) return [current];
-      return await Promise.race([activeLookup.result, deadline.then(() => [current])]);
+      if (activeLookup.key !== key) return local;
+      return projectList(await Promise.race([activeLookup.result, deadline.then(() => [])]));
     } finally {
       clearTimeout(timer);
     }
@@ -155,8 +186,7 @@ export async function listServiceProjects({ root, port, workspaces, deployments 
     // Hold the slot until pending filesystem operations have finished unwinding.
     activeLookup = undefined;
   });
-  const result = Promise.race([scan, deadline])
-    .then(() => [current, ...peers.filter(Boolean)].sort((a, b) => a.port - b.port));
+  const result = Promise.race([scan, deadline]).then(() => peers.filter(Boolean));
   activeLookup = { key, result };
-  return result;
+  return projectList(await result);
 }

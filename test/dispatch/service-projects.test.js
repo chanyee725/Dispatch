@@ -18,16 +18,25 @@ async function fixtureHome(t) {
   return home;
 }
 
+async function register(dir, port, { stateDir = '.dispatch', pid = process.pid, lockPort = Number(port) } = {}) {
+  const state = join(dir, stateDir);
+  await mkdir(join(state, '.drawing'), { recursive: true });
+  await writeFile(join(state, 'server.port'), String(port));
+  if (pid !== null) {
+    await writeFile(join(state, 'server.pid'), String(pid));
+    await writeFile(join(state, '.drawing', 'server.lock'), JSON.stringify({ pid, port: lockPort }));
+  }
+  return dir;
+}
+
 async function peerFixture(t, count) {
   const dir = await fixtureHome(t);
-  const root = join(dir, 'Dispatch');
+  const root = await register(join(dir, 'Dispatch'), 4100);
   const peers = await Promise.all(Array.from({ length: count }, async (_, i) => {
     const name = `peer-${i}`;
     const path = join(dir, name);
     const port = 4101 + i;
-    const state = join(path, '.dispatch');
-    await mkdir(state, { recursive: true });
-    await writeFile(join(state, 'server.port'), String(port));
+    await register(path, port);
     return { name, path, port, current: true };
   }));
   const query = { root, port: 4100, deployments: peers.map((peer) => peer.path), workspaces: [] };
@@ -37,28 +46,33 @@ async function peerFixture(t, count) {
 test('service projects use recorded ports and require a matching live Dispatch identity', async (t) => {
   const home = await fixtureHome(t);
 
-  async function register(name, port, stateDir = '.dispatch') {
-    const dir = join(home, name);
-    const state = join(dir, stateDir);
-    await mkdir(state, { recursive: true });
-    await writeFile(join(state, 'server.port'), port);
-    return dir;
-  }
-
-  const root = await register('Dispatch', '4003');
-  const client = await register('sim-client', '4000\n');
-  const studio = await register('sim-studio', '4001', '.atelier');
-  await register('sim-studio', '4010');
-  const keeper = await register('keeper2-bridge', '4002');
-  const stale = await register('stopped', '4010');
-  const wrong = await register('old/sim-client', '4000');
-  const invalid = await register('invalid', '4004junk');
-  const internal = await register('Dispatch/.dispatch/wt/transcripts', '4020');
+  const add = (name, port, options) => register(join(home, name), port, options);
+  const root = await add('Dispatch', 4003);
+  const client = await add('sim-client', '4000\n');
+  const studio = await add('sim-studio', 4001, { stateDir: '.atelier' });
+  await add('sim-studio', 4010);
+  await add('sim-client', 4011, { stateDir: '.atelier' });
+  const keeper = await add('keeper2-bridge', 4002);
+  const offline = await add('offline', 4010);
+  const dead = await add('stopped', 4012, { pid: 2147483647 });
+  const noPid = await add('unregistered', 4013, { pid: null });
+  const mismatched = await add('mismatched', 4014, { lockPort: 4000 });
+  const wrong = await add('old/sim-client', 4000);
+  const sameName = await add('other/sim-client', 4016);
+  const ambiguous = await add('ambiguous', 4015);
+  const invalid = await add('invalid', '4004junk');
+  const internal = await add('Dispatch/.dispatch/wt/transcripts', 4020);
   const alias = join(home, 'alias');
   await symlink(client, alias);
 
   const calls = [];
-  const live = new Map([[4000, ['sim-client', client]], [4001, ['sim-studio', '~/sim-studio']], [4002, ['keeper2-bridge', keeper]]]);
+  const live = new Map([
+    [4000, [['sim-client', client]]], [4001, [['sim-studio', '~/sim-studio']]],
+    [4002, [['keeper2-bridge', keeper]]], [4011, [['sim-client', client]]],
+    [4012, [['stopped', dead]]], [4013, [['unregistered', noPid]]],
+    [4014, [['mismatched', mismatched]]], [4015, [['ambiguous', ambiguous], ['other', '/other']]],
+    [4016, [['sim-client', sameName]]],
+  ]);
   t.mock.method(globalThis, 'fetch', async (url, { redirect }) => {
     assert.equal(redirect, 'error');
     const target = new URL(url);
@@ -68,26 +82,28 @@ test('service projects use recorded ports and require a matching live Dispatch i
     calls.push(port);
     const service = live.get(port);
     if (!service) throw new Error('offline');
-    const [name, path] = service;
-    return Response.json({ projects: [{ name, path, port, current: true }] });
+    return Response.json({ projects: service.map(([name, path]) => ({ name, path, port, current: true })) });
   });
 
   const query = {
     root,
     port: 4003,
-    deployments: [client, studio, keeper, stale, wrong, invalid, internal, alias, '~/missing'],
+    deployments: [client, studio, keeper, offline, dead, noPid, mismatched, wrong, sameName, ambiguous, invalid, internal, alias, '~/missing'],
     workspaces: [{ path: join(client, '.dispatch') }],
   };
   assert.deepEqual(await listServiceProjects(query), [
-    { name: 'sim-client', port: 4000, current: false },
-    { name: 'sim-studio', port: 4001, current: false },
-    { name: 'keeper2-bridge', port: 4002, current: false },
     { name: 'Dispatch', port: 4003, current: true },
+    { name: 'keeper2-bridge', port: 4002, current: false },
+    { name: 'sim-client', port: 4000, current: false },
+    { name: 'sim-client', port: 4016, current: false },
+    { name: 'sim-studio', port: 4001, current: false },
   ]);
-  assert.deepEqual(calls.slice().sort(), [4000, 4001, 4002, 4010]);
+  assert.deepEqual(calls.slice().sort(), [4000, 4001, 4002, 4010, 4015, 4016]);
 
   live.delete(4002);
-  assert.deepEqual((await listServiceProjects(query)).map((p) => p.port), [4000, 4001, 4003]);
+  assert.deepEqual((await listServiceProjects(query)).map((p) => p.port), [4003, 4000, 4016, 4001]);
+  await rm(join(root, '.dispatch', 'server.pid'));
+  assert.deepEqual((await listServiceProjects(query)).map((p) => p.port), [4000, 4016, 4001]);
 });
 
 test('service lookup shares one deadline across batches and keeps completed peers', async (t) => {
