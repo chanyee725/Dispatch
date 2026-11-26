@@ -117,6 +117,21 @@ test("with 오래 쓴 세션 자동 교체 off, a long lead stays", () => {
   assert.equal(fresh(store, "L"), undefined);
 });
 
+test("lead finish defers automatic rotation until a new message needs the session", () => {
+  const { hub, store, lead, kid } = makeHub();
+  hub.touch(kid, { status: "done" });
+  assert.deepEqual(hub.leadCleanup.request(lead.id), { ok: true });
+  hub.endTurn(lead);
+  assert.equal(store.data.sessions.L, lead);
+  assert.equal(fresh(store, "L"), undefined);
+
+  hub.send(lead.id, "Continue with the new task.");
+  const replacement = fresh(store, "L");
+  assert.ok(replacement);
+  assert.match(handoff(hub, replacement.id), /Continue with the new task\./);
+  assert.equal(hub.leadCleanup.scheduled(lead), false);
+});
+
 test("patchTeam saves autoRotateLong; it is on by default", () => {
   const store = { data: { settings: {} } };
   assert.equal(teamSettings(store).autoRotateLong, true);

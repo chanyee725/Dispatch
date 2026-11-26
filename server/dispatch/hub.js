@@ -719,7 +719,7 @@ export class Hub extends EventEmitter {
 
   deliver(s, r, text, images = null, onDelivery) {
     // Past the length guard (#969): the message goes to a fresh session instead, with the handoff in front.
-    if (!onDelivery && this.replaceDue(s) && this.replaceSession(s, { text, images })) return;
+    if (!onDelivery && this.replaceDue(s, { newMessage: true }) && this.replaceSession(s, { text, images })) return;
     const rotate = this.shouldRotate(s);
     if (!rotate && r.proc && s.provider !== "claude") {
       const name = s.provider === "openai" ? "Codex" : "Gemini";
@@ -879,11 +879,12 @@ export class Hub extends EventEmitter {
    * between turns (idle, no permission asked), it can run (provider, model, limits) and, for a teammate, its lead was
    * already told to replace it (the swap then comes with the teammate's next turn).
    */
-  replaceDue(s) {
+  replaceDue(s, { newMessage = false } = {}) {
     const t = this.team();
     if (!s || !t.autoRotateLong || !longOver(s, t) || s.status !== "idle" || s._killed) return false;
     const r = this.live.get(s.id);
-    if (r?.replacing || r?.drainingLeadInbox || r?.perms?.size || s.asksUser || this.leadCleanup.scheduled(s)) return false;
+    if (r?.replacing || r?.drainingLeadInbox || r?.perms?.size || s.asksUser) return false;
+    if (!newMessage && this.leadCleanup.scheduled(s)) return false;
     if (s.parent && !s.longRun?.told) return false;
     if (this.pausedFor(s) || this.runBlock(s) || this.holdTeam?.(s.parent ?? s.id)) return false;
     if (s.provider === "claude" && this.guardCheck(1)) return false;
