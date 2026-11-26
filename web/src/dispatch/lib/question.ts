@@ -139,7 +139,7 @@ export function answersMessage(items: readonly QuestionItem[], answers: readonly
 }
 
 /** Shown when a session waits for an answer but no question can be read (#886): never an empty card. */
-export const NO_QUESTION: Question = { summary: '질문 내용을 찾지 못했어요. 대화의 마지막 메시지를 보고 답해 주세요.', options: [] };
+export const NO_QUESTION: Question = { summary: '질문 내용을 찾지 못했어요.', options: [] };
 
 /**
  * The "답할 것" card's question: from the last assistant entry of this turn in the tab's transcript, else from the
