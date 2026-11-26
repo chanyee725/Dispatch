@@ -279,7 +279,7 @@ for (const retryFinish of [false, true]) {
 
 for (const automatic of [false, true]) {
   test(`Gemini empty success cannot satisfy finish with automatic cleanup ${automatic ? "on" : "off"}`, () => {
-    const { hub, lead, sessions, cleanup, events } = fixture({ automatic, status: "running" });
+    const { hub, lead, tasks, sessions, cleanup, events } = fixture({ automatic, status: "running" });
     Object.assign(lead, { provider: "gemini", turns: 0 });
     const step = step_update => hub.onGemini(lead, { event: "step_update", step_update });
     const success = result => hub.onGemini(lead, { event: "result", result: { status: "OK", ...result } });
@@ -294,6 +294,22 @@ for (const automatic of [false, true]) {
     mock.timers.tick(120_000);
     assert.equal(sessions.L, lead);
     assert.deepEqual(events, []);
+
+    if (automatic) {
+      assert.deepEqual(cleanup.request(lead.id), { ok: true });
+      assert.equal(cleanup.scheduled(lead), true);
+
+      // Revoking this request must leave the older report requirement in place.
+      tasks.T.stage = "merge";
+      hub.emit("tasks", hub.tasks);
+      assert.equal(cleanup.scheduled(lead), false);
+      tasks.T.stage = "done";
+      hub.emit("tasks", hub.tasks);
+      assert.equal(cleanup.scheduled(lead), false);
+      mock.timers.tick(120_000);
+      assert.equal(sessions.L, lead);
+      assert.deepEqual(events, []);
+    }
 
     hub.rt(lead.id).agyTurn = { text: "", ended: false };
     hub.touch(lead, { status: "running" });

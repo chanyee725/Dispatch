@@ -189,8 +189,10 @@ test("a confirmed looser sandbox stops before turn/start", async t => {
   assert.equal(hub.get(session.id).status, "error");
 });
 
-for (const automatic of [false, true]) {
-  test(`Codex commentary cannot satisfy finish with automatic cleanup ${automatic ? "on" : "off"}`, async t => {
+for (const [automatic, idleRetry] of [[false, false], [true, false], [false, true]]) {
+  const scenario = idleRetry ? "a fresh idle Codex finish gets its own grace period"
+    : `Codex commentary cannot satisfy finish with automatic cleanup ${automatic ? "on" : "off"}`;
+  test(scenario, async t => {
     t.mock.timers.enable({ apis: ["setTimeout"] });
     const lead = {
       id: "L", status: "idle", provider: "openai", model: MODEL.id, role: ROLE.id,
@@ -218,6 +220,16 @@ for (const automatic of [false, true]) {
     assert.equal(cleanup.scheduled(lead), false);
     t.mock.timers.tick(120_000);
     assert.equal(hub.get(lead.id), lead);
+
+    if (idleRetry) {
+      assert.deepEqual(cleanup.request(lead.id), { ok: true });
+      assert.equal(cleanup.scheduled(lead), true);
+      t.mock.timers.tick(119_999);
+      assert.equal(hub.get(lead.id), lead);
+      t.mock.timers.tick(1);
+      assert.equal(hub.get(lead.id), undefined);
+      return;
+    }
 
     hub.startCodex(lead, "test");
     const nextTurn = "turn-2";

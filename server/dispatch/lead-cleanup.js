@@ -66,8 +66,8 @@ export class LeadCleanup {
     if (!job) this.pending.set(id, job = { lead, timer: null });
     // Promote an already armed automatic job without extending its grace period.
     job.explicit = true;
-    if (lead.status === "running") {
-      job.awaitingReport = true;
+    job.awaitingReport = lead.status === "running";
+    if (job.awaitingReport) {
       const runtime = this.hub.rt(id);
       runtime.finishReportAfterSeq = runtime.seq;
     }
@@ -125,13 +125,14 @@ export class LeadCleanup {
     }
     if (lead.status !== "idle" || job?.timer || job?.checking) return;
     const runtime = this.hub.live.get(id);
-    // Keep the report requirement across cancelled jobs and later automatic checks.
+    // A fresh idle request can arm its own timer. Automatic retries still need the report.
     if (runtime?.finishReportAfterSeq !== undefined) {
-      if ((runtime.finalReportSeq ?? 0) <= runtime.finishReportAfterSeq) {
+      if ((runtime.finalReportSeq ?? 0) > runtime.finishReportAfterSeq) {
+        delete runtime.finishReportAfterSeq;
+      } else if (!explicit || job.awaitingReport) {
         this.cancel(id);
         return;
       }
-      delete runtime.finishReportAfterSeq;
     }
     if (job) delete job.awaitingReport;
     if (!job) this.pending.set(id, job = { lead, timer: null });
