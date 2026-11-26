@@ -2,11 +2,12 @@ import { after, afterEach, beforeEach, mock, test } from "node:test";
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
 import { EventEmitter } from "node:events";
-import { existsSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Hub } from "../../server/dispatch/hub.js";
 import { dropWorktree } from "../../server/dispatch/git.js";
+import { which } from "../../server/dispatch/cli.js";
 import { patchTeam, teamSettings } from "../../server/dispatch/settings.js";
 
 // Auto-remove of finished teammates (#632, ported from Dispatch #39) on a real Hub with fake CLI processes:
@@ -337,4 +338,49 @@ test("auto-remove keeps a worktree with a commit made on a detached HEAD and tel
   assert.ok(existsSync(wt));
   assert.match(said(leadProc), new RegExp(`분리된 HEAD라 worktree를 남겼어요 \\(커밋 ${sha}\\)`));
   assert.equal(await dropWorktree(root, wt), true, "manual removal is unchanged");
+});
+
+test("strict worktree removal preserves a file saved after status and worktrees that require force", async (t) => {
+  mock.timers.reset();
+  const root = tmp("drawing-ar-late-write-");
+  const git = (...a) => execFileSync("git", ["-C", root, ...a], { stdio: "pipe" });
+  git("init", "-q");
+  git("-c", "user.email=test@example.invalid", "-c", "user.name=test", "commit", "-q", "--allow-empty", "-m", "init");
+  const wt = join(root, "late");
+  git("worktree", "add", "-qb", "late", wt);
+  const draft = join(wt, "draft.txt");
+  const bin = tmp("drawing-ar-late-git-");
+  const wrapper = join(bin, "git");
+  const realGit = which("git");
+  // Interpose only in this test: Git reads a clean status, then an editor saves an untracked file.
+  writeFileSync(wrapper, `#!${process.execPath}
+import { execFileSync } from "node:child_process";
+import { writeFileSync } from "node:fs";
+const args = process.argv.slice(2);
+try {
+  const out = execFileSync(${JSON.stringify(realGit)}, args, { stdio: ["ignore", "pipe", "pipe"] });
+  if (args[1] === ${JSON.stringify(wt)} && args[2] === "status" && args.includes("--ignored=matching")) {
+    writeFileSync(${JSON.stringify(draft)}, "saved after status");
+  }
+  process.stdout.write(out);
+} catch (error) {
+  process.stderr.write(error.stderr ?? "");
+  process.exitCode = error.status ?? 1;
+}
+`);
+  chmodSync(wrapper, 0o755);
+  const originalPath = process.env.PATH;
+  process.env.PATH = `${bin}:${originalPath}`;
+  t.after(() => { process.env.PATH = originalPath; });
+
+  assert.equal(await dropWorktree(root, wt, { strict: true }), false);
+  assert.equal(readFileSync(draft, "utf8"), "saved after status");
+
+  const noise = join(root, "unignored-noise");
+  git("worktree", "add", "-qb", "unignored-noise", noise);
+  execFileSync("mkdir", ["-p", join(noise, "node_modules")]);
+  writeFileSync(join(noise, "node_modules", "module.js"), "");
+  assert.equal(await dropWorktree(root, noise, { strict: true }), false);
+  assert.ok(existsSync(noise));
+  assert.equal(await dropWorktree(root, noise), true, "manual removal still allows known noise");
 });

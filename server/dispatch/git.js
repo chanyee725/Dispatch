@@ -108,7 +108,9 @@ export async function dropWorktree(root, dir, { strict = false, info = {} } = {}
     if (await detachedOrOrphan(dir, info)) return false;
   } else st = await out(git(dir, "status", "--porcelain"));
   if (st.split("\n").filter(Boolean).some(l => !noiseLine(l))) return false;
-  try { await git(root, "worktree", "remove", "--force", dir); return true; } catch { return false; }
+  // Let Git check again at removal: a file can be saved after the first status check.
+  const flags = strict ? [] : ["--force"];
+  try { await git(root, "worktree", "remove", ...flags, dir); return true; } catch { return false; }
 }
 
 async function detachedOrOrphan(dir, info) {
