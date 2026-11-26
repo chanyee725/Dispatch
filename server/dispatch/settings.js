@@ -29,7 +29,9 @@ export const TEAM_DEFAULTS = () => ({
    * forgot stop_session(remove: true) and finished teammates piled up (Dispatch issue #39, Drawing #632).
    */
   autoRemoveDone: true,
-  /** Grace period before that removal, in seconds. */
+  /** Opt in to removing idle leads after their board work is verified. */
+  autoRemoveFinishedLeads: false,
+  /** Grace period before session cleanup, in seconds. */
   autoRemoveGraceSec: 120,
   /** Default model per role id, overriding the built-in preset. */
   roleModels: {},
@@ -102,7 +104,7 @@ export function patchTeam(store, patch, { roles, models }) {
   if ("stuckSilentMinutes" in patch) next.stuckSilentMinutes = int(patch.stuckSilentMinutes, 0, 240);
   if ("stuckMismatchMinutes" in patch) next.stuckMismatchMinutes = int(patch.stuckMismatchMinutes, 0, 240);
   if ("stuckEtaRatio" in patch) next.stuckEtaRatio = ratio(patch.stuckEtaRatio, 1, 10);
-  for (const k of ["replyStyle", "shareDeps", "dropWorktrees", "autoRemoveDone", "autoRotateLong"]) if (k in patch) next[k] = patch[k] === true;
+  for (const k of ["replyStyle", "shareDeps", "dropWorktrees", "autoRemoveDone", "autoRemoveFinishedLeads", "autoRotateLong"]) if (k in patch) next[k] = patch[k] === true;
   if (patch.roleModels && typeof patch.roleModels === "object") {
     const rm = { ...(cur.roleModels || {}) };
     for (const [role, model] of Object.entries(patch.roleModels)) {

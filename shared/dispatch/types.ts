@@ -168,6 +168,8 @@ export interface TeamSettings {
   dropWorktrees: boolean;
   /** Remove a finished teammate after `autoRemoveGraceSec` seconds (#632). */
   autoRemoveDone?: boolean;
+  /** Remove an idle lead after its board work is verified and the grace period has passed (#23). */
+  autoRemoveFinishedLeads?: boolean;
   autoRemoveGraceSec?: number;
   roleModels: Record<string, string>;
 }

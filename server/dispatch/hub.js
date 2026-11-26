@@ -6,7 +6,7 @@ import { redact } from "./redact.js";
 import { permissionResponse } from "./permission-response.js";
 import { branchStatus, dropWorktree, integrationBranch, prepareWorkdir, verifyMerged } from "./git.js";
 import { defaultEta, enterStage } from "./tasks.js";
-import { AUTO_CLOSE_STAGES, closeEvidence } from "./task-close.js";
+import { AUTO_CLOSE_STAGES, closeEvidence, taskIssue } from "./task-close.js";
 import { NAMES } from "./roles.js";
 import { MODE_IDS } from "./mode-profiles.js";
 import { checkLane, etaHint, laneItems, recordRunTime } from "./lanes.js";
@@ -22,10 +22,17 @@ import {
   mixin, badRequest, COMMIT_SHA, sameCommitSha, PROVIDERS, UNSUPPORTED_MODEL, PROVIDER_NAMES, checkPerm, checkEffort, MAX_TRANSCRIPT, RESUME_TEXT, isOpenStatus, clip, RESUME_ID, userContent, activityOf, maskedPerm,
 } from "./hub-util.js";
 import { HubAutoRemove } from "./hub-auto-remove.js";
+import { LeadCleanup } from "./lead-cleanup.js";
 import { HubLeadInbox } from "./hub-lead-inbox.js";
 import { HubTickets } from "./hub-tickets.js";
 import { HubRunners } from "./hub-runners.js";
 export { AGY_MODES, CODEX_SANDBOX, PROVIDERS, PROVIDER_NAMES, UNSUPPORTED_MODEL, activityOf, checkEffort, checkPerm, userContent } from "./hub-util.js";
+
+// Compare the fields that identify what was checked and who owns the card.
+function sameTaskCandidate(tasks, task, snapshot) {
+  return tasks[snapshot.id] === task &&
+    ["id", "lead", "folder", "owner", "title", "commit", "stage"].every(key => task[key] === snapshot[key]);
+}
 
 export class Hub extends EventEmitter {
   constructor({ root, store, models, roles, port, limits, workspaceDir = null, spawnCli: spawner = spawnCli }) {
@@ -92,6 +99,7 @@ export class Hub extends EventEmitter {
       if (t.folder === undefined && folder !== undefined) { t.folder = folder; colored = true; }
     }
     if (colored) store.save();
+    this.leadCleanup = new LeadCleanup(this);
   }
 
   get port() { return this.portOf(); }
@@ -371,6 +379,7 @@ export class Hub extends EventEmitter {
   async setTask(lead, input) {
     const STAGES = ["plan", "impl", "review", "test", "merge", "done", "blocked"];
     const all = (this.store.data.tasks ||= {});
+    const previousCommit = input.id ? all[input.id]?.commit : undefined;
     const title = redact(String(input.title || "").trim()).slice(0, 120);
     // A step id ties the task to a step of the lead's approved plan; checked before anything changes.
     const step = input.step === undefined ? undefined : input.step ? String(input.step).trim() : null;
@@ -402,12 +411,15 @@ export class Hub extends EventEmitter {
     let stage = input.stage && STAGES.includes(input.stage) && input.stage !== t.stage ? input.stage : null;
     if (stage === "done") {
       if (commit) {
-        const owner = t.lead;
+        const snapshot = { ...t };
         const check = await verifyMerged(this.root, commit);
-        if (all[t.id] !== t || t.lead !== owner) {
+        if (all[t.id] !== t || t.lead !== snapshot.lead) {
           throw Object.assign(new Error("병합을 확인하는 동안 작업 관리자가 바뀌었어요"), { status: 409 });
         }
-        t.mergeCheck = { ...check, at: Date.now() };
+        if (!sameTaskCandidate(this.store.data.tasks, t, snapshot)) {
+          throw Object.assign(new Error("병합을 확인하는 동안 작업이 바뀌었어요. 현재 카드로 다시 시도하세요"), { status: 409 });
+        }
+        t.mergeCheck = { ...check, candidate: commit, at: Date.now() };
         if (!check.ok) stage = null; // stays open; the attention strip shows mergeCheck
       } else {
         t.mergeCheck = { ok: null, commit: null, base: null, reason: "커밋 없이 닫혀 병합을 확인하지 않았어요", at: Date.now() };
@@ -439,6 +451,8 @@ export class Hub extends EventEmitter {
       // A new stage without eta_minutes: estimate from finished tasks of this project (#1028).
       defaultEta(t, Object.values(all));
     }
+    // Editing a closed card's commit invalidates its old merge proof.
+    if (t.stage === "done" && !stage && input.commit !== undefined && t.commit !== previousCommit) t.mergeCheck = null;
     if (t.stage === "done") { t.etaAt = null; t.etaEstimated = false; }
     if (input.note !== undefined) t.note = redact(String(input.note || "")).slice(0, 200);
     t.updatedAt = Date.now();
@@ -516,7 +530,8 @@ export class Hub extends EventEmitter {
     this.autoClosing = true;
     try {
       // Tasks of a removed lead are included: no one is left to close them, and they still pile up in the store.
-      const open = Object.values(this.store.data.tasks || {}).filter(t => AUTO_CLOSE_STAGES.has(t.stage));
+      const open = Object.values(this.store.data.tasks || {}).filter(t => AUTO_CLOSE_STAGES.has(t.stage))
+        .map(task => ({ task, snapshot: { ...task } }));
       if (!open.length) return [];
       let prs = null;
       if (issues?.allPrs) {
@@ -534,13 +549,12 @@ export class Hub extends EventEmitter {
       };
       const closed = [];
       let changed = false;
-      for (const t of open) {
-        const ev = await closeEvidence(t, { verify, branchState, prs, issueState });
-        // The lead may have moved the task while gh or git answered.
-        if (!AUTO_CLOSE_STAGES.has(t.stage)) continue;
+      for (const { task: t, snapshot } of open) {
+        const ev = await closeEvidence(snapshot, { verify, branchState, prs, issueState });
+        if (!sameTaskCandidate(this.store.data.tasks, t, snapshot)) continue;
         const now = Date.now();
         if (ev.ok) {
-          t.mergeCheck = { ok: true, commit: ev.commit ?? null, base: ev.base ?? null, reason: null, auto: true, via: ev.via, evidence: ev.evidence, at: now };
+          t.mergeCheck = { ok: true, commit: ev.commit ?? null, base: ev.base ?? null, reason: null, auto: true, via: ev.via, evidence: ev.evidence, candidate: snapshot.commit ?? null, issue: taskIssue(snapshot), at: now };
           enterStage(t, "done", now);
           t.etaAt = null;
           t.stuck = null;
@@ -793,7 +807,7 @@ export class Hub extends EventEmitter {
 
   deliver(s, r, text, images = null, onDelivery) {
     // Past the length guard (#969): the message goes to a fresh session instead, with the handoff in front.
-    if (!onDelivery && this.replaceDue(s) && this.replaceSession(s, { text, images })) return;
+    if (!onDelivery && this.replaceDue(s, { newMessage: true }) && this.replaceSession(s, { text, images })) return;
     const rotate = this.shouldRotate(s);
     if (!rotate && r.proc && s.provider !== "claude") {
       const name = s.provider === "openai" ? "Codex" : "Gemini";
@@ -961,11 +975,12 @@ export class Hub extends EventEmitter {
    * between turns (idle, no permission asked), it can run (provider, model, limits) and, for a teammate, its lead was
    * already told to replace it (the swap then comes with the teammate's next turn).
    */
-  replaceDue(s) {
+  replaceDue(s, { newMessage = false } = {}) {
     const t = this.team();
     if (!s || !t.autoRotateLong || !longOver(s, t) || s.status !== "idle" || s._killed) return false;
     const r = this.live.get(s.id);
     if (r?.replacing || r?.drainingLeadInbox || r?.perms?.size || s.asksUser) return false;
+    if (!newMessage && this.leadCleanup.scheduled(s)) return false;
     if (s.parent && !s.longRun?.told) return false;
     if (this.pausedFor(s) || this.runBlock(s) || this.holdTeam?.(s.parent ?? s.id)) return false;
     if (s.provider === "claude" && this.guardCheck(1)) return false;
@@ -1198,6 +1213,7 @@ export class Hub extends EventEmitter {
 
   stopAll() {
     this.stopping = true;
+    this.leadCleanup.stop();
     for (const r of this.live.values()) r.proc?.kill("SIGTERM");
   }
 }

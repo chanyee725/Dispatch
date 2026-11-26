@@ -2,10 +2,11 @@
 // Runs against a scratch git repo with one commit in a temp dir; no agent CLI is started.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { execFileSync, spawnSync } from 'node:child_process';
+import { execFileSync, spawn, spawnSync } from 'node:child_process';
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { createInterface } from 'node:readline';
 import { createApp } from '../../server/app.js';
 import * as workspace from '../../server/workspace/index.js';
 import * as dispatch from '../../server/dispatch/index.js';
@@ -442,4 +443,80 @@ test('account email: asked only after the CLI was found logged in, never in /api
     await stop();
     rmSync(root, { recursive: true, force: true });
   }
+});
+
+test('lead finish uses the saved setting, lead-only MCP and one SSE event per removal', { timeout: 15_000 }, async (t) => {
+  const { root, ws } = scratchRepo();
+  const { deps } = fakeDeps(root);
+  const { app, base, stop } = await start(ws, deps);
+  t.after(async () => {
+    await stop();
+    rmSync(root, { recursive: true, force: true });
+  });
+
+  const hub = app.ctx.modules.dispatch.hub;
+  const { sessions } = hub.store.data;
+  sessions.auto = { id: 'auto', canSpawn: true, status: 'running', turns: 0 };
+  sessions.lead = { id: 'lead', canSpawn: true, provider: 'claude', status: 'running', turns: 0 };
+  sessions.child = { id: 'child', parent: 'lead', status: 'idle' };
+  const post = (path, body, headers = W) => fetch(base + path, { method: 'POST', headers, body: JSON.stringify(body) });
+  const cli = (env) => {
+    const child = spawn(process.execPath, ['server/dispatch/mcp.js'], {
+      env: { DISPATCH_URL: base, ...env }, stdio: ['pipe', 'pipe', 'inherit'],
+    });
+    const lines = createInterface({ input: child.stdout });
+    const responses = lines[Symbol.asyncIterator]();
+    t.after(() => { child.stdin.end(); lines.close(); child.kill(); });
+    return async (method, params) => {
+      child.stdin.write(JSON.stringify({ jsonrpc: '2.0', id: 1, method, params }) + '\n');
+      return JSON.parse((await responses.next()).value);
+    };
+  };
+  const result = (res) => JSON.parse(res.result.content[0].text);
+  const leadMcp = cli({ DISPATCH_PARENT: 'lead' });
+  const childMcp = cli({ DISPATCH_SELF: 'child', DISPATCH_MODE: 'child' });
+  const callFinish = () => leadMcp('tools/call', { name: 'finish', arguments: {} });
+  assert.ok((await leadMcp('tools/list')).result.tools.some((tool) => tool.name === 'finish'));
+  assert.deepEqual((await childMcp('tools/list')).result.tools.map((tool) => tool.name), ['message_lead']);
+  assert.equal((await post('/api/sessions/lead/finish', {}, {})).status, 403);
+  assert.equal((await post('/api/sessions/missing/finish', {})).status, 404);
+  assert.deepEqual(await (await post('/api/sessions/child/finish', {})).json(), { ok: false, reason: 'not-lead' });
+  assert.deepEqual(result(await callFinish()), { ok: false, reason: 'team' });
+  hub.touch(sessions.child, { status: 'done' });
+
+  assert.equal((await post('/api/settings', { team: { autoRemoveGraceSec: 3 } })).status, 200);
+  const stream = await sse(base, (events) => events.filter((e) => e.event === 'leadFinished').length === 2);
+  t.mock.timers.enable({ apis: ['setTimeout'] });
+  assert.deepEqual(result(await callFinish()), { ok: true });
+  t.mock.timers.tick(3_000);
+  assert.ok(sessions.lead, 'the MCP reply does not end the turn');
+  hub.onClaude(sessions.lead, { type: 'assistant', message: { content: [{ type: 'text', text: 'Work complete.' }] } });
+  hub.onClaude(sessions.lead, { type: 'result' });
+  assert.equal(hub.transcript('lead').at(-1).text, 'Work complete.');
+  t.mock.timers.tick(2_999);
+  assert.ok(sessions.lead);
+  assert.ok(sessions.child);
+  t.mock.timers.tick(1);
+  assert.equal(sessions.lead, undefined);
+  assert.equal(sessions.child, undefined);
+
+  const card = await hub.setTask('auto', { title: 'Verified card', stage: 'merge' });
+  const commit = execFileSync('git', ['-C', root, 'rev-parse', 'HEAD'], { encoding: 'utf8' }).trim();
+  const done = await hub.setTask('auto', { id: card.id, stage: 'done', commit });
+  assert.equal(done.mergeCheck.ok, true);
+  hub.touch(sessions.auto, { status: 'idle', turns: 1 });
+  t.mock.timers.tick(3_000);
+  assert.ok(sessions.auto, 'automatic cleanup defaults to off');
+
+  assert.equal((await post('/api/settings', { team: { autoRemoveFinishedLeads: true } })).status, 200);
+  t.mock.timers.tick(2_999);
+  assert.ok(sessions.auto);
+  t.mock.timers.tick(1);
+  assert.equal(sessions.auto, undefined);
+
+  const events = await stream.done;
+  assert.deepEqual(events.filter((e) => e.event === 'leadFinished').map((e) => e.data),
+    [{ id: 'lead', reason: 'explicit' }, { id: 'auto', reason: 'automatic' }]);
+  assert.deepEqual(events.filter((e) => e.event === 'removed').map((e) => e.data.id), ['child', 'lead', 'auto']);
+  assert.equal(hub.store.data.tasks[card.id].stage, 'done', 'verified cards remain on the board');
 });

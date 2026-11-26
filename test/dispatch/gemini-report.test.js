@@ -148,6 +148,8 @@ async function twoTurns(second) {
   ]);
   t.hub.startGemini(t.kid, "준비되면 알려줘");
   await until(() => t.sent.length === 1 && !t.hub.rt("K").proc);
+  // The fake lead has accepted the first report and must finish before its inbox can deliver the next.
+  t.hub.onClaude(t.hub.get("L"), { type: "result", subtype: "success" });
   writeFileSync(t.bin.env.FAKE_CLI_SCENARIO_AGY, second.map(l => JSON.stringify(l)).join("\n") + "\n");
   t.hub.send("K", "작업 시작해");
   await until(() => t.sent.length === 2 && !t.hub.rt("K").proc);

@@ -12,6 +12,7 @@
 // its title. Other `#N` in a title ("(#879 회귀 수정)", "PR #907 …") only mention other work and are no evidence.
 // Without evidence the task stays open and `autoCheck.reason` says why.
 import { issueNumber, issueOfBranch } from "./ledger.js";
+import { isCommitSha } from "./git.js";
 
 /** Stages the timer looks at; done and blocked are left alone. */
 export const AUTO_CLOSE_STAGES = new Set(["plan", "impl", "review", "test", "merge"]);
@@ -21,7 +22,6 @@ const HASH_STAGES = new Set(["review", "test", "merge"]);
 const TRAILING = /(?:^|[^\w&])\(?#(\d{1,7})\)?\s*$/;
 // Leads also start a task title with its issue ("#879 세션 보드 대시보드 카드화"); a leading "PR #N" is a PR, not an issue.
 const LEADING = /^\s*#(\d{1,7})(?=\s|$)/;
-const SHA = /^[0-9a-f]{7,40}$/i;
 
 /** The issue a task works on: the one its commit branch names, else a `#N` that starts or ends its title; or null. */
 export function taskIssue(t) {
@@ -43,7 +43,7 @@ export function taskIssue(t) {
 export async function closeEvidence(t, { verify, branchState = async () => null, prs, issueState }) {
   const issue = taskIssue(t);
   const commit = typeof t.commit === "string" ? t.commit.trim() : "";
-  const isBranch = commit && !SHA.test(commit);
+  const isBranch = commit && !isCommitSha(commit);
   const why = [];
   if (commit) {
     let mayVerify = false;

@@ -182,20 +182,28 @@ export class HubRunners {
           this.store.addDaily(s.model, s.role, delta);
           this.checkCtx(s); this.checkLong(s);
         }
-        for (const c of msg.content || []) {
-          if (c.type === "text" && c.text.trim()) { this.push(s, { kind: "assistant", text: c.text }); s.last = redact(clip(c.text, 400)); r.lastText = c.text; }
+        const content = msg.content || [];
+        for (const c of content) {
+          if (c.type === "text" && c.text.trim()) {
+            this.push(s, { kind: "assistant", text: c.text });
+            s.last = redact(clip(c.text, 400));
+            r.lastText = c.text;
+            if (!m.error && msg.model !== "<synthetic>") r.claudeTextSeq = r.seq;
+          }
           else if (c.type === "tool_use") {
             this.push(s, { kind: "tool", name: c.name, text: clip(JSON.stringify(c.input), 600), ...(c.id ? { callId: c.id } : {}) });
             const key = c.name === "Bash" && checkKey(c.input?.command);
             if (key && c.id) r.checks.set(c.id, { key, kind: activityOf("Bash", c.input.command) });
           }
         }
+        if (content.some(c => c.type === "tool_use")) r.claudeTextSeq = 0;
         this.touch(s, { status: r.perms.size ? "waiting" : "running" });
         break;
       }
       case "user":
         for (const c of (Array.isArray(m.message?.content) ? m.message.content : [])) {
           if (c.type === "tool_result") {
+            r.claudeTextSeq = 0;
             const text = Array.isArray(c.content) ? c.content.map(x => x.text || "").join("") : c.content;
             this.push(s, { kind: "tool_result", text: clip(text, 1500), error: !!c.is_error, ...(c.tool_use_id ? { callId: c.tool_use_id } : {}) });
             const check = r.checks.get(c.tool_use_id);
@@ -237,6 +245,9 @@ export class HubRunners {
           if (s.canSpawn && !r.pauseInterrupted) r.leadInboxHeld = true;
           this.push(s, { kind: "error", text: clip(m.result || m.subtype, 400) });
         }
+        // Keep the last assistant text after tool activity as the successful turn's final answer.
+        r.finalReportSeq = m.is_error || r.pauseInterrupted ? 0 : (r.claudeTextSeq ?? 0);
+        r.claudeTextSeq = 0;
         r.pauseInterrupted = false;
         this.touch(s, { status: "idle", turns: s.turns + 1, turnsSinceRotate: (s.turnsSinceRotate ?? s.turns ?? 0) + 1 });
         this.endTurn(s);
@@ -266,6 +277,7 @@ export class HubRunners {
     const settleStart = this.attach(s, proc, "close", onStart);
     this.cancelAutoRemove(s.id);
     runtime.lastText = "";
+    let finalSeq = 0;
     this.touch(s, { status: "running", error: null, ctx: null, ctxWindow: 0, ctxHigh: null });
     codexTurn(proc, {
       threadId: s.providerSessionId, cwd: s.cwd, model: s.model, sandbox, text,
@@ -289,10 +301,14 @@ export class HubRunners {
         else s.ctxHigh = null;
         this.touch(s);
       },
-      item: it => this.onCodexItem(s, it),
+      item: it => {
+        this.onCodexItem(s, it);
+        if (it.type === "agentMessage" && it.phase === "final_answer" && typeof it.text === "string" && it.text.trim()) finalSeq = runtime.seq;
+      },
       finish: (status, error) => {
         settleStart(false);
         if (status === "completed") {
+          runtime.finalReportSeq = finalSeq;
           this.touch(s, { status: "idle", turns: s.turns + 1, turnsSinceRotate: (s.turnsSinceRotate ?? s.turns ?? 0) + 1 });
           this.endTurn(s);
         } else if (status === "interrupted") {
@@ -377,9 +393,13 @@ export class HubRunners {
   /** @this {import("./hub-util.js").HubThis} */
   endGeminiTurn(s, turn, response, denied) {
     turn.ended = true;
-    let text = response && response.trim() ? response : turn.text.trim() ? turn.text : "";
+    const hasResponse = typeof response === "string" && !!response.trim();
+    let text = hasResponse ? response : turn.text.trim() ? turn.text : "";
     const blocked = (Array.isArray(denied) ? denied : [])
       .map(d => [d?.display_name, d?.action].filter(Boolean).join(" ")).filter(Boolean);
+    const runtime = this.rt(s.id);
+    // Only provider text counts toward finish. Synthetic reports still tell teammates why a turn ended.
+    runtime.finalReportSeq = hasResponse ? ++runtime.seq : blocked.length ? 0 : (turn.reportSeq ?? 0);
     if (blocked.length) {
       const note = `[Dispatch] agy가 headless에서 허락을 물을 수 없어 막은 도구: ${[...new Set(blocked)].join(", ")}. 이 턴은 거기서 끝났다.`;
       this.push(s, { kind: "info", text: note });
@@ -387,7 +407,7 @@ export class HubRunners {
     }
     if (!text) text = "[Dispatch] 답변 없이 턴이 끝났다.";
     s.last = redact(clip(text, 400));
-    this.rt(s.id).lastText = text;
+    runtime.lastText = text;
     this.touch(s, { status: "idle", turns: s.turns + 1, turnsSinceRotate: (s.turnsSinceRotate ?? s.turns ?? 0) + 1 });
     this.endTurn(s);
   }
@@ -415,7 +435,10 @@ export class HubRunners {
             if (chunk) turn.text += chunk;
             else turn.text = String(su.text);
             const shown = chunk || String(su.text);
-            if (shown.trim()) this.push(s, { kind: "assistant", text: shown });
+            if (shown.trim()) {
+              this.push(s, { kind: "assistant", text: shown });
+              turn.reportSeq = r.seq;
+            } else if (!turn.text.trim()) turn.reportSeq = 0;
             if (turn.text.trim()) {
               s.last = redact(clip(turn.text, 400));
               r.lastText = turn.text;
@@ -431,6 +454,8 @@ export class HubRunners {
         } else if (stale) {
           // an old process's tool steps are not shown
         } else if (su.step_type === "tool") {
+          // A streamed message before tool activity cannot be the turn's final answer.
+          turn.reportSeq = 0;
           if (su.state === "ACTIVE") {
             this.push(s, { kind: "tool", name: su.tool_name, text: clip(JSON.stringify(su.tool_info?.parameters || {}), 600) });
           } else if (su.state === "DONE") {
