@@ -202,3 +202,26 @@ test("auto close without the gh feed still closes by commit, and runs one at a t
   assert.equal(store.data.tasks.b.stage, "merge");
   assert.match(store.data.tasks.b.autoCheck.reason, /PR 정보를 읽지 못했어요/);
 });
+
+for (const mode of ["automatic", "explicit"]) {
+  for (const change of ["candidate", "lead", "card"]) {
+    test(`${mode} close discards merge proof when the ${change} changes during verification`, async () => {
+      const { dir, head } = scratchRepo();
+      const { hub, store } = await makeHub(dir);
+      const current = task("a", { commit: head, lead: "L" });
+      store.data.tasks = { a: current };
+      const close = mode === "automatic"
+        ? hub.autoCloseTasks()
+        : hub.setTask("L", { id: "a", stage: "done", commit: head });
+      if (change === "candidate") await hub.setTask("L", { id: "a", commit: "feat/903-open" });
+      if (change === "lead") current.lead = "next";
+      if (change === "card") store.data.tasks.a = { ...current };
+
+      if (mode === "automatic") assert.deepEqual(await close, []);
+      else await assert.rejects(close, { status: 409 });
+      assert.equal(current.stage, "merge");
+      assert.equal(store.data.tasks.a.mergeCheck, undefined);
+      if (change === "candidate") assert.equal(current.commit, "feat/903-open");
+    });
+  }
+}

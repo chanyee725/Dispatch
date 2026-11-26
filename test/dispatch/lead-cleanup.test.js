@@ -7,7 +7,7 @@ import { patchTeam, teamSettings } from "../../server/dispatch/settings.js";
 function fixture({ automatic = true, status = "idle", card = true } = {}) {
   const lead = { id: "L", canSpawn: true, provider: "openai", status: "idle" };
   const sessions = { L: lead };
-  const tasks = card ? { T: { id: "T", lead: "L", stage: "done", mergeCheck: { ok: true } } } : {};
+  const tasks = card ? { T: { id: "T", lead: "L", stage: "done", commit: "a".repeat(7), mergeCheck: { ok: true, commit: "a".repeat(40) } } } : {};
   const tickets = {};
   const team = { autoRemoveFinishedLeads: automatic };
   const store = { data: { sessions, tasks, tickets, settings: { team } }, save() {} };
@@ -78,6 +78,10 @@ const blockers = [
   ["open ticket", "ticket", ({ tickets }) => { tickets.R = { lead: "L", status: "open" }; }],
   ["unfinished card", "board", ({ tasks }) => { tasks.T.stage = "merge"; }],
   ["unverified card", "board", ({ tasks }) => { delete tasks.T.mergeCheck; }],
+  ["proof for a different SHA", "board", ({ tasks }) => { tasks.T.commit = "b".repeat(7); }],
+  ["issue-linked PR without evidence for the named candidate", "board", ({ tasks }) => {
+    Object.assign(tasks.T.mergeCheck, { via: "pr", candidate: tasks.T.commit, issue: 23 });
+  }],
   ["closed issue without merge evidence", "board", ({ tasks }) => { tasks.T.mergeCheck.via = "issue"; }],
   ["active teammate", "team", ({ sessions }) => { sessions.K = { id: "K", parent: "L", status: "idle" }; }],
   ["active descendant behind a stopped teammate", "team", ({ sessions }) => {

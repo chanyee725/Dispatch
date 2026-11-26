@@ -6,7 +6,7 @@ import { redact } from "./redact.js";
 import { permissionResponse } from "./permission-response.js";
 import { branchStatus, dropWorktree, integrationBranch, prepareWorkdir, verifyMerged } from "./git.js";
 import { defaultEta, enterStage } from "./tasks.js";
-import { AUTO_CLOSE_STAGES, closeEvidence } from "./task-close.js";
+import { AUTO_CLOSE_STAGES, closeEvidence, taskIssue } from "./task-close.js";
 import { NAMES } from "./roles.js";
 import { MODE_IDS } from "./mode-profiles.js";
 import { checkLane, etaHint, laneItems, recordRunTime } from "./lanes.js";
@@ -27,6 +27,12 @@ import { HubLeadInbox } from "./hub-lead-inbox.js";
 import { HubTickets } from "./hub-tickets.js";
 import { HubRunners } from "./hub-runners.js";
 export { AGY_MODES, CODEX_SANDBOX, PROVIDERS, PROVIDER_NAMES, UNSUPPORTED_MODEL, activityOf, checkEffort, checkPerm, userContent } from "./hub-util.js";
+
+// Compare the fields that identify what was checked and who owns the card.
+function sameTaskCandidate(tasks, task, snapshot) {
+  return tasks[snapshot.id] === task &&
+    ["id", "lead", "folder", "owner", "title", "commit", "stage"].every(key => task[key] === snapshot[key]);
+}
 
 export class Hub extends EventEmitter {
   constructor({ root, store, models, roles, port, limits, workspaceDir = null, spawnCli: spawner = spawnCli }) {
@@ -392,18 +398,23 @@ export class Hub extends EventEmitter {
       all[t.id] = t;
       created = true;
     }
-    if (title) t.title = title;
-    if (input.commit !== undefined) t.commit = input.commit ? String(input.commit).trim().slice(0, 80) || null : null;
+    const commit = input.commit === undefined ? t.commit : String(input.commit || "").trim().slice(0, 80) || null;
     let stage = input.stage && STAGES.includes(input.stage) && input.stage !== t.stage ? input.stage : null;
     if (stage === "done") {
-      if (t.commit) {
-        const check = await verifyMerged(this.root, t.commit);
-        t.mergeCheck = { ...check, at: Date.now() };
+      if (commit) {
+        const snapshot = { ...t };
+        const check = await verifyMerged(this.root, commit);
+        if (!sameTaskCandidate(this.store.data.tasks, t, snapshot)) {
+          throw Object.assign(new Error("병합을 확인하는 동안 작업이 바뀌었어요. 현재 카드로 다시 시도하세요"), { status: 409 });
+        }
+        t.mergeCheck = { ...check, candidate: commit, at: Date.now() };
         if (!check.ok) stage = null; // stays open; the attention strip shows mergeCheck
       } else {
         t.mergeCheck = { ok: null, commit: null, base: null, reason: "커밋 없이 닫혀 병합을 확인하지 않았어요", at: Date.now() };
       }
     }
+    if (title) t.title = title;
+    if (input.commit !== undefined) t.commit = commit;
     if (stage) enterStage(t, stage);
     if (input.lane !== undefined) t.lane = checkLane(input.lane) ?? null;
     // A merged task is one past run of its lane; new tasks get an ETA hint from those (#768).
@@ -442,7 +453,8 @@ export class Hub extends EventEmitter {
     this.autoClosing = true;
     try {
       // Tasks of a removed lead are included: no one is left to close them, and they still pile up in the store.
-      const open = Object.values(this.store.data.tasks || {}).filter(t => AUTO_CLOSE_STAGES.has(t.stage));
+      const open = Object.values(this.store.data.tasks || {}).filter(t => AUTO_CLOSE_STAGES.has(t.stage))
+        .map(task => ({ task, snapshot: { ...task } }));
       if (!open.length) return [];
       let prs = null;
       if (issues?.allPrs) {
@@ -460,13 +472,12 @@ export class Hub extends EventEmitter {
       };
       const closed = [];
       let changed = false;
-      for (const t of open) {
-        const ev = await closeEvidence(t, { verify, branchState, prs, issueState });
-        // The lead may have moved the task while gh or git answered.
-        if (!AUTO_CLOSE_STAGES.has(t.stage)) continue;
+      for (const { task: t, snapshot } of open) {
+        const ev = await closeEvidence(snapshot, { verify, branchState, prs, issueState });
+        if (!sameTaskCandidate(this.store.data.tasks, t, snapshot)) continue;
         const now = Date.now();
         if (ev.ok) {
-          t.mergeCheck = { ok: true, commit: ev.commit ?? null, base: ev.base ?? null, reason: null, auto: true, via: ev.via, evidence: ev.evidence, at: now };
+          t.mergeCheck = { ok: true, commit: ev.commit ?? null, base: ev.base ?? null, reason: null, auto: true, via: ev.via, evidence: ev.evidence, candidate: snapshot.commit ?? null, issue: taskIssue(snapshot), at: now };
           enterStage(t, "done", now);
           t.etaAt = null;
           t.stuck = null;

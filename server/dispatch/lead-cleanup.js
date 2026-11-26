@@ -1,3 +1,20 @@
+import { taskIssue } from "./task-close.js";
+
+function hasCurrentMergeProof(card) {
+  const proof = card.mergeCheck;
+  if (proof?.ok !== true || proof.via === "issue") return false;
+  const candidate = card.commit ?? null;
+  if (proof.via === "pr") {
+    // An issue-linked PR can close the card, but cannot prove a named commit or branch merged.
+    return candidate === null && proof.candidate === null && proof.issue != null && proof.issue === taskIssue(card);
+  }
+  if (/^[0-9a-f]{7,40}$/i.test(candidate ?? "")) {
+    // Older successful checks stored the resolved SHA without the original candidate.
+    return proof.commit?.toLowerCase().startsWith(candidate.toLowerCase()) === true;
+  }
+  return candidate !== null && proof.candidate === candidate && !!proof.commit;
+}
+
 // Lead lifecycle is separate from the teammate cleanup that follows report delivery.
 export class LeadCleanup {
   constructor(hub) {
@@ -21,7 +38,7 @@ export class LeadCleanup {
     if (Object.values(hub.store.data.tickets || {}).some(t => t.lead === lead.id && t.status === "open")) return "ticket";
 
     const cards = Object.values(hub.store.data.tasks || {}).filter(t => t.lead === lead.id);
-    if (cards.some(t => t.stage !== "done" || t.mergeCheck?.ok !== true || t.mergeCheck.via === "issue")) return "board";
+    if (cards.some(t => t.stage !== "done" || !hasCurrentMergeProof(t))) return "board";
     // Explicit finish can close a lead whose work did not require a board card.
     if (!explicit && !cards.length) return "board";
     const sessions = hub.sessions;
