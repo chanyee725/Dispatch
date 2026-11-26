@@ -3,31 +3,27 @@
 # Dispatch
 
 **Run and watch AI agent sessions in one local app.**<br>
-Start Claude Code, Codex and Gemini sessions and teams, follow them on the session board, and talk to them in the chat.
+Start Claude Code, Codex and Gemini sessions and teams, then follow their work on the session board.
 
-In 1.1, open the lead’s session card or live view to check how many messages are waiting.
+In 1.2, open the session board and select a lead to see their team. Check the task board for each task’s ETA and assignee.
 
 **English** · [한국어](README.ko.md)
 
-[![version](https://img.shields.io/badge/version-1.1.0-6366f1)](CHANGELOG.md)
+[![version](https://img.shields.io/badge/version-1.2.0-6366f1)](CHANGELOG.md#120)
 [![node](https://img.shields.io/badge/node-%E2%89%A522.18-339933?logo=nodedotjs&logoColor=white)](#-quick-start)
 [![Claude Code plugin](https://img.shields.io/badge/Claude_Code-plugin-d97757)](#-install-the-skills)
 [![Codex plugin](https://img.shields.io/badge/Codex-plugin-111111)](#-install-the-skills)
 [![local only](https://img.shields.io/badge/127.0.0.1-local_only-0ea5e9)](#-privacy-and-local-only)
 
-<a href="docs/images/demo.mp4"><img src="docs/images/demo-poster.png" alt="Demo: a Dispatch team plans a web page that reads PLC data and moves a robot" width="900"></a>
-
-<sub>Demo video · <a href="docs/images/demo.mp4">Watch the MP4</a> <!-- TODO(youtube): swap the MP4 link for the YouTube link once uploaded --> · a lead and a teammate plan "a web page that takes PLC data and moves a robot" with the real Claude CLI</sub>
-
 </div>
 
 ## ✨ Features
 
-- **Session board**: the first screen. Who does what, stage and time left per task, branches, cost and the 5-hour and weekly usage limits.
-- **Projects and sessions**: the sidebar lists project folders; pick one to see its sessions.
-- **Agent teams**: a lead, implementers and reviewers (Claude Code, Codex or Gemini) work in their own git worktrees, review each other and open PRs.
-- **Chat**: talk to a session from the app; saved chats are listed in the sidebar.
-- **Local only**: the server listens on `127.0.0.1` and sends nothing out.
+- **Session board**. **전체** groups sessions by lead and includes a **관리자 연결 없음** group for unlinked sessions. Select a lead to see their subordinate sessions.
+- **Task board**. Check the stage, ETA and assignee in each task row. The ETA shows time remaining or time overdue when available. Unassigned tasks show **맡은 사람 없음**.
+- **Projects**. The sidebar shows the names and count of projects with confirmed running Dispatch services. Select a name to open that service’s board. Open the session board to see sessions.
+- **Agent teams**. A lead, implementers and reviewers (Claude Code, Codex or Gemini) work in their own git worktrees, review changes and open PRs.
+- **Branches and usage**. Open these views from the sidebar to check branches, costs and provider usage limits.
 
 ## 🚀 Quick start
 
@@ -74,7 +70,7 @@ Then say "디스패치 켜줘" (or run the `dispatch` skill) in a project. Detai
 
 Dispatch 1.0 is the app that was called Atelier, under the Dispatch name. Nothing is deleted on the way:
 
-- **Atelier projects**: `<project>/.atelier` is left as it is. On start the server copies its board, settings and saved chats into `<project>/.dispatch` once no session is saved there (until then it keeps using `.atelier`). Old worktrees stay where they are.
+- **Atelier projects**: `<project>/.atelier` is left as it is. On start the server copies project state, including the board and settings, into `<project>/.dispatch` once no session is saved in `.atelier` (until then it keeps using `.atelier`). Old worktrees stay where they are.
 - **Your defaults**: `~/.atelier/drawing.json`, `limits.json` and `prefs.json` are copied to `~/.dispatch/` once, only where `~/.dispatch/` has no such file.
 - **Dispatch 0.x projects**: an existing `<project>/.dispatch` (worktrees in `wt/`) is used as it is. Stop the 0.x server first. `~/.dispatch/servers/` (the 0.x registry) is not read or written.
 - **Environment**: `ATELIER_API_TIMEOUT` and `ATELIER_QUICKFIX_FILES` still work; the new names are `DISPATCH_API_TIMEOUT` and `DISPATCH_QUICKFIX_FILES`.
@@ -93,14 +89,17 @@ Dispatch 1.0 is the app that was called Atelier, under the Dispatch name. Nothin
 
 ## 🧭 How a team runs
 
-Set the waiting limit per lead in **Settings → 관리자와 팀 → 관리자 메시지 최대 대기** (default 20, range 1–100). The displayed count is capped at this limit.
+Send the lead a short instruction through the `dispatch-session` skill.
 
-1. Tell a lead what you need, in one line: "We need a web page that takes PLC data and moves a robot."
-2. The lead adds teammates and assigns the work.
-3. Implementers work in git worktrees, a fresh reviewer comments on each PR, and the merge role merges reviewed PRs.
-4. The session board shows every session and task live.
+1. The lead adds teammates and assigns the work.
+2. Implementers work in git worktrees, reviewers check the changes, and the lead merges reviewed PRs.
+3. Follow sessions and tasks on the session board.
 
-A lead takes user instructions, teammate messages and automatic reports in arrival order, one per turn.
+Check the lead’s card or live view for **메시지 N건 대기** when messages are queued. A lead takes user instructions, teammate messages and automatic reports in arrival order, one per turn. Set the waiting limit per lead in **Settings → 관리자와 팀 → 관리자 메시지 최대 대기** (default 20, range 1–100). The displayed count is capped at this limit.
+
+When automatic replacement switches a lead to a fresh session, the handoff, teammates, task board and queued messages follow. For a manual handoff, use `POST /api/tasks/:id/handoff` to transfer a task card and selected teammates to another lead in the same project. The card’s ID and stage history stay with it.
+
+To enable cleanup for finished leads, turn on **Settings → 관리자와 팀 → 끝난 관리자 자동 정리**. An idle lead with at least one card qualifies once all cards have verified merges, the team has finished, and no work or responses are pending. The default grace period is 120 seconds. A lead can also request cleanup with `finish`. Cleanup preserves worktrees and task cards.
 
 ## 🔒 Privacy and local only
 
@@ -112,11 +111,11 @@ A lead takes user instructions, teammate messages and automatic reports in arriv
 ## 🏗 Layout
 
 ```text
-server/   127.0.0.1 server: agent sessions, teams, usage and chat (server/dispatch)
-web/      React app: session board, sidebar, chat, settings
+server/   127.0.0.1 server: agent sessions, teams and usage (server/dispatch)
+web/      React app: session board, sidebar, usage and settings
 shared/   session types and helpers shared by server and web
 plugin/   Claude Code and Codex plugin: 7 skills and hooks
-scripts/  packaging, demo recording (record-demo.mjs)
+scripts/  packaging and development utilities
 test/     node:test tests, fake agent CLIs, headless e2e
 ```
 
@@ -127,7 +126,6 @@ test/     node:test tests, fake agent CLIs, headless e2e
 | `npm test` | server and web logic tests (fake CLIs only) |
 | `npm run build` | build the web app into `public/` |
 | `npm run dev:web` | Vite dev server (`/api` goes to the server on 4330) |
-| `node scripts/record-demo.mjs` | re-record the demo: a scratch project under `/tmp` on a free port, the real Claude CLI (claude-sonnet-5-5) planning only; writes `docs/images/demo.mp4` and `demo-poster.png`. Needs `CHROME`, `PLAYWRIGHT_CORE` and a logged-in `claude`; `DEMO_FAKE=1` checks the script with the fake CLI |
 
 Browser e2e tests are skipped unless you turn them on:
 
