@@ -216,3 +216,26 @@ for (const automatic of [true, false]) {
     assert.deepEqual(events, []);
   });
 }
+
+for (const finalText of [null, "Work complete."]) {
+  test(`Claude finish ${finalText ? "accepts the post-tool final answer" : "rejects pre-tool text at turn end"}`, () => {
+    const { hub, lead, sessions, cleanup, events } = fixture({ automatic: false, status: "running", card: false });
+    Object.assign(lead, { provider: "claude", turns: 0 });
+    const assistant = (...content) => hub.onClaude(lead, { type: "assistant", message: { content } });
+    assistant({ type: "text", text: "I will finish now." }, { type: "tool_use", name: "finish", id: "finish" });
+    assert.deepEqual(cleanup.request(lead.id), { ok: true });
+    hub.onClaude(lead, { type: "user", message: { content: [{ type: "tool_result", tool_use_id: "finish", content: "{}" }] } });
+    if (finalText) {
+      // A post-request preamble from another tool must not count either.
+      assistant({ type: "text", text: "Checking the result." }, { type: "tool_use", name: "check", id: "check" });
+      assistant({ type: "text", text: finalText });
+    }
+    hub.onClaude(lead, { type: "result", subtype: "success", result: finalText ?? "" });
+    assert.equal(cleanup.scheduled(lead), !!finalText);
+    mock.timers.tick(119_999);
+    assert.equal(sessions.L, lead);
+    mock.timers.tick(1);
+    assert.equal(sessions.L, finalText ? undefined : lead);
+    assert.deepEqual(events, finalText ? [{ id: "L", reason: "explicit" }] : []);
+  });
+}

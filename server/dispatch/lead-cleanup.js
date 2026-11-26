@@ -56,7 +56,10 @@ export class LeadCleanup {
     if (!job) this.pending.set(id, job = { lead, timer: null });
     // Promote an already armed automatic job without extending its grace period.
     job.explicit = true;
-    if (lead.status === "running") job.reportAfterTurn = lead.turns ?? 0;
+    if (lead.status === "running") {
+      job.reportAfterTurn = lead.turns ?? 0;
+      if (lead.provider === "claude") job.reportAfterSeq = this.hub.live.get(id)?.seq ?? 0;
+    }
     this.refresh(lead);
     return { ok: true };
   }
@@ -111,12 +114,14 @@ export class LeadCleanup {
     }
     if (lead.status !== "idle" || job?.timer) return;
     if (job?.reportAfterTurn !== undefined) {
-      const answer = this.hub.live.get(id)?.lastText;
-      if ((lead.turns ?? 0) <= job.reportAfterTurn || !answer?.trim()) {
+      const runtime = this.hub.live.get(id);
+      if ((lead.turns ?? 0) <= job.reportAfterTurn || !runtime?.lastText?.trim() ||
+          (job.reportAfterSeq !== undefined && (runtime.claudeFinalSeq ?? 0) <= job.reportAfterSeq)) {
         this.cancel(id);
         return;
       }
       delete job.reportAfterTurn;
+      delete job.reportAfterSeq;
     }
     if (!job) this.pending.set(id, job = { lead, timer: null });
     job.timer = setTimeout(() => this.expire(id, job), this.config.autoRemoveGraceSec * 1000);

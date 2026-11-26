@@ -177,20 +177,28 @@ export class HubRunners {
           this.store.addDaily(s.model, s.role, delta);
           this.checkCtx(s); this.checkLong(s);
         }
-        for (const c of msg.content || []) {
-          if (c.type === "text" && c.text.trim()) { this.push(s, { kind: "assistant", text: c.text }); s.last = redact(clip(c.text, 400)); r.lastText = c.text; }
+        const content = msg.content || [];
+        for (const c of content) {
+          if (c.type === "text" && c.text.trim()) {
+            this.push(s, { kind: "assistant", text: c.text });
+            s.last = redact(clip(c.text, 400));
+            r.lastText = c.text;
+            if (!m.error && msg.model !== "<synthetic>") r.claudeTextSeq = r.seq;
+          }
           else if (c.type === "tool_use") {
             this.push(s, { kind: "tool", name: c.name, text: clip(JSON.stringify(c.input), 600), ...(c.id ? { callId: c.id } : {}) });
             const key = c.name === "Bash" && checkKey(c.input?.command);
             if (key && c.id) r.checks.set(c.id, { key, kind: activityOf("Bash", c.input.command) });
           }
         }
+        if (content.some(c => c.type === "tool_use")) r.claudeTextSeq = 0;
         this.touch(s, { status: r.perms.size ? "waiting" : "running" });
         break;
       }
       case "user":
         for (const c of (Array.isArray(m.message?.content) ? m.message.content : [])) {
           if (c.type === "tool_result") {
+            r.claudeTextSeq = 0;
             const text = Array.isArray(c.content) ? c.content.map(x => x.text || "").join("") : c.content;
             this.push(s, { kind: "tool_result", text: clip(text, 1500), error: !!c.is_error, ...(c.tool_use_id ? { callId: c.tool_use_id } : {}) });
             const check = r.checks.get(c.tool_use_id);
@@ -232,6 +240,9 @@ export class HubRunners {
           if (s.canSpawn && !r.pauseInterrupted) r.leadInboxHeld = true;
           this.push(s, { kind: "error", text: clip(m.result || m.subtype, 400) });
         }
+        // Keep the last assistant text after tool activity as the successful turn's final answer.
+        r.claudeFinalSeq = m.is_error || r.pauseInterrupted ? 0 : (r.claudeTextSeq ?? 0);
+        r.claudeTextSeq = 0;
         r.pauseInterrupted = false;
         this.touch(s, { status: "idle", turns: s.turns + 1, turnsSinceRotate: (s.turnsSinceRotate ?? s.turns ?? 0) + 1 });
         this.endTurn(s);
