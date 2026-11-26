@@ -77,6 +77,7 @@ export class HubRunners {
   /** @this {import("./hub-util.js").HubThis} */
   attach(s, proc, exitEvent = "exit", onStart) {
     const r = this.rt(s.id);
+    r.pendingClaudeInputs?.clear();
     r.proc = proc;
     r.ran = true; // see alive(): a per-turn CLI keeps its team alive between turns
     // The queue waits for the provider to acknowledge the new turn; a closed process cannot deliver it.
@@ -117,7 +118,7 @@ export class HubRunners {
   /** @this {import("./hub-util.js").HubThis} */
   startClaude(s, prompt, images = null, onStart) {
     const args = ["-p", "--input-format", "stream-json", "--output-format", "stream-json", "--verbose",
-      "--model", s.model, "--permission-mode", s.perm, "--permission-prompt-tool", "stdio"];
+      "--replay-user-messages", "--model", s.model, "--permission-mode", s.perm, "--permission-prompt-tool", "stdio"];
     if (s.effort) args.push("--effort", s.effort);
     const system = this.systemPrompt(s);
     if (system) args.push("--append-system-prompt", system);
@@ -158,6 +159,10 @@ export class HubRunners {
   /** @this {import("./hub-util.js").HubThis} */
   onClaude(s, m) {
     const r = this.rt(s.id);
+    if (m.type === "user" && m.isReplay) {
+      if (r.pendingClaudeInputs?.delete(m.uuid) && s.status === "idle") this.touch(s, { status: "running" });
+      return;
+    }
     // Work signals end an auto-remove grace period (a queued message may start a turn while status is idle).
     if (["assistant", "user", "control_request"].includes(m.type) || (m.type === "system" && m.subtype === "init")) this.cancelAutoRemove(s.id);
     switch (m.type) {

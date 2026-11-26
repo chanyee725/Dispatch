@@ -1,10 +1,9 @@
 // The agent live view panel (E559, #728; docs/design/agent-live-view.md §1-3): a non-modal <dialog popover="manual">
 // on the right edge (a bottom sheet under 720px). The page stays usable behind it. One panel at a time; opening another
 // agent swaps the content. Closes with ✕, Esc while focus is inside, or the same trigger again; focus then goes back
-// to the trigger (store.ts). Hidden while a SessionSheet (modal) is open and shown again when it closes.
+// to the trigger (store.ts).
 // Tabs (#905): 진행 (metadata only: tool labels, short targets, shown paths, numbers; the one exception is the redacted
-// question a waiting session asks, #886), 작업 보기, and the session's own 대화 · 변경사항 · 정보 · 조직도 (AgentLiveSession, #943), so
-// no SessionSheet opens over the panel. Touched files link: a document opens in the editor, a code file in 작업 보기.
+// question a waiting session asks, #886), 작업 보기, and 변경사항 · 정보 · 조직도. Code files link to 작업 보기.
 import { lazy, Suspense, useEffect, useId, useLayoutEffect, useRef, useState } from 'react';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../components/ui/tabs';
 import { ArrowLeft, Check, Code, Eye, FileText, Pencil, X } from 'lucide-react';
@@ -17,13 +16,15 @@ import { FOCUS_RING } from '../lib/focus';
 import { cn } from '../lib/utils';
 import { clock, hhmm, middle, span, ticking, waitNote } from './format';
 import { LiveSummaryView, useNow, type SummaryData } from './AgentLiveSummary';
-import { closeAgentLive, useAgentLiveTarget, useAgentLiveTrail, useSheetOpen } from './store';
+import { closeAgentLive, useAgentLiveTarget, useAgentLiveTrail } from './store';
 import { PanelTrail } from './PanelTrail';
 import { usePanelExit } from './usePanelExit';
 import { trackProps, trackTone } from '../home/trackTone';
 import { closeIssueTeam, useIssueTeamTarget } from './issueStore';
 import { useAgentLive } from './useAgentLive';
 import { AgentWorkView } from './AgentWorkView';
+import { SessionRequests } from '../dispatch/SessionRequests';
+import { awaitsAnswer } from '../dispatch/lib/turn.ts';
 import type { SessionTab } from './AgentLiveSession';
 import { actionFileLink, fileLink, type FileLink } from './workView';
 import './live.css';
@@ -32,17 +33,15 @@ const AgentLiveSession = lazy(() => import('./AgentLiveSession'));
 const SessionActions = lazy(() => import('./SessionActions'));
 
 type Tab = 'progress' | 'work' | SessionTab;
-const TABS: [Tab, string][] = [['progress', '진행'], ['work', '작업 보기'], ['chat', '대화'], ['diff', '변경사항'], ['info', '정보'], ['org', '조직도']];
+const TABS: [Tab, string][] = [['progress', '진행'], ['work', '작업 보기'], ['diff', '변경사항'], ['info', '정보'], ['org', '조직도']];
 
-/** Mounted once in App.tsx. A SessionSheet opened elsewhere (세션 보드) still hides the panel while it is open. */
 export function AgentLiveHost() {
   // Kept mounted for the 160ms slide-out after closing (#942).
   const { shown: sid, closing } = usePanelExit(useAgentLiveTarget());
-  const sheetOpen = useSheetOpen();
-  return sid ? <AgentLivePanel key="live" sid={sid} hidden={sheetOpen} closing={closing} /> : null;
+  return sid ? <AgentLivePanel key="live" sid={sid} closing={closing} /> : null;
 }
 
-function AgentLivePanel({ sid, hidden, closing }: { sid: string; hidden: boolean; closing: boolean }) {
+function AgentLivePanel({ sid, closing }: { sid: string; closing: boolean }) {
   const ref = useRef<HTMLDialogElement>(null);
   const closeBtn = useRef<HTMLButtonElement>(null);
   const titleId = useId();
@@ -72,15 +71,13 @@ function AgentLivePanel({ sid, hidden, closing }: { sid: string; hidden: boolean
   useLayoutEffect(() => {
     const el = ref.current;
     if (!el) return;
-    const open = el.matches(':popover-open');
-    if (hidden && open) el.hidePopover();
-    else if (!hidden && !open) el.showPopover();
-  }, [hidden]);
+    if (!el.matches(':popover-open')) el.showPopover();
+  }, []);
 
   // Focus the first control when the panel opens or switches to another agent (not on every data change).
   useEffect(() => {
-    if (!hidden) closeBtn.current?.focus({ preventScroll: true });
-  }, [sid, hidden]);
+    closeBtn.current?.focus({ preventScroll: true });
+  }, [sid]);
 
   const name = session?.name ?? presence?.name ?? '';
   // The working track under the head (#942): the same tone as this session's card.
@@ -141,7 +138,7 @@ function AgentLivePanel({ sid, hidden, closing }: { sid: string; hidden: boolean
           )}
           <span aria-hidden {...track} />
         </div>
-        {tab === 'chat' && !outside && (
+        {session?.id === sid && error !== 'missing' && (
           <Suspense fallback={null}><SessionActions sid={sid} onRemoved={closeAgentLive} /></Suspense>
         )}
         <button ref={closeBtn} type="button" aria-label="닫기" onClick={() => { closeAgentLive(); closeIssueTeam(); }} className={cn('agent-live-icon', FOCUS_RING)}>
@@ -174,7 +171,7 @@ function AgentLivePanel({ sid, hidden, closing }: { sid: string; hidden: boolean
                 <button type="button" onClick={reload} className={cn('agent-live-btn', FOCUS_RING)}>다시 시도</button>
               </section>
             ) : (
-              <Body live={live} session={session} loading={loading && !live} step={presence?.step} now={now} onOpenLink={openLink} state={state} onChat={() => setTab('chat')} />
+              <Body live={live} session={session} loading={loading && !live} step={presence?.step} now={now} onOpenLink={openLink} state={state} />
             )}
           </TabsContent>
           <TabsContent value="work" className="agent-live-body">
@@ -183,11 +180,11 @@ function AgentLivePanel({ sid, hidden, closing }: { sid: string; hidden: boolean
               step={presence?.step}
               statusLabel={presence?.statusLabel}
               files={live?.files ?? []}
-              shown={!hidden}
+              shown={!closing}
               reveal={reveal}
             />
           </TabsContent>
-          {(['chat', 'diff', 'info', 'org'] as const).map((v) => (
+          {(['diff', 'info', 'org'] as const).map((v) => (
             <TabsContent key={v} value={v} className="agent-live-body agent-live-body-session">
               <Suspense fallback={<section><p className="agent-live-muted">불러오는 중이에요…</p></section>}>
                 <AgentLiveSession sid={sid} tab={v} />
@@ -217,19 +214,24 @@ function Skeleton() {
   );
 }
 
-function Body({ live, session, loading, step, now, state, onOpenLink, onChat }: {
+function Body({ live, session, loading, step, now, state, onOpenLink }: {
   live: AgentLive | null; session: Session | null; loading: boolean; step?: string; now: number; state: SessionState | null;
-  onOpenLink: (l: FileLink) => void; onChat: () => void;
+  onOpenLink: (l: FileLink) => void;
 }) {
   if (loading) return <section><Skeleton /></section>;
   const cur = live?.current ?? null;
+  const hasRequests = session && (session.pending.length > 0 || awaitsAnswer(session));
   const ctx = session && session.ctx != null && session.ctxWindow > 0 ? session.ctx / session.ctxWindow : null;
   return (
     <>
-      {state === 'waiting' && (
+      {hasRequests && (
+        <div className="grid gap-2 p-3">
+          <SessionRequests key={session.id} s={session} />
+        </div>
+      )}
+      {state === 'waiting' && !hasRequests && (
         <section className="agent-live-ask">
           <p className="line-clamp-3 min-w-0 break-words" title={waitNote(session)}>{waitNote(session)}</p>
-          <button type="button" onClick={onChat} className={cn('agent-live-btn', FOCUS_RING)}>대화 보기</button>
         </section>
       )}
       <section>

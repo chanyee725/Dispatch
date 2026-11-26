@@ -143,6 +143,137 @@ test('dispatch writes need x-drawing: 1 or x-dispatch: 1', async () => {
   }
 });
 
+test('explicit task handoff authorizes and validates the whole move before changing the card or teammates', async () => {
+  const { root, ws } = scratchRepo();
+  const { deps } = fakeDeps(root);
+  const { app, base, stop } = await start(ws, deps);
+  try {
+    const { hub, store } = app.ctx.modules.dispatch;
+    const add = (id, parent = null, folder = 'alpha') => (store.data.sessions[id] = {
+      id, name: id, parent, folder, status: 'running', canSpawn: !parent, startedAt: Date.now(),
+    });
+    const old = add('old');
+    const next = add('next');
+    const a = add('a', old.id);
+    const b = add('b', old.id);
+    const rest = add('rest', old.id);
+    const outsider = add('outsider', next.id);
+    add('elsewhere', null, 'beta');
+    const other = add('other');
+    const otherChild = add('other-child', other.id);
+    add('ended').status = 'done';
+    const card = await hub.setTask(old.id, { title: 'handoff', stage: 'impl', eta_minutes: 5, commit: 'abc1234' });
+    await hub.setTask(old.id, { id: card.id, stage: 'review', owner: a.name, note: 'checks passed' });
+    const untouched = await hub.setTask(old.id, { title: 'unrelated' });
+    const before = structuredClone(card);
+    const body = { fromLead: old.id, toLead: next.id, sessionIds: [a.id, b.id] };
+    const post = (path, payload, headers = W) => fetch(base + path, {
+      method: 'POST', headers, body: JSON.stringify(payload),
+    });
+    const route = '/api/tasks/' + card.id + '/handoff';
+    const events = [];
+    for (const kind of ['session', 'tasks']) {
+      hub.on(kind, () => events.push([card.lead, a.parent, b.parent]));
+    }
+
+    assert.equal((await post(route, body, { 'content-type': 'application/json' })).status, 403);
+    assert.equal((await post('/api/tasks/missing/handoff', body)).status, 404);
+    assert.equal((await post(route, { ...body, fromLead: 'stale' })).status, 409);
+    assert.equal((await post(route, { ...body, toLead: outsider.id })).status, 400);
+    assert.equal((await post(route, { ...body, toLead: 'ended' })).status, 400);
+    assert.equal((await post(route, { ...body, toLead: 'elsewhere' })).status, 409);
+    assert.equal((await post(route, { ...body, sessionIds: [a.id, 'missing'] })).status, 404);
+    assert.equal((await post(route, { ...body, sessionIds: [a.id, otherChild.id] })).status, 409);
+    assert.equal((await post(route, { ...body, sessionIds: [a.id, a.id] })).status, 400);
+    store.data.settings.team = { ...store.data.settings.team, maxChildren: 2 };
+    assert.equal((await post(route, body)).status, 400);
+    assert.deepEqual(card, before);
+    assert.deepEqual([a.parent, b.parent], [old.id, old.id]);
+    assert.deepEqual(events, []);
+
+    // Delegated callers can still update by ID when they omit the lead.
+    const delegated = await post('/api/tasks', { id: card.id, note: 'verified' });
+    assert.equal(delegated.status, 200);
+    assert.equal((await delegated.json()).lead, old.id);
+    const previous = structuredClone(card);
+    events.length = 0;
+    store.data.settings.team.maxChildren = 3;
+    const moved = await post(route, body, { 'content-type': 'application/json', 'x-dispatch': '1' });
+    assert.equal(moved.status, 200);
+    assert.deepEqual(await moved.json(), { ...previous, lead: next.id });
+    assert.deepEqual([rest.parent, untouched.lead], [old.id, old.id]);
+    assert.ok(events.length);
+    assert.ok(events.every(e => e.every(id => id === next.id)), 'every event sees the complete handoff');
+    assert.equal((await post(route, body)).status, 409);
+    await store.flush();
+    const saved = JSON.parse(readFileSync(join(root, '.dispatch/state.json'), 'utf8'));
+    assert.equal(saved.tasks[card.id].lead, next.id);
+    assert.deepEqual(saved.tasks[card.id].stages, previous.stages);
+    assert.deepEqual([saved.sessions[a.id].parent, saved.sessions[b.id].parent], [next.id, next.id]);
+
+    await hub.remove(old.id);
+    const retained = await post('/api/tasks/' + untouched.id + '/handoff', { fromLead: old.id, toLead: next.id });
+    assert.equal(retained.status, 200);
+    assert.equal((await retained.json()).id, untouched.id);
+  } finally {
+    await stop();
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('a previous lead cannot roll back a handed-off card using its ID', async () => {
+  const { root, ws } = scratchRepo();
+  const { deps } = fakeDeps(root);
+  const { app, base, stop } = await start(ws, deps);
+  try {
+    const { hub, store } = app.ctx.modules.dispatch;
+    for (const id of ['old', 'next']) {
+      store.data.sessions[id] = { id, folder: 'alpha', canSpawn: true, status: 'running' };
+    }
+    const card = await hub.setTask('old', { title: 'latest candidate', commit: 'bbbbbbb', stage: 'merge' });
+    hub.handoffTask(card.id, { fromLead: 'old', toLead: 'next' });
+    const before = structuredClone(card);
+    const events = [];
+    hub.on('tasks', () => events.push('tasks'));
+    const body = JSON.stringify({ id: card.id, lead: 'old', commit: 'aaaaaaa', stage: 'review' });
+    assert.equal((await fetch(base + '/api/tasks', { method: 'POST', headers: W, body })).status, 409);
+    assert.deepEqual(card, before);
+    assert.deepEqual(events, []);
+
+    const racing = await hub.setTask('old', { title: 'another candidate', commit: 'bbbbbbb', stage: 'merge' });
+    const initial = structuredClone(racing);
+    const closing = assert.rejects(
+      hub.setTask('old', { id: racing.id, title: 'changed title', commit: 'aaaaaaa', stage: 'done' }),
+      { status: 409 },
+    );
+    hub.handoffTask(racing.id, { fromLead: 'old', toLead: 'next' });
+    await closing;
+    assert.deepEqual(racing, { ...initial, lead: 'next' });
+  } finally {
+    await stop();
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('an orphaned card without saved project evidence cannot be handed off', async () => {
+  const { root, ws } = scratchRepo();
+  const { deps } = fakeDeps(root);
+  const { app, base, stop } = await start(ws, deps);
+  try {
+    const { hub, store } = app.ctx.modules.dispatch;
+    store.data.sessions.next = { id: 'next', folder: 'beta', canSpawn: true, status: 'running' };
+    const card = await hub.setTask('missing', { title: 'unknown project', stage: 'review' });
+    const before = structuredClone(card);
+    const body = JSON.stringify({ fromLead: 'missing', toLead: 'next' });
+    const res = await fetch(base + '/api/tasks/' + card.id + '/handoff', { method: 'POST', headers: W, body });
+    assert.equal(res.status, 409);
+    assert.deepEqual(card, before);
+  } finally {
+    await stop();
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
 test('removed routes: no cross-project probing', async () => {
   const { root, ws } = scratchRepo();
   const { deps } = fakeDeps(root);

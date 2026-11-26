@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { clip } from "./hub-util.js";
+import { clip, sameCommitSha, uniqueCommitSha } from "./hub-util.js";
 import { redact } from "./redact.js";
 
 function leadMessageId(id = randomUUID()) {
@@ -65,14 +65,44 @@ export class HubLeadInbox {
   }
 
   /** @this {import("./hub-util.js").HubThis} */
-  queueLeadReport(sender, text, { board = true, tellsLong = false, messageId } = {}) {
+  queueLeadReport(sender, text, { board = true, tellsLong = false, messageId, review } = {}) {
     this.rt(sender.id).pendingReports.push({
-      sender: sender.id, text: redact(text), board, tellsLong, messageId, order: ++this.leadReportSeq,
+      sender: sender.id, text: redact(text), board, tellsLong, messageId, review, order: ++this.leadReportSeq,
     });
     const lead = sender.parent && this.get(sender.parent);
     if (!lead || lead.status === "done") return;
     this.emit("session", this.publicSession(lead));
     this.drainLeadInbox(lead);
+  }
+
+  /** @this {import("./hub-util.js").HubThis} */
+  resolveQueuedReviews(lead, task, commits) {
+    const reviewed = new Map();
+    for (const sender of this.sessions) {
+      for (const item of this.live.get(sender.id)?.pendingReports ?? []) {
+        if (item.review?.taskId !== task.id) continue;
+        const sha = item.review.commit;
+        if (!reviewed.has(sha)) reviewed.set(sha, []);
+        // Reports still with the old lead can make an abbreviation ambiguous too.
+        if (sender.parent === lead.id) reviewed.get(sha).push(item);
+      }
+    }
+    const candidates = [...commits, ...reviewed.keys(), ...this.taskCommits(task)];
+    for (const [sha, items] of reviewed) {
+      // A queued abbreviation can also refer to the current candidate.
+      if (!items.length || sameCommitSha(sha, task.commit)) continue;
+      for (const requested of commits) {
+        if (!sameCommitSha(sha, requested)) continue;
+        const shortest = sha.length < requested.length ? sha : requested;
+        const commit = uniqueCommitSha(candidates, shortest);
+        if (!commit) continue;
+        for (const item of items) {
+          item.resolvedReview = `[Dispatch] ${commit} 후보의 리뷰 지적은 해결됐어요. 이 지적으로 작업 카드를 다시 열지 마세요.`
+            + (item.review.longNote ? `\n\n${item.review.longNote}` : "");
+        }
+        break;
+      }
+    }
   }
 
   /** @this {import("./hub-util.js").HubThis} */
@@ -116,7 +146,8 @@ export class HubLeadInbox {
     const wasHeld = r.leadInboxHeld;
     r.leadInboxHeld = r.leadInboxResume = false;
     try {
-      this.send(lead.id, item.text + (item.board ? this.boardNote(lead.id) : ""), {
+      const text = item.resolvedReview ?? (item.text + (item.board ? this.boardNote(lead.id) : ""));
+      this.send(lead.id, text, {
         images: item.images,
         onDelivery: delivered => {
           r.drainingLeadInbox = item.dispatching = false;

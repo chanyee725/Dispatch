@@ -1,4 +1,4 @@
-// Headless check of the 작업 보드: tasks show their lead and live ETA in the dashboard and the full board.
+// Headless checks of the 작업 보드 dashboard and full board.
 // Run on request: DRAW_E2E=1 CHROME=/path/to/chrome-headless-shell PLAYWRIGHT_CORE=/path/to/node_modules/playwright-core npm test
 // The server gets a scratch HOME and a PATH of fake agent CLIs; it refuses to go on unless its log names its port and workspace.
 import { test } from 'node:test';
@@ -24,7 +24,9 @@ const freePort = () =>
     s.on('error', fail);
   });
 
-test('작업 보드 shows tasks by stage and follows live changes', { skip: !ON && 'set DRAW_E2E=1, CHROME and PLAYWRIGHT_CORE to run', timeout: 120_000 }, async (t) => {
+const options = { skip: !ON && 'set DRAW_E2E=1, CHROME and PLAYWRIGHT_CORE to run', timeout: 120_000 };
+
+async function withBoard(t, run) {
   const { chromium } = await import(pathToFileURL(join(process.env.PLAYWRIGHT_CORE, 'index.mjs')).href);
   const repo = mkdtempSync(join(tmpdir(), 'draw-board-'));
   const home = mkdtempSync(join(tmpdir(), 'draw-board-home-'));
@@ -70,6 +72,60 @@ test('작업 보드 shows tasks by stage and follows live changes', { skip: !ON 
       return body;
     };
 
+    browser = await chromium.launch({ headless: true, executablePath: process.env.CHROME });
+    const errors = [];
+    page = await browser.newPage({ viewport: { width: 1280, height: 800 } });
+    page.on('pageerror', (e) => errors.push(String(e.stack).slice(0, 400)));
+    await run({ at, call, page, BASE });
+    assert.deepEqual(errors, []);
+  } catch (e) {
+    const shot = join(tmpdir(), `dispatch-board-fail-${Date.now()}.png`);
+    await page?.screenshot({ path: shot, fullPage: true }).catch(() => {});
+    throw new Error(`[step: ${step}] ${e.message}\nscreenshot: ${shot}\nserver log tail:\n${log.slice(-1500)}`, { cause: e });
+  }
+}
+
+test('right task card shows live ETA beside the owner', options, (t) =>
+  withBoard(t, async ({ at, call, page, BASE }) => {
+    at('seed right-card tasks');
+    const add = (body) => call('POST', '/api/tasks', body);
+    const active = await add({ title: '진행 작업', stage: 'impl', owner: '구현자', eta_minutes: 4 });
+    const missing = await add({ title: '미등록 작업', stage: 'review' });
+    const finished = await add({ title: '완료 작업', stage: 'impl', owner: '검토자', eta_minutes: 4 });
+    await add({ id: finished.id, stage: 'done' });
+    await page.clock.install({ time: active.etaAt - 4 * 60_000 + 5_000 });
+    await page.goto(`${BASE}/dispatch`);
+
+    at('right-card ETA and adjacent owner');
+    const card = page.locator('[data-card="tasks"]');
+    const rowFor = ({ id }) => card.locator(`[data-row="${id}"]`);
+    const row = rowFor(active);
+    const eta = row.locator('[data-eta]');
+    await eta.filter({ hasText: /^3분 남음$/ }).waitFor();
+    const owner = row.getByText('구현자', { exact: true });
+    assert.equal(await owner.count(), 1, 'the assigned owner is visible');
+    const [etaBox, ownerBox] = await Promise.all([eta.boundingBox(), owner.boundingBox()]);
+    assert.ok(etaBox && ownerBox, 'ETA and owner are visible');
+    assert.equal(ownerBox.y, etaBox.y, 'ETA and owner share a line');
+    assert.ok(ownerBox.x >= etaBox.x + etaBox.width && ownerBox.x - etaBox.x - etaBox.width <= 12,
+      'owner appears immediately to the right of the ETA');
+    assert.equal(await rowFor(missing).locator('[data-eta]').innerText(), 'ETA 미추정');
+    assert.equal(await rowFor(missing).getByText('맡은 사람 없음', { exact: true }).count(), 1);
+
+    at('completed task row');
+    await card.getByRole('button', { name: '완료 1개' }).click();
+    assert.equal(await rowFor(finished).locator('[data-eta]').innerText(), '완료');
+    assert.equal(await rowFor(finished).getByText('검토자', { exact: true }).count(), 1);
+
+    at('deadline crosses without a server update');
+    await page.clock.fastForward(5 * 60_000);
+    await eta.filter({ hasText: /^1분 지남$/ }).waitFor();
+    assert.equal(await owner.count(), 1);
+    if (SHOTS) await card.screenshot({ path: join(SHOTS, 'task-board-dashboard.png') });
+  }));
+
+test('작업 보드 shows tasks by stage and follows live changes', options, (t) =>
+  withBoard(t, async ({ at, call, page, BASE }) => {
     at('seed tasks');
     const makeLead = async (folder) => (await call('POST', '/api/sessions', {
       items: [{ role: 'lead', provider: 'claude', task: 'check the board' }], worktree: false, folder,
@@ -79,24 +135,14 @@ test('작업 보드 shows tasks by stage and follows live changes', { skip: !ON 
     await call('POST', '/api/tasks', { title: '결제 검토', stage: 'review', owner: 'Rae' });
     await call('POST', '/api/tasks', { title: '배포 막힘', stage: 'blocked', note: '키가 없어요' });
 
-    browser = await chromium.launch({ headless: true, executablePath: process.env.CHROME });
-    const errors = [];
-    page = await browser.newPage({ viewport: { width: 1280, height: 800 } });
-    page.on('pageerror', (e) => errors.push(String(e.stack).slice(0, 400)));
     await page.clock.install({ time: task.etaAt - 4 * 60_000 + 5_000 });
     await page.goto(`${BASE}/dispatch`);
 
-    at('dashboard countdown and task lead');
     const row = page.locator(`[data-row="${task.id}"]`);
     const rowEta = row.locator('[data-eta]');
     await rowEta.filter({ hasText: /^3분 남음$/ }).waitFor();
-    assert.equal(await row.locator('[data-task-lead]').innerText(), lead.name);
     await page.clock.fastForward(60_000);
     await rowEta.filter({ hasText: /^2분 남음$/ }).waitFor();
-    const other = page.getByRole('list', { name: '진행 중인 작업' }).locator('[data-row]').filter({ hasText: '결제 검토' });
-    assert.equal(await other.locator('[data-eta]').innerText(), 'ETA 미추정');
-    assert.equal(await other.locator('[data-task-lead]').innerText(), '관리자 미배정');
-    if (SHOTS) await page.screenshot({ path: join(SHOTS, 'task-board-dashboard.png') });
 
     at('open the board');
     await page.getByRole('button', { name: '전체 보기', exact: true }).click();
@@ -169,7 +215,6 @@ test('작업 보드 shows tasks by stage and follows live changes', { skip: !ON 
     at('dashboard deadline crosses without a server update');
     await page.clock.fastForward(180_000);
     await rowEta.filter({ hasText: /^기한 초과$/ }).waitFor();
-    assert.equal(await row.locator('[data-task-lead]').innerText(), lead.name);
     const current = (await call('GET', '/api/tasks')).tasks.find((item) => item.id === task.id);
     assert.equal(current.etaAt, task.etaAt);
 
@@ -193,9 +238,7 @@ test('작업 보드 shows tasks by stage and follows live changes', { skip: !ON 
 
     at('removed lead keeps both cards in the selected project after a page reload');
     await call('POST', `/api/sessions/${lead.id}/remove`);
-    await row.locator('[data-task-lead]').filter({ hasText: /^관리자 확인 불가$/ }).waitFor({ timeout: 5000 });
     await page.reload();
-    await row.locator('[data-task-lead]').filter({ hasText: /^관리자 확인 불가$/ }).waitFor();
     await rowEta.filter({ hasText: /^기한 초과$/ }).waitFor();
     await page.getByRole('button', { name: '전체 보기', exact: true }).click();
     const retained = board.locator('[data-stage="test"]').locator('[data-task="로그인 화면 만들기"]');
@@ -227,10 +270,100 @@ test('작업 보드 shows tasks by stage and follows live changes', { skip: !ON 
     await call('POST', `/api/tasks/${finished.id}/remove`);
     await rowFor(finished).waitFor({ state: 'detached' });
     await row.waitFor();
-    assert.deepEqual(errors, []);
-  } catch (e) {
-    const shot = join(tmpdir(), `dispatch-board-fail-${Date.now()}.png`);
-    await page?.screenshot({ path: shot, fullPage: true }).catch(() => {});
-    throw new Error(`[step: ${step}] ${e.message}\nscreenshot: ${shot}\nserver log tail:\n${log.slice(-1500)}`, { cause: e });
-  }
-});
+  }));
+
+test('session board groups by manager and keeps the project task scope', options, (t) =>
+  withBoard(t, async ({ at, call, page, BASE }) => {
+    at('create managers and sessions through the Dispatch API');
+    await call('POST', '/api/providers/claude/login');
+    const make = async (role, { folder, parent } = {}) => (await call('POST', '/api/sessions', {
+      items: [{ role, model: 'claude-sonnet-5-5', task: 'test' }], worktree: false, folder, parent,
+    })).sessions[0];
+    const first = await make('lead', { folder: 'alpha' });
+    const second = await make('lead', { folder: 'beta' });
+    const member = await make('impl', { parent: first.id });
+    const nested = await make('review', { parent: member.id });
+    const other = await make('impl', { parent: second.id });
+    const independent = await make('impl', { folder: 'alpha' });
+    const alphaTask = await call('POST', '/api/tasks', { lead: first.id, title: '작업 A', stage: 'impl' });
+    const betaTask = await call('POST', '/api/tasks', { lead: second.id, title: '작업 B', stage: 'impl' });
+
+    await page.setViewportSize({ width: 1600, height: 900 });
+    await page.goto(`${BASE}/#board`);
+    const sessions = page.locator('[data-card="sessions"]');
+    const filter = sessions.getByRole('group', { name: '관리자 필터' });
+    const pick = (name) => filter.getByRole('button', { name, exact: true });
+    const tasks = page.locator('[data-card="tasks"]');
+    const row = (task) => tasks.locator(`[data-row="${task.id}"]`);
+    const ids = async (root) => (await root.locator('[data-agent]').evaluateAll((cards) =>
+      cards.map((card) => card.dataset.agent))).sort();
+    const has = async (root, expected) => {
+      await root.locator(`[data-agent="${expected[0].id}"]`).waitFor({ state: 'attached' });
+      assert.deepEqual(await ids(root), expected.map((session) => session.id).sort());
+    };
+    await pick('전체').waitFor();
+    await row(alphaTask).waitFor();
+    await row(betaTask).waitFor();
+
+    at('all sessions are grouped exactly once, with unlinked sessions last');
+    const groups = sessions.locator('[data-session-grid]');
+    assert.deepEqual((await groups.evaluateAll((lists) => lists.map((list) => list.getAttribute('aria-label')))).slice(0, -1).sort(),
+      [first.name, second.name].sort());
+    await has(sessions.getByRole('list', { name: first.name, exact: true }), [first, member, nested]);
+    await has(sessions.getByRole('list', { name: second.name, exact: true }), [second, other]);
+    assert.equal(await groups.last().getAttribute('aria-label'), '관리자 연결 없음');
+    await has(groups.last(), [independent]);
+    if (SHOTS) await sessions.screenshot({ path: join(SHOTS, 'session-board-managers-wide.png') });
+
+    at('the filter is right of tokens and shows only the selected manager descendants');
+    const [tokens, control, card] = await Promise.all([
+      sessions.locator('[aria-label="요약"]').getByText(/^토큰/).boundingBox(), filter.boundingBox(), sessions.boundingBox(),
+    ]);
+    assert.ok(tokens && control && card);
+    assert.ok(tokens.x + tokens.width < control.x && Math.abs(tokens.y + tokens.height / 2 - control.y - control.height / 2) <= 1);
+    assert.ok(card.x + card.width - control.x - control.width <= 32);
+    await pick(first.name).click();
+    await has(sessions, [member, nested]);
+    assert.equal(await pick(first.name).getAttribute('aria-pressed'), 'true');
+    assert.equal(await row(alphaTask).count(), 1);
+    assert.equal(await row(betaTask).count(), 1);
+    await pick(second.name).click();
+    await has(sessions, [other]);
+    await pick('전체').click();
+    await has(sessions, [first, second, member, nested, other, independent]);
+
+    at('the narrow filter fits and works with the keyboard');
+    await page.setViewportSize({ width: 320, height: 800 });
+    await pick('전체').focus();
+    await page.keyboard.press('Tab');
+    const focused = filter.locator('button:focus');
+    const chosen = await focused.textContent();
+    assert.ok([first.name, second.name].includes(chosen));
+    await page.keyboard.press('Enter');
+    await has(sessions, chosen === first.name ? [member, nested] : [other]);
+    assert.ok(await filter.evaluate((el) => {
+      const { right } = el.getBoundingClientRect();
+      return el.scrollWidth === el.clientWidth && right <= innerWidth
+        && Math.abs(right - el.parentElement.getBoundingClientRect().right) <= 1;
+    }));
+    if (SHOTS) await sessions.screenshot({ path: join(SHOTS, 'session-board-managers-narrow.png') });
+    await pick('전체').focus();
+    await page.keyboard.press('Space');
+    await has(sessions, [first, second, member, nested, other, independent]);
+
+    at('a removed selection resets to all and reparented members follow their new manager');
+    await pick(first.name).click();
+    const replacement = await make('lead', { folder: 'alpha' });
+    await call('POST', `/api/sessions/${member.id}/parent`, { parent: replacement.id });
+    await call('POST', `/api/sessions/${first.id}/remove`);
+    await filter.locator('button[aria-pressed="true"]').filter({ hasText: /^전체$/ }).waitFor();
+    await has(sessions.getByRole('list', { name: replacement.name, exact: true }), [replacement, member, nested]);
+    await pick(replacement.name).click();
+    await has(sessions, [member, nested]);
+
+    at('project scope still reaches the task board');
+    await page.goto(`${BASE}/#board&folder=alpha`);
+    await row(alphaTask).waitFor();
+    await row(betaTask).waitFor({ state: 'detached' });
+    assert.equal(await sessions.locator(`[data-agent="${other.id}"]`).count(), 0);
+  }));

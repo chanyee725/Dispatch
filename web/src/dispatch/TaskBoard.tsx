@@ -1,7 +1,7 @@
-// 작업 보드: the lead's tasks by stage (plan … blocked) with ETA and lead name: a
-// dashboard card on the 세션 보드 (#879) that opens the full board in a side sheet.
+// 작업 보드: the 세션 보드 card shows each task's ETA and owner.
+// It opens the full board in a side sheet.
 // Reads the live `tasks` slice of the store; shows metadata only (titles, stages, times), never transcripts.
-import { useMemo, useState } from 'react';
+import { useMemo, useState, type ReactNode } from 'react';
 import { ChevronRight, TriangleAlert } from 'lucide-react';
 import { Badge } from '../components/ui/badge';
 import { Button } from '../components/ui/button';
@@ -19,25 +19,26 @@ import type { BoardTask, Session } from './types';
 const CARD_ROWS = 5;
 
 const BAR = STAGE_BG;
+const UNASSIGNED_OWNER = '맡은 사람 없음';
 
-type TaskProps = { t: BoardTask; now: number; leadName: string };
+type TaskProps = { t: BoardTask; now: number };
 
-function TaskMeta({ t, now, leadName }: TaskProps) {
+function TaskMeta({ t, now, children }: TaskProps & { children: ReactNode }) {
   const eta = etaLine(t, now);
   return (
-    <div className="flex min-w-0 items-center gap-2 text-xs text-muted-foreground">
+    <div className="flex min-w-0 items-baseline gap-2 text-xs text-muted-foreground">
       <span data-eta data-estimated={eta?.estimated || undefined} className={cn('shrink-0 tabular-nums', eta?.late && 'text-destructive')}>
         {eta?.text ?? (t.stage === 'done' ? '완료' : 'ETA 미추정')}
       </span>
-      <span data-task-lead title={`관리자: ${leadName}`} className="ml-auto min-w-0 truncate text-right">{leadName}</span>
+      {children}
     </div>
   );
 }
 
-function TaskCard({ t, now, leadName }: TaskProps) {
+function TaskCard({ t, now, leadName }: TaskProps & { leadName: string }) {
   const spans = stageSpans(t, now);
   const total = spans.reduce((a, s) => a + s.ms, 0) || 1;
-  const owner = t.owner || '맡은 사람 없음';
+  const owner = t.owner || UNASSIGNED_OWNER;
   return (
     <li data-task={t.title} data-task-id={t.id} className={cn('card-surface flex min-w-0 flex-col gap-2 px-3 py-2.5', t.stuck && 'shadow-[0_0_0_1px_var(--warn)]')}>
       <p className="line-clamp-2 text-sm leading-5 font-medium" title={t.title}>{t.title}</p>
@@ -52,7 +53,9 @@ function TaskCard({ t, now, leadName }: TaskProps) {
         <span className="min-w-0 truncate" title={owner}>{owner}</span>
         <StageProgress stage={t.stage} className="ml-auto text-2xs" />
       </div>
-      <TaskMeta t={t} now={now} leadName={leadName} />
+      <TaskMeta t={t} now={now}>
+        <span data-task-lead title={`관리자: ${leadName}`} className="ml-auto min-w-0 truncate text-right">{leadName}</span>
+      </TaskMeta>
       <div role="img" aria-label={`단계별 시간: ${spans.map(s => `${stageLabel(s.stage)} ${span(s.ms)}`).join(', ')}`} className="flex h-1.5 gap-px overflow-clip rounded-full bg-sunken">
         {spans.map((s, i) => <span key={i} data-bar={s.stage} style={{ flexGrow: s.ms / total }} className={cn('min-w-px basis-0', BAR[s.stage])} />)}
       </div>
@@ -109,7 +112,7 @@ function BoardSheet({ open, onOpenChange, tasks, now, sessionsById }: BoardProps
 
 /**
  * 작업 보드 as a dashboard card (#879, #919): the stages that hold tasks as one line of chips, then the open tasks
- * sorted by blocked status and time in stage. Each row shows the title, stage, ETA and lead.
+ * sorted by blocked status and time in stage. Each row shows the title, stage, ETA and owner.
  * Finished tasks fold behind one line.
  * 전체 보기 opens the full board in the sheet. `fill`: the card takes the rest of its column and scrolls inside.
  */
@@ -159,7 +162,7 @@ export function TaskBoardCard({ fill = false, onOpen, onUsage }: { fill?: boolea
             <EmptyState>진행 중인 작업이 없어요.</EmptyState>
           ) : (
             <CardList label="진행 중인 작업">
-              {shown.map(t => <TaskRow key={t.id} t={t} now={now} leadName={taskLeadName(t.lead, sessionsById)} showWarning={!attn.taskIds.has(t.id)} />)}
+              {shown.map(t => <TaskRow key={t.id} t={t} now={now} showWarning={!attn.taskIds.has(t.id)} />)}
             </CardList>
           )}
           {groups.done.length > 0 && (
@@ -175,7 +178,7 @@ export function TaskBoardCard({ fill = false, onOpen, onUsage }: { fill?: boolea
               </button>
               {showDone && (
                 <CardList label="완료한 작업">
-                  {groups.done.slice(0, DONE_LIMIT).map(t => <TaskRow key={t.id} t={t} now={now} leadName={taskLeadName(t.lead, sessionsById)} />)}
+                  {groups.done.slice(0, DONE_LIMIT).map(t => <TaskRow key={t.id} t={t} now={now} />)}
                 </CardList>
               )}
             </div>
@@ -188,7 +191,7 @@ export function TaskBoardCard({ fill = false, onOpen, onUsage }: { fill?: boolea
 }
 
 /** A task row with a separate warning when blocked or stuck. */
-function TaskRow({ t, now, leadName, showWarning = false }: TaskProps & { showWarning?: boolean }) {
+function TaskRow({ t, now, showWarning = false }: TaskProps & { showWarning?: boolean }) {
   const warn = showWarning ? taskWarn(t) : null;
   return (
     <li data-row={t.id} className="flex min-w-0 flex-col gap-0.5 px-4 py-2">
@@ -198,7 +201,9 @@ function TaskRow({ t, now, leadName, showWarning = false }: TaskProps & { showWa
         <span className="min-w-0 flex-1 truncate text-sm" title={t.title}>{t.title}</span>
         <StageProgress stage={t.stage} />
       </div>
-      <TaskMeta t={t} now={now} leadName={leadName} />
+      <TaskMeta t={t} now={now}>
+        <span className="min-w-0 wrap-anywhere">{t.owner || UNASSIGNED_OWNER}</span>
+      </TaskMeta>
       {warn && (
         <p data-warn className={cn('m-0 flex min-w-0 items-center gap-1 text-xs', warn.tone === 'bad' ? 'text-destructive' : 'text-muted-foreground')}>
           <TriangleAlert aria-hidden className={cn('size-3 shrink-0', warn.tone === 'warn' && 'text-warn')} />
