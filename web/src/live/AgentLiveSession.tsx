@@ -22,8 +22,8 @@ export default function AgentLiveSession({ sid, tab }: { sid: string; tab: Sessi
   useEffect(() => {
     setDraft('');
     setError(null);
-    void report(loadTranscript(sid));
-  }, [sid]);
+    if (tab === 'chat') void report(loadTranscript(sid));
+  }, [sid, tab]);
 
   if (!s) return <section><p className="agent-live-muted">세션을 불러오는 중이에요…</p></section>;
   const id = encodeURIComponent(s.id);

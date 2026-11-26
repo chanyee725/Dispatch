@@ -81,6 +81,12 @@ test('agent live view opens from a board card, closes by button and Esc, bottom 
   const errors = [];
   const page = await browser.newPage({ viewport: { width: 1280, height: 800 }, reducedMotion: 'reduce' });
   page.on('pageerror', (e) => errors.push(String(e.stack).slice(0, 400)));
+  const transcriptUrl = `${BASE}/api/sessions/${encodeURIComponent(s.id)}/messages`;
+  const isTranscriptGet = (request) => request.method() === 'GET' && request.url() === transcriptUrl;
+  let transcriptGets = 0;
+  page.on('request', (request) => {
+    if (isTranscriptGet(request)) transcriptGets++;
+  });
   await page.goto(`${BASE}/dispatch`);
   const card = page.locator(`[data-agent="${s.id}"]`);
   const open = card.getByRole('button');
@@ -100,6 +106,7 @@ test('agent live view opens from a board card, closes by button and Esc, bottom 
   assert.equal(await page.evaluate(() => document.activeElement?.getAttribute('aria-label')), '닫기', 'focus on the close button');
   assert.match(await page.evaluate(() => location.hash), new RegExp(`agent=${encodeURIComponent(s.id)}`));
   await page.waitForFunction((id) => /npm test/.test(document.querySelector(`dialog[data-agent-live="${id}"]`)?.textContent ?? ''), s.id, { timeout: 10_000 });
+  assert.equal(transcriptGets, 0, 'initial progress tab does not request the transcript');
   // Only the state label is announced; the clock that ticks every second is outside the live region.
   const regions = await panel.evaluate((el) => [...el.querySelectorAll('[aria-live]')].map((r) => [r.getAttribute('aria-live'), r.textContent, !!r.querySelector('[data-live-clock]')]));
   assert.ok(regions.length >= 1 && regions.every(([, t, clock]) => !clock && !/째/.test(t)), `live regions: ${JSON.stringify(regions)}`);
@@ -132,7 +139,14 @@ test('agent live view opens from a board card, closes by button and Esc, bottom 
 
   // 5. #905: the 대화 tab shows the chat inside the panel; the panel stays open and no sheet opens over it.
   const chatTab = panel.getByRole('tab', { name: '대화', exact: true });
+  for (const [tab, label] of [['info', '정보'], ['diff', '변경사항'], ['org', '조직도']]) {
+    await panel.getByRole('tab', { name: label, exact: true }).click();
+    await panel.locator(`[data-session-tab="${tab}"]`).waitFor();
+    assert.equal(transcriptGets, 0, `${label} tab does not request the transcript`);
+  }
+  const transcriptResponse = page.waitForResponse((response) => isTranscriptGet(response.request()));
   await chatTab.click();
+  assert.ok((await transcriptResponse).ok(), 'opening chat loads the transcript');
   assert.equal(await chatTab.getAttribute('aria-selected'), 'true');
   await panel.locator('[data-session-tab="chat"]').getByRole('textbox').waitFor({ timeout: 10_000 });
   assert.ok(await page.evaluate((id) => !!document.querySelector(`dialog[data-agent-live="${id}"]:popover-open`), s.id), 'panel stays open');
