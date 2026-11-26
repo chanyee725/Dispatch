@@ -284,16 +284,12 @@ function Skeleton() {
 function SessionsCard({ onCreate }: { onCreate: () => void }) {
   const { sessions, pending } = useScoped();
   const all = useDispatch((s) => s.sessions);
-  const { leads, descendants } = useMemo(() => boardOrganizations(sessions, all), [sessions, all]);
+  const { managers, unlinked } = useMemo(() => boardOrganizations(sessions, all), [sessions, all]);
   const [pickedLead, setPickedLead] = useState<string | null>(null);
-  const lead = leads.find((s) => s.id === pickedLead);
+  const selected = managers.find(({ lead }) => lead.id === pickedLead);
   useEffect(() => {
-    if (pickedLead && !lead && !pending) setPickedLead(null);
-  }, [pickedLead, lead, pending]);
-
-  const visible = lead ? descendants.get(lead.id) ?? [] : sessions;
-  const live = byUrgency(visible.filter((s) => stateOf(s) !== 'done'), stateOf);
-  const done = visible.filter((s) => stateOf(s) === 'done').sort((a, b) => b.updatedAt - a.updatedAt);
+    if (pickedLead && !selected && !pending) setPickedLead(null);
+  }, [pickedLead, selected, pending]);
 
   // What each session works on (#912): issue title, board task, branch, or the lead's own summary.
   const tasks = useDispatch((s) => s.tasks);
@@ -308,17 +304,17 @@ function SessionsCard({ onCreate }: { onCreate: () => void }) {
       <div className="flex min-w-0 flex-col gap-4">
         <div className="flex min-w-0 flex-wrap items-center justify-between gap-x-4 gap-y-2">
           <SummaryLine />
-          <div role="group" aria-label="관리자 필터" className="ml-auto flex min-w-0 max-w-full flex-wrap justify-end gap-1">
-            {[{ id: null, name: '전체' }, ...leads].map(({ id, name }) => (
+          <div role="group" aria-label="관리자 필터" className="ms-auto flex max-w-full flex-wrap justify-end gap-1">
+            {[{ id: null, label: '전체' }, ...managers.map(({ lead, label }) => ({ id: lead.id, label }))].map(({ id, label }) => (
               <Button
                 key={id ?? ''}
                 size="sm"
                 variant="ghost"
-                aria-pressed={id === (lead?.id ?? null)}
+                aria-pressed={id === (selected?.lead.id ?? null)}
                 onClick={() => setPickedLead(id)}
-                className="min-w-0 max-w-full text-muted-foreground aria-pressed:bg-muted aria-pressed:text-foreground pointer-coarse:min-h-11"
+                className="h-auto min-h-8 min-w-6 max-w-full whitespace-normal text-muted-foreground aria-pressed:bg-muted aria-pressed:text-foreground pointer-coarse:min-h-11 pointer-coarse:min-w-11"
               >
-                <span className="truncate" title={name}>{name}</span>
+                <span className="min-w-0 [overflow-wrap:anywhere]">{label}</span>
               </Button>
             ))}
           </div>
@@ -334,21 +330,33 @@ function SessionsCard({ onCreate }: { onCreate: () => void }) {
           >
             실행 중인 세션이 없어요. 새 세션을 만들면 여기에 보여요.
           </EmptyState>
-        ) : visible.length === 0 ? (
-          <EmptyState className="px-0 py-2">하위 세션이 없어요.</EmptyState>
+        ) : selected ? (
+          selected.descendants.length ? (
+            <SessionList key={selected.lead.id} label={`${selected.label} 하위 세션`} sessions={selected.descendants} summaries={summaries} />
+          ) : (
+            <EmptyState className="px-0 py-2">하위 세션이 없어요.</EmptyState>
+          )
         ) : (
-          <SessionList key={lead?.id ?? ''} label={lead ? `${lead.name} 하위 세션` : '전체 세션'} live={live} done={done} summaries={summaries} />
+          <div className="flex min-w-0 flex-col gap-3">
+            {managers.filter(({ members }) => members.length > 0).map(({ lead, label, members }) => (
+              <SessionList key={lead.id} heading label={label} sessions={members} summaries={summaries} />
+            ))}
+            {unlinked.length > 0 && <SessionList heading label="관리자 연결 없음" sessions={unlinked} summaries={summaries} />}
+          </div>
         )}
       </div>
     </Card>
   );
 }
 
-function SessionList({ label, live, done, summaries }: { label: string; live: Session[]; done: Session[]; summaries: Map<string, TaskSummary | null> }) {
+function SessionList({ label, heading, sessions, summaries }: { label: string; heading?: boolean; sessions: Session[]; summaries: Map<string, TaskSummary | null> }) {
   const [showDone, setShowDone] = useState(false);
+  const live = byUrgency(sessions.filter((s) => stateOf(s) !== 'done'), stateOf);
+  const done = sessions.filter((s) => stateOf(s) === 'done').sort((a, b) => b.updatedAt - a.updatedAt);
   const shown = showDone ? [...live, ...done] : live;
   return (
     <div className="flex min-w-0 flex-col">
+      {heading && <h3 className="m-0 text-xs font-semibold text-muted-foreground [overflow-wrap:anywhere]">{label}</h3>}
       {shown.length > 0 && (
         <div className="-mx-2">
           <SessionGrid label={label}>
