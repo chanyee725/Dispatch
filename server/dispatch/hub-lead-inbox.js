@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { clip } from "./hub-util.js";
+import { clip, sameCommitSha, uniqueCommitSha } from "./hub-util.js";
 import { redact } from "./redact.js";
 
 function leadMessageId(id = randomUUID()) {
@@ -76,24 +76,31 @@ export class HubLeadInbox {
   }
 
   /** @this {import("./hub-util.js").HubThis} */
-  resolveQueuedReviews(lead, taskId, commits) {
+  resolveQueuedReviews(lead, task, commits) {
     const reviewed = new Map();
     for (const sender of this.sessions) {
       for (const item of this.live.get(sender.id)?.pendingReports ?? []) {
-        if (item.review?.taskId !== taskId) continue;
+        if (item.review?.taskId !== task.id) continue;
         const sha = item.review.commit;
         if (!reviewed.has(sha)) reviewed.set(sha, []);
         // Reports still with the old lead can make an abbreviation ambiguous too.
         if (sender.parent === lead.id) reviewed.get(sha).push(item);
       }
     }
-    for (const prefix of commits) {
-      const matches = [...reviewed.keys()].filter(sha => sha.startsWith(prefix));
-      if (matches.length !== 1) continue;
-      const [sha] = matches;
-      for (const item of reviewed.get(sha)) {
-        item.resolvedReview = `[Dispatch] ${sha} 후보의 리뷰 지적은 해결됐어요. 이 지적으로 작업 카드를 다시 열지 마세요.`
-          + (item.review.longNote ? `\n\n${item.review.longNote}` : "");
+    const candidates = [...commits, ...reviewed.keys(), ...this.taskCommits(task)];
+    for (const [sha, items] of reviewed) {
+      // A queued abbreviation can also refer to the current candidate.
+      if (!items.length || sameCommitSha(sha, task.commit)) continue;
+      for (const requested of commits) {
+        if (!sameCommitSha(sha, requested)) continue;
+        const shortest = sha.length < requested.length ? sha : requested;
+        const commit = uniqueCommitSha(candidates, shortest);
+        if (!commit) continue;
+        for (const item of items) {
+          item.resolvedReview = `[Dispatch] ${commit} 후보의 리뷰 지적은 해결됐어요. 이 지적으로 작업 카드를 다시 열지 마세요.`
+            + (item.review.longNote ? `\n\n${item.review.longNote}` : "");
+        }
+        break;
       }
     }
   }

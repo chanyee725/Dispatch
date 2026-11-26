@@ -66,6 +66,17 @@ export function sameCommitSha(a, b) {
   return a.startsWith(b) || b.startsWith(a);
 }
 
+// A prefix can identify a candidate only when all known matches agree.
+export function uniqueCommitSha(commits, sha) {
+  let match = null;
+  for (const commit of commits) {
+    if (!sameCommitSha(commit, sha)) continue;
+    if (match && !sameCommitSha(commit, match)) return null;
+    if (!match || commit.length > match.length) match = commit;
+  }
+  return match?.toLowerCase() ?? null;
+}
+
 export const isOpenStatus = st => !["done", "error"].includes(st);
 export const clip = (s, n = 2000) => { s = String(s ?? ""); return s.length > n ? s.slice(0, n) + "…" : s; };
 

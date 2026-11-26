@@ -241,7 +241,7 @@ test("a card handoff drains the moved teammates' pending reports in order with t
 });
 
 test("handoff replaces only a queued finding confirmed resolved on a previous candidate", async () => {
-  const { hub, lead, a, b, add, report, done, work } = fixture({ limit: 6 });
+  const { hub, lead, a, b, add, report, done, work } = fixture({ limit: 7 });
   const next = add("next");
   next.status = "idle";
   a.role = b.role = "review";
@@ -254,6 +254,8 @@ test("handoff replaces only a queued finding confirmed resolved on a previous ca
   await hub.setTask(lead.id, { title: "another card", commit: oldCommit, stage: "review" });
   report(b, "aaaaaaa — must-fix 있음\nFinding with two matching cards");
   await hub.setTask(lead.id, { id: card.id, commit: currentCommit, stage: "merge" });
+  // Two cards with the same commit remain ambiguous after the first card advances.
+  report(b, "aaaaaaa — must-fix 있음\nFinding after one of two cards advanced");
   report(b, "bbbbbbb — must-fix 있음\nCurrent candidate finding");
   report(b, "ccccccc — must-fix 있음\nUnattributed finding");
   hub.messageLead(a.id, "Explicit report", "report-1");
@@ -266,14 +268,51 @@ test("handoff replaces only a queued finding confirmed resolved on a previous ca
   assert.doesNotMatch(work[0], /Reopen the previous candidate|set_task/);
   assert.match(work[0], /aaaaaaa.*해결/);
   assert.deepEqual([card.commit, card.stage], [currentCommit, "merge"]);
-  for (const expected of ["Progress note", "Finding with two matching cards", "Current candidate finding", "Unattributed finding", "Explicit report"]) {
+  for (const expected of ["Progress note", "Finding with two matching cards", "Finding after one of two cards advanced", "Current candidate finding", "Unattributed finding", "Explicit report"]) {
     done(next);
     assert.ok(work.at(-1).includes(expected), expected);
   }
   done(next);
-  assert.equal(hub.transcript(next.id).filter(e => e.kind === "user").length, 6);
+  assert.equal(hub.transcript(next.id).filter(e => e.kind === "user").length, 7);
   assert.deepEqual(hub.messageLead(a.id, "Explicit report", "report-1"), { ok: true, duplicate: true });
 });
+
+for (const [name, abbreviated] of [
+  ["a full-SHA finding reported after the board advanced", false],
+  ["a finding recorded with only a short SHA and resolved by full SHA", true],
+]) {
+  test(`handoff resolves ${name}`, async () => {
+    const { hub, lead, a, add, report, done, work } = fixture();
+    const next = add("next");
+    next.status = "idle";
+    a.role = "review";
+    hub.boardNote = Hub.prototype.boardNote;
+    const previousCommit = "a".repeat(40);
+    const currentCommit = "b".repeat(40);
+    const reportedCommit = abbreviated ? previousCommit.slice(0, 7) : previousCommit;
+    const card = await hub.setTask(lead.id, { title: "candidate", commit: reportedCommit, stage: "review" });
+    if (abbreviated) {
+      report(a, `${reportedCommit} — must-fix 있음\nPrevious finding`);
+      assert.equal(hub.rt(a.id).pendingReports[0].review.commit, reportedCommit);
+    }
+    await hub.setTask(lead.id, { id: card.id, commit: currentCommit, stage: "merge" });
+    if (!abbreviated) report(a, `${reportedCommit} — must-fix 있음\nPrevious finding`);
+    report(a, `${currentCommit} — must-fix 있음\nCurrent finding`);
+
+    hub.handoffTask(card.id, {
+      fromLead: lead.id, toLead: next.id, sessionIds: [a.id], resolvedReviewCommits: [previousCommit],
+    });
+    assert.equal(work.length, 1);
+    assert.doesNotMatch(work[0], /Previous finding|set_task/);
+    assert.ok(work[0].includes(previousCommit));
+    assert.match(work[0], /해결/);
+    done(next);
+    assert.match(work[1], /Current finding[\s\S]*set_task/);
+    done(next);
+    assert.equal(work.length, 2);
+    assert.deepEqual([card.commit, card.stage], [currentCommit, "merge"]);
+  });
+}
 
 const commentUrl = "https://github.com/chanyee725/Dispatch/pull/71#issuecomment-7178180505";
 
@@ -361,6 +400,35 @@ test("handoff preserves both findings when an abbreviated resolution SHA matches
   assert.match(work[1], /Second finding/);
   done(next);
   assert.equal(work.length, 2);
+});
+
+test("handoff keeps ambiguous short findings when a full SHA resolves only one candidate", async () => {
+  const { hub, lead, a, add, report, done, work } = fixture();
+  const next = add("next");
+  next.status = "idle";
+  a.role = "review";
+  const prefix = "abcdef0";
+  const resolved = prefix + "a".repeat(33);
+  const unresolved = prefix + "b".repeat(33);
+  const card = await hub.setTask(lead.id, { title: "candidate", commit: prefix, stage: "review" });
+  report(a, `${prefix} — must-fix 있음\nAmbiguous finding`);
+  await hub.setTask(lead.id, { id: card.id, commit: resolved });
+  report(a, `${resolved} — must-fix 있음\nResolved finding`);
+  await hub.setTask(lead.id, { id: card.id, commit: unresolved });
+  report(a, `${unresolved} — must-fix 있음\nUnresolved finding`);
+  await hub.setTask(lead.id, { id: card.id, commit: "c".repeat(40), stage: "merge" });
+
+  hub.handoffTask(card.id, {
+    fromLead: lead.id, toLead: next.id, sessionIds: [a.id], resolvedReviewCommits: [resolved],
+  });
+  assert.match(work[0], /Ambiguous finding/);
+  done(next);
+  assert.match(work[1], /해결/);
+  assert.doesNotMatch(work[1], /Resolved finding/);
+  done(next);
+  assert.match(work[2], /Unresolved finding/);
+  done(next);
+  assert.equal(work.length, 3);
 });
 
 test("accepted explicit messages follow a reparent ahead of newer items even when the new inbox is full", () => {

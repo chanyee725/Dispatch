@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { redact } from "./redact.js";
-import { STALL_MS, isOpenStatus, clip, sameCommitSha } from "./hub-util.js";
+import { STALL_MS, isOpenStatus, clip, sameCommitSha, uniqueCommitSha } from "./hub-util.js";
 
 const REVIEW_HEADING = /^(?:([0-9a-f]{7,40}) — must-fix 있음|PR #[1-9]\d* `([0-9a-f]{7,40})` — \*\*must-fix 있음\*\*)[ \t\r]*$/i;
 
@@ -154,12 +154,13 @@ export class HubTickets {
     const longNote = s.longNote;
     // Only a review with the standard SHA/verdict heading and one matching card can be scoped.
     const sha = s.role === "review" ? reviewedSha(r.lastText) : null;
-    const cards = sha ? this.tasks.filter(t => t.lead === s.parent && t.stage !== "done" && sameCommitSha(t.commit, sha)) : [];
+    const cards = sha ? this.tasks.filter(t => t.lead === s.parent && t.stage !== "done" &&
+      this.taskCommits(t).some(commit => sameCommitSha(commit, sha))) : [];
     let review;
     if (cards.length === 1) {
       const [card] = cards;
-      const commit = sha.length > card.commit.length ? sha : card.commit;
-      review = { taskId: card.id, commit: commit.toLowerCase(), longNote };
+      const commit = uniqueCommitSha([sha, ...this.taskCommits(card)], sha);
+      if (commit) review = { taskId: card.id, commit, longNote };
     }
     // The length-guard note rides with the report even if the finding is later resolved.
     if (longNote) { report += `\n\n${longNote}`; s.longNote = null; }

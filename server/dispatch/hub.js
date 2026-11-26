@@ -42,6 +42,7 @@ export class Hub extends EventEmitter {
     this.shared = limits || new SharedLimits();
     this.shared.on("change", () => { this.emit("limits", this.currentLimits()); this.checkTickets(); });
     this.leadReportSeq = 0;
+    this.previousTaskCommits = new WeakMap();
     this.live = new Map(); // id -> { proc, transcript, perms, seenMsgIds }
     // The live view per session (#728): metadata only, in memory, sent as throttled `live` events.
     this.liveView = new LiveTracker({ workspaceDir, emit: ev => this.emit("live", ev), known: id => !!this.get(id) });
@@ -358,6 +359,10 @@ export class Hub extends EventEmitter {
       .sort((a, b) => a.createdAt - b.createdAt);
   }
 
+  taskCommits(task) {
+    return [task.commit, ...(this.previousTaskCommits.get(task) ?? [])];
+  }
+
   /**
    * Creates or updates a task (matched by id, else by lead + title). Closing one as done with a
    * `commit` (hash or branch) first checks the commit is on the integration branch; if not, the
@@ -409,7 +414,15 @@ export class Hub extends EventEmitter {
       }
     }
     if (title) t.title = title;
-    if (input.commit !== undefined) t.commit = commit;
+    if (input.commit !== undefined) {
+      // A review can finish after a newer candidate is already on the board.
+      if (COMMIT_SHA.test(t.commit ?? "") && t.commit !== commit) {
+        const previous = this.previousTaskCommits.get(t) ?? new Set();
+        previous.add(t.commit);
+        this.previousTaskCommits.set(t, previous);
+      }
+      t.commit = commit;
+    }
     if (stage) enterStage(t, stage);
     if (input.lane !== undefined) t.lane = checkLane(input.lane) ?? null;
     // A merged task is one past run of its lane; new tasks get an ETA hint from those (#768).
@@ -484,7 +497,7 @@ export class Hub extends EventEmitter {
 
     task.lead = toLead;
     for (const s of moved) s.parent = toLead;
-    if (resolved.size) this.resolveQueuedReviews(next, task.id, resolved);
+    if (resolved.size) this.resolveQueuedReviews(next, task, resolved);
     this.store.save();
     this.emit("tasks", this.tasks);
     for (const s of moved) this.touch(s);
