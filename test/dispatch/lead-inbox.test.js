@@ -281,6 +281,16 @@ for (const [name, heading, resolvedLength, old = "a".repeat(40), extraUnscoped =
   ["a unique abbreviated resolution SHA", sha => `${sha} — must-fix 있음`, 7],
   ["the automatic PR review heading", sha => `PR #71 \`${sha}\` — **must-fix 있음**`, 40],
   [
+    "the exact delivered review result including type checks",
+    () => "`d03b695220e7f3636403f8cd7bec8153c2a85362` — **must-fix 있음** · `ℹ pass 42` / `ℹ fail 0` · shared/web 타입 검사 각각 `exit 0`. [PR #71 독립 리뷰 댓글](https://github.com/chanyee725/Dispatch/pull/71#issuecomment-7178180505)",
+    40,
+    "d03b695220e7f3636403f8cd7bec8153c2a85362",
+    [
+      sha => `\`${sha}\` — **must-fix 있음** · \`ℹ pass 42\` / \`ℹ fail 0\` · shared/web 타입 검사 각각 \`exit 0\`. See [PR 리뷰 댓글](${commentUrl})`,
+      sha => `\`${sha}\` — **must-fix 있음** · \`ℹ pass 42\` / \`ℹ fail 0\` · shared/web 타입 검사 각각 \`exit 0\`. [PR](https://github.com/chanyee725/Dispatch/pull/71)`,
+    ],
+  ],
+  [
     "the delivered review result with the check summary and comment link",
     sha => `\`${sha}\` — **must-fix 있음** · \`ℹ pass 42\` / \`ℹ fail 0\` · [PR 리뷰 댓글](${commentUrl})`,
     40,

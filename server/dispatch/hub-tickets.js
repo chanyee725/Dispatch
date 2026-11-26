@@ -4,7 +4,7 @@ import { STALL_MS, isOpenStatus, clip, sameCommitSha } from "./hub-util.js";
 
 const REVIEW_HEADING = /^(?:([0-9a-f]{7,40}) — must-fix 있음|PR #[1-9]\d* `([0-9a-f]{7,40})` — \*\*must-fix 있음\*\*)[ \t\r]*$/i;
 
-const REVIEW_RESULT_HEADING = /^`([0-9a-f]{7,40})` — \*\*must-fix 있음\*\* · (.+?) · (\[[^\]\r\n]+\]\([^\s()]+\)|https:\/\/\S+)[ \t\r]*$/i;
+const REVIEW_RESULT_HEADING = /^`([0-9a-f]{7,40})` — \*\*must-fix 있음\*\* · (.+?) · (?:shared\/web 타입 검사 각각 `exit \d+`\. )?(\[[^\]\r\n]+\]\([^\s()]+\)|https:\/\/\S+)[ \t\r]*$/i;
 const REVIEW_CHECK_COUNTS = /^(`?)ℹ pass \d+\1[ \t]*[,/·][ \t]*(`?)ℹ fail \d+\2$/;
 const REVIEW_COMMENT_URL = /^https:\/\/github\.com\/[\w.-]+\/[\w.-]+\/pull\/[1-9]\d*#(?:issuecomment-|discussion_r|pullrequestreview-)\d+$/;
 
