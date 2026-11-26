@@ -3,31 +3,27 @@
 # Dispatch
 
 **AI 에이전트 세션을 한 화면에서 돌리고 지켜봐요. 내 컴퓨터에서만 도는 앱이에요.**<br>
-Claude Code · Codex · Gemini 세션과 팀을 띄우고, 세션 보드에서 지켜보고, 채팅으로 말을 걸어요.
+Claude Code · Codex · Gemini 세션과 팀을 띄우고 세션 보드에서 진행 상황을 봐요.
 
-1.1에서는 관리자 카드나 실시간 화면을 열어 **메시지 N건 대기**를 확인해요.
+1.2에서는 세션 보드를 열고 관리자를 골라 팀을 봐요. 작업 보드에서 작업별 남은 시간과 담당자를 확인해요.
 
 [English](README.md) · **한국어**
 
-[![version](https://img.shields.io/badge/version-1.1.0-6366f1)](CHANGELOG.md)
+[![version](https://img.shields.io/badge/version-1.2.0-6366f1)](CHANGELOG.md#120)
 [![node](https://img.shields.io/badge/node-%E2%89%A522.18-339933?logo=nodedotjs&logoColor=white)](#-빠른-시작)
 [![Claude Code plugin](https://img.shields.io/badge/Claude_Code-plugin-d97757)](#-스킬-설치)
 [![Codex plugin](https://img.shields.io/badge/Codex-plugin-111111)](#-스킬-설치)
 [![local only](https://img.shields.io/badge/127.0.0.1-local_only-0ea5e9)](#-개인정보와-로컬-전용)
 
-<a href="docs/images/demo.mp4"><img src="docs/images/demo-poster.png" alt="데모: Dispatch 팀이 PLC 데이터를 받아 로봇을 움직이는 웹 페이지를 계획해요" width="900"></a>
-
-<sub>데모 영상 · <a href="docs/images/demo.mp4">MP4로 보기</a> <!-- TODO(youtube): swap the MP4 link for the YouTube link once uploaded --> · 리드와 팀원이 실제 Claude CLI로 "PLC 데이터를 받아 로봇을 움직이는 웹 페이지"를 계획해요</sub>
-
 </div>
 
 ## ✨ 핵심 기능
 
-- **세션 보드**: 첫 화면이에요. 누가 무엇을 하는지, 작업별 단계와 남은 시간, 브랜치, 비용과 5시간·주간 사용량 한도를 봐요.
-- **프로젝트와 세션**: 사이드바에 프로젝트 폴더가 있고, 하나를 고르면 그 세션만 봐요.
-- **에이전트 팀**: 리드, 구현자, 리뷰어(Claude Code · Codex · Gemini)가 각자 git worktree에서 일하고 서로 리뷰하고 PR을 열어요.
-- **채팅**: 앱에서 세션과 이야기해요. 저장한 대화는 사이드바에 있어요.
-- **로컬 전용**: 서버는 `127.0.0.1`에만 열리고 밖으로 요청을 보내지 않아요.
+- **세션 보드**에서 **전체**를 누르면 세션이 관리자별로 묶여요. 연결된 관리자가 없는 세션은 **관리자 연결 없음**에 나와요. 관리자를 고르면 그 관리자의 하위 세션을 봐요.
+- **작업 보드**에서 작업별 단계, ETA, 담당자를 확인해요. ETA가 있으면 남은 시간이나 초과한 시간을 보여 줘요. 담당자가 비어 있으면 **맡은 사람 없음**으로 표시해요.
+- **프로젝트**에는 실행이 확인된 Dispatch 서비스의 프로젝트 이름과 개수가 나와요. 사이드바에서 프로젝트 이름을 고르면 해당 서비스의 보드가 열려요. 세션은 세션 보드에서 확인해요.
+- **에이전트 팀**의 관리자, 구현자, 리뷰어(Claude Code · Codex · Gemini)는 각자 git worktree에서 일하고 변경 사항을 리뷰하고 PR을 열어요.
+- **브랜치와 사용량**은 사이드바에서 열어요. 브랜치, 비용, 제공자별 사용량 한도를 확인해요.
 
 ## 🚀 빠른 시작
 
@@ -74,7 +70,7 @@ codex plugin add dispatch@dispatch
 
 Dispatch 1.0은 Atelier라고 부르던 앱을 Dispatch 이름으로 낸 거예요. 옮기는 동안 아무것도 지우지 않아요.
 
-- **Atelier로 쓰던 프로젝트**: `<프로젝트>/.atelier`는 그대로 둬요. 서버가 시작할 때 저장된 세션이 없으면 보드, 설정, 저장한 대화를 `<프로젝트>/.dispatch`로 한 번 복사해요(그 전까지는 `.atelier`를 그대로 써요). 예전 worktree는 제자리에 있어요.
+- **Atelier로 쓰던 프로젝트**: `<프로젝트>/.atelier`는 그대로 둬요. 서버가 시작할 때 `.atelier`에 저장된 세션이 없으면 보드와 설정을 포함한 프로젝트 상태를 `<프로젝트>/.dispatch`로 한 번 복사해요(그 전까지는 `.atelier`를 그대로 써요). 예전 worktree는 제자리에 있어요.
 - **내 기본값**: `~/.atelier/`의 `drawing.json`, `limits.json`, `prefs.json`을 `~/.dispatch/`에 같은 파일이 없을 때만 한 번 복사해요.
 - **Dispatch 0.x로 쓰던 프로젝트**: 지금 있는 `<프로젝트>/.dispatch`(worktree는 `wt/`)를 그대로 써요. 0.x 서버는 먼저 꺼 주세요. `~/.dispatch/servers/`(0.x 등록 파일)는 읽지도 쓰지도 않아요.
 - **환경 변수**: `ATELIER_API_TIMEOUT`, `ATELIER_QUICKFIX_FILES`도 계속 돼요. 새 이름은 `DISPATCH_API_TIMEOUT`, `DISPATCH_QUICKFIX_FILES`예요.
@@ -93,14 +89,17 @@ Dispatch 1.0은 Atelier라고 부르던 앱을 Dispatch 이름으로 낸 거예�
 
 ## 🧭 팀이 일하는 방식
 
-**설정 → 관리자와 팀 → 관리자 메시지 최대 대기**에서 관리자 한 명의 대기 한도를 1~100건으로 정해요. 기본값은 20건이에요. 대기 건수는 설정한 한도까지만 표시해요.
+`dispatch-session` 스킬로 관리자에게 짧게 지시해요.
 
-1. 리드에게 한 줄로 말해요: "PLC에서 데이터를 받아온 뒤 로봇을 움직이는 웹 페이지를 만들어야 해."
-2. 리드가 팀원을 두고 일을 나눠요.
-3. 구현자는 git worktree에서 일하고, 새 리뷰어가 PR마다 코멘트를 달고, 병합 담당이 리뷰를 통과한 PR을 병합해요.
-4. 세션 보드에서 모든 세션과 작업을 실시간으로 봐요.
+1. 관리자가 팀원을 두고 일을 나눠요.
+2. 구현자는 git worktree에서 일하고, 리뷰어가 변경 사항을 확인하면 관리자가 검토를 통과한 PR을 병합해요.
+3. 세션 보드에서 세션과 작업의 진행 상황을 봐요.
 
-관리자는 사용자 지시, 팀원 메시지, 자동 보고를 받은 순서대로 턴마다 한 건씩 처리해요.
+대기 메시지가 있으면 관리자 카드나 실시간 화면에서 **메시지 N건 대기**를 확인해요. 관리자는 사용자 지시, 팀원 메시지, 자동 보고를 받은 순서대로 턴마다 한 건씩 처리해요. **설정 → 관리자와 팀 → 관리자 메시지 최대 대기**에서 관리자 한 명의 대기 한도를 1~100건으로 정해요. 기본값은 20건이고 건수는 설정한 한도까지만 표시해요.
+
+관리자가 새 세션으로 자동 교체되면 인계 내용, 팀원, 작업 보드, 대기 메시지가 함께 옮겨져요. 수동으로 인계할 때는 `POST /api/tasks/:id/handoff`로 작업 카드와 선택한 팀원을 같은 프로젝트의 다른 관리자에게 넘겨요. 카드 ID와 단계 이력도 함께 넘어가요.
+
+완료된 관리자를 자동으로 정리하려면 **설정 → 관리자와 팀 → 끝난 관리자 자동 정리**를 켜요. 카드가 한 장 이상 있는 유휴 관리자는 모든 카드의 병합이 확인되고, 팀원이 일을 마쳤으며, 남은 작업이나 대기 응답이 없으면 정리 대상이 돼요. 기본 유예 시간은 120초예요. 관리자가 `finish`로 정리를 요청할 수도 있어요. 정리 후에도 worktree와 작업 카드는 남아요.
 
 ## 🔒 개인정보와 로컬 전용
 
@@ -112,11 +111,11 @@ Dispatch 1.0은 Atelier라고 부르던 앱을 Dispatch 이름으로 낸 거예�
 ## 🏗 구조
 
 ```text
-server/   127.0.0.1 서버: 에이전트 세션, 팀, 사용량, 채팅(server/dispatch)
-web/      React 앱: 세션 보드, 사이드바, 채팅, 설정
+server/   127.0.0.1 서버: 에이전트 세션, 팀, 사용량(server/dispatch)
+web/      React 앱: 세션 보드, 사이드바, 사용량, 설정
 shared/   서버·웹 공용 세션 타입과 도우미
 plugin/   Claude Code · Codex 플러그인: 스킬 7개와 훅
-scripts/  패키징, 데모 녹화(record-demo.mjs)
+scripts/  패키징과 개발 도구
 test/     node:test 테스트, 가짜 CLI, 헤드리스 e2e
 ```
 
@@ -127,7 +126,6 @@ test/     node:test 테스트, 가짜 CLI, 헤드리스 e2e
 | `npm test` | 서버와 웹 로직 테스트(가짜 CLI만 써요) |
 | `npm run build` | 웹 앱을 `public/`에 빌드 |
 | `npm run dev:web` | Vite 개발 서버(`/api`는 4330 포트 서버로 넘겨요) |
-| `node scripts/record-demo.mjs` | 데모를 다시 찍어요. 빈 포트·`/tmp` 아래 scratch 프로젝트에서 실제 Claude CLI(claude-sonnet-5-5)가 계획까지만 하고, `docs/images/demo.mp4`와 `demo-poster.png`를 써요. `CHROME`, `PLAYWRIGHT_CORE`, 로그인된 `claude`가 필요해요. `DEMO_FAKE=1`은 가짜 CLI로 스크립트만 확인해요 |
 
 브라우저 e2e는 켤 때만 돌아요.
 

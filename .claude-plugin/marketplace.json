@@ -9,6 +9,7 @@
   "plugins": [
     {
       "name": "dispatch",
+      "version": "1.2.0",
       "description": "Skills and hooks to start Dispatch in a project, run a team, a quickfix or one session in git worktrees, and watch status, limits and settings.",
       "source": "./",
       "category": "productivity"
