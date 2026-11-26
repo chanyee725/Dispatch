@@ -65,6 +65,47 @@ test("merge proof resolves the branch and full SHA independently of same-name ta
   assert.equal((await verifyMerged(dir, "feat/x")).ok, false);
 });
 
+test("verifyMerged uses the integration branch when a same-name tag points to unmerged work", async t => {
+  const { dir, g } = scratchRepo();
+  t.after(() => rmSync(dir, { recursive: true, force: true }));
+  g("tag", "develop", "feat/x");
+
+  const proof = await verifyMerged(dir, "feat/x");
+  assert.equal(proof.ok, false);
+  assert.equal(proof.base, "develop");
+  g("merge", "-q", "--ff-only", "feat/x");
+  assert.equal((await verifyMerged(dir, "feat/x")).ok, true);
+});
+
+test("verifyMerged accepts HEAD and remote-tracking candidates alongside local branches and SHAs", async t => {
+  const { dir, g } = scratchRepo();
+  t.after(() => rmSync(dir, { recursive: true, force: true }));
+  const tip = g("rev-parse", "refs/heads/develop");
+  g("update-ref", "refs/remotes/origin/merged", tip);
+  g("tag", "origin/merged", "feat/x");
+  for (const candidate of ["HEAD", "origin/merged", "refs/remotes/origin/merged"]) {
+    assert.deepEqual(await verifyMerged(dir, candidate), { ok: true, commit: tip, base: "develop", reason: null });
+  }
+});
+
+for (const base of ["develop", "origin/develop"]) {
+  test(`branchStatus uses the ${base} branch when a same-name tag points to unmerged work`, async t => {
+    const { dir, g } = scratchRepo();
+    t.after(() => rmSync(dir, { recursive: true, force: true }));
+    const fullRef = base === "develop" ? "refs/heads/develop" : "refs/remotes/origin/develop";
+    const tip = g("rev-parse", "refs/heads/feat/x");
+    g("update-ref", fullRef, g("rev-parse", "refs/heads/develop"));
+    g("tag", base, tip);
+
+    for (const ref of [base, fullRef]) {
+      const row = await branchStatus(dir, "feat/x", ref);
+      assert.deepEqual([row.ahead, row.behind, row.state], [1, 0, "open"]);
+    }
+    g("update-ref", fullRef, tip);
+    assert.equal((await branchStatus(dir, "feat/x", base)).state, "merged");
+  });
+}
+
 test("branchStatus: ahead/behind, last commit time and merge state", async () => {
   const { dir, g } = scratchRepo();
   try {

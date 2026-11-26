@@ -338,6 +338,38 @@ for (const automatic of [true, false]) {
   });
 }
 
+for (const automatic of [true, false]) {
+  test(`${automatic ? "auto-close" : "explicit done"} needs real integration branch proof despite a same-name tag`, async t => {
+    const { root, git, commit } = scratchGit(t);
+    const { hub, lead, cleanup, sessions } = fixture({ root, automatic, status: "running", card: false });
+    const ref = "fix/candidate";
+    git("switch", "-q", ref);
+    commit();
+    git("switch", "-q", "develop");
+    git("tag", "develop", ref);
+    const card = await hub.setTask(lead.id, { title: "Candidate work", stage: "merge", commit: ref });
+    const close = () => automatic ? hub.autoCloseTasks() : hub.setTask(lead.id, { id: card.id, stage: "done" });
+
+    await close();
+    assert.equal(card.stage, "merge");
+    assert.notEqual(card.mergeCheck?.ok, true);
+    hub.touch(lead, { status: "idle" });
+    cleanup.reconcile();
+    assert.equal(cleanup.scheduled(lead), false);
+    assert.deepEqual(cleanup.request(lead.id), { ok: false, reason: "board" });
+    mock.timers.tick(120_000);
+    assert.equal(sessions.L, lead);
+
+    git("merge", "-q", "--ff-only", ref);
+    await close();
+    assert.equal(card.stage, "done");
+    assert.equal(card.mergeCheck.commit, git("rev-parse", `refs/heads/${ref}`));
+    if (!automatic) assert.deepEqual(cleanup.request(lead.id), { ok: true });
+    await cleanup.pending.get(lead.id)?.checking;
+    assert.equal(cleanup.scheduled(lead), true);
+  });
+}
+
 for (const atExpiry of [false, true]) {
   for (const automatic of [true, false]) {
     test(`${automatic ? "auto-close" : "explicit done"} rejects a tag after branch deletion before ${atExpiry ? "expiry" : "arming"}`, async t => {

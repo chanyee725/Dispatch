@@ -197,7 +197,7 @@ export async function diff(cwd, root = cwd) {
 /** Local branch names of the repo at `root`. */
 async function localBranches(root) {
   try {
-    return (await git(root, "for-each-ref", "--format=%(refname:short)", "refs/heads")).stdout.split("\n").map(s => s.trim()).filter(Boolean);
+    return (await git(root, "for-each-ref", "--format=%(refname:lstrip=2)", "refs/heads")).stdout.split("\n").map(s => s.trim()).filter(Boolean);
   } catch { return []; }
 }
 
@@ -215,9 +215,18 @@ function localBranchRef(branch) {
   return branch.startsWith("refs/heads/") ? branch : `refs/heads/${branch}`;
 }
 
+async function resolveRefTip(root, ref) {
+  try { return (await git(root, "show-ref", "--verify", "--hash", ref)).stdout.trim() || null; }
+  catch { return null; }
+}
+
 /** Resolves the exact local branch ref, including when a tag has the same name. */
-export async function resolveBranchTip(root, branch) {
-  try { return (await git(root, "show-ref", "--verify", "--hash", localBranchRef(branch))).stdout.trim() || null; }
+export function resolveBranchTip(root, branch) {
+  return resolveRefTip(root, localBranchRef(branch));
+}
+
+async function resolveHead(root) {
+  try { return (await git(root, "rev-parse", "--verify", "HEAD^{commit}")).stdout.trim(); }
   catch { return null; }
 }
 
@@ -227,6 +236,13 @@ async function resolveCommitSha(root, candidate) {
     return sha.startsWith(candidate.toLowerCase()) ? sha : null;
   }
   catch { return null; }
+}
+
+async function resolveBranchRevision(root, ref) {
+  if (ref === "HEAD") return resolveHead(root);
+  if (isCommitSha(ref)) return resolveCommitSha(root, ref);
+  if (ref.startsWith("refs/heads/") || ref.startsWith("refs/remotes/")) return resolveRefTip(root, ref);
+  return (await resolveBranchTip(root, ref)) ?? resolveRefTip(root, `refs/remotes/${ref}`);
 }
 
 /**
@@ -239,10 +255,14 @@ export async function verifyMerged(root, commit) {
   const base = await integrationBranch(root);
   // A leading "-" would read as an option to git.
   if (!ref || ref.startsWith("-")) return { ok: false, commit: ref, base, reason: "커밋을 알 수 없어요" };
-  const sha = await (isCommitSha(ref) ? resolveCommitSha(root, ref) : resolveBranchTip(root, ref));
+  const [sha, baseTip] = await Promise.all([
+    resolveBranchRevision(root, ref),
+    base === "HEAD" ? resolveHead(root) : resolveBranchTip(root, base),
+  ]);
   if (!sha) return { ok: false, commit: ref, base, reason: `${ref} 커밋을 프로젝트 폴더에서 찾을 수 없어요` };
+  if (!baseTip) return { ok: false, commit: sha, base, reason: `${base} 브랜치를 프로젝트 폴더에서 찾을 수 없어요` };
   try {
-    await git(root, "merge-base", "--is-ancestor", sha, base);
+    await git(root, "merge-base", "--is-ancestor", sha, baseTip);
     return { ok: true, commit: sha, base, reason: null };
   } catch (e) {
     // Exit 1 means "not an ancestor"; anything else is git failing.
@@ -262,14 +282,14 @@ export async function verifyMerged(root, commit) {
 export async function branchStatus(root, branch, base) {
   const sh = async (...a) => { try { return (await git(root, ...a)).stdout.trim(); } catch { return ""; } };
   const ref = localBranchRef(branch);
-  const [counts, ct, tip, born] = await Promise.all([
-    sh("rev-list", "--left-right", "--count", `${base}...${ref}`),
-    sh("log", "-1", "--format=%ct", ref),
-    resolveBranchTip(root, ref),
-    sh("reflog", "show", "--format=%H", ref).then(r => r.split("\n").filter(Boolean).at(-1) || ""),
+  const [baseTip, tip] = await Promise.all([resolveBranchRevision(root, base), resolveBranchTip(root, ref)]);
+  const [counts, ct, born] = await Promise.all([
+    baseTip && tip ? sh("rev-list", "--left-right", "--count", `${baseTip}...${tip}`) : "",
+    tip ? sh("log", "-1", "--format=%ct", tip) : "",
+    tip ? sh("reflog", "show", "--format=%H", ref).then(r => r.split("\n").filter(Boolean).at(-1) || "") : "",
   ]);
-  const [behind, ahead] = counts.split(/\s+/).map(n => +n || 0);
-  const state = ahead > 0 ? "open" : born && born !== tip ? "merged" : "empty";
+  const [behind, ahead = 0] = counts.split(/\s+/).map(n => +n || 0);
+  const state = !counts || ahead > 0 ? "open" : born && born !== tip ? "merged" : "empty";
   return { ahead, behind: behind ?? 0, lastAt: ct ? +ct * 1000 : null, state };
 }
 
