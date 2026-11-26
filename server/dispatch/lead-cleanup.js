@@ -1,4 +1,7 @@
+import { resolveCommit } from "./git.js";
 import { taskIssue } from "./task-close.js";
+
+const SHA = /^[0-9a-f]{7,40}$/i;
 
 function hasCurrentMergeProof(card) {
   const proof = card.mergeCheck;
@@ -8,7 +11,7 @@ function hasCurrentMergeProof(card) {
     // An issue-linked PR can close the card, but cannot prove a named commit or branch merged.
     return candidate === null && proof.candidate === null && proof.issue != null && proof.issue === taskIssue(card);
   }
-  if (/^[0-9a-f]{7,40}$/i.test(candidate ?? "")) {
+  if (SHA.test(candidate ?? "")) {
     // Older successful checks stored the resolved SHA without the original candidate.
     return proof.commit?.toLowerCase().startsWith(candidate.toLowerCase()) === true;
   }
@@ -26,6 +29,15 @@ export class LeadCleanup {
     }
   }
 
+  cards(id) {
+    return Object.values(this.hub.store.data.tasks || {}).filter(t => t.lead === id);
+  }
+
+  branchCandidates(id) {
+    return this.cards(id).filter(t => t.commit && !SHA.test(t.commit))
+      .map(card => ({ card, ref: card.commit, sha: card.mergeCheck?.commit }));
+  }
+
   /** Refuse unsafe cleanup even when a lead requests finish explicitly. */
   blocked(lead, { explicit = false, endingTurn = false } = {}) {
     if (!lead?.canSpawn) return "not-lead";
@@ -37,7 +49,7 @@ export class LeadCleanup {
     if (lead.status !== "idle" && !(endingTurn && lead.status === "running")) return "status";
     if (Object.values(hub.store.data.tickets || {}).some(t => t.lead === lead.id && t.status === "open")) return "ticket";
 
-    const cards = Object.values(hub.store.data.tasks || {}).filter(t => t.lead === lead.id);
+    const cards = this.cards(lead.id);
     if (cards.some(t => t.stage !== "done" || !hasCurrentMergeProof(t))) return "board";
     // Explicit finish can close a lead whose work did not require a board card.
     if (!explicit && !cards.length) return "board";
@@ -108,11 +120,11 @@ export class LeadCleanup {
     const explicit = job?.explicit === true;
     // A finish request made inside a running turn waits until that turn posts its final answer.
     if ((!explicit && !this.automaticEnabled()) ||
-        this.blocked(lead, { explicit, endingTurn: explicit && !job.timer })) {
+        this.blocked(lead, { explicit, endingTurn: explicit && job.reportAfterTurn !== undefined })) {
       this.cancel(id);
       return;
     }
-    if (lead.status !== "idle" || job?.timer) return;
+    if (lead.status !== "idle" || job?.timer || job?.checking) return;
     if (job?.reportAfterTurn !== undefined) {
       const runtime = this.hub.live.get(id);
       if ((lead.turns ?? 0) <= job.reportAfterTurn || !runtime?.lastText?.trim() ||
@@ -124,19 +136,46 @@ export class LeadCleanup {
       delete job.reportAfterSeq;
     }
     if (!job) this.pending.set(id, job = { lead, timer: null });
-    job.timer = setTimeout(() => this.expire(id, job), this.config.autoRemoveGraceSec * 1000);
-    job.timer.unref?.();
+    this.checkCandidates(id, job, () => {
+      job.timer = setTimeout(() => this.expire(id, job), this.config.autoRemoveGraceSec * 1000);
+      job.timer.unref?.();
+    });
+  }
+
+  checkCandidates(id, job, proceed) {
+    const candidates = this.branchCandidates(id);
+    if (!candidates.length) return proceed();
+
+    job.checking = Promise.all(candidates.map(({ ref }) => resolveCommit(this.hub.root, ref))).then(tips => {
+      if (this.pending.get(id) !== job) return;
+      job.checking = null;
+      const current = this.branchCandidates(id);
+      if (!this.eligible(id, job) || current.length !== candidates.length ||
+          candidates.some(({ card, ref, sha }, i) => !tips[i] || tips[i] !== sha ||
+            !current.some(c => c.card === card && c.ref === ref && c.sha === sha))) {
+        this.cancel(id);
+        return;
+      }
+      proceed();
+    });
+  }
+
+  eligible(id, job) {
+    return this.hub.get(id) === job.lead && !this.blocked(job.lead, { explicit: job.explicit }) &&
+      (job.explicit || this.automaticEnabled());
   }
 
   expire(id, job) {
     if (this.pending.get(id) !== job) return;
-    const { hub } = this;
-    if (hub.get(id) !== job.lead || this.blocked(job.lead, { explicit: job.explicit }) ||
-        (!job.explicit && !this.automaticEnabled())) {
+    if (!this.eligible(id, job)) {
       this.cancel(id);
       return;
     }
+    this.checkCandidates(id, job, () => this.finish(id, job));
+  }
 
+  finish(id, job) {
+    const { hub } = this;
     job.removing = true;
     try {
       // Hub.remove removes session records synchronously. The strict worktree check completes separately.

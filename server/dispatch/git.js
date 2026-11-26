@@ -207,6 +207,13 @@ export async function integrationBranch(root, base = "develop") {
   return [base, "main", "master"].find(b => branches.includes(b)) ?? (await currentBranch(root)) ?? "HEAD";
 }
 
+/** Resolves a local commit candidate, or returns null if Git cannot resolve it. */
+export async function resolveCommit(root, candidate) {
+  if (!candidate || candidate.startsWith("-")) return null;
+  try { return (await git(root, "rev-parse", "--verify", "--quiet", `${candidate}^{commit}`)).stdout.trim() || null; }
+  catch { return null; }
+}
+
 /**
  * Whether `commit` (a hash or branch name) is already part of the integration branch in the
  * project folder — `git merge-base --is-ancestor`. Leads closed tasks as merged that were not on
@@ -217,9 +224,8 @@ export async function verifyMerged(root, commit) {
   const base = await integrationBranch(root);
   // A leading "-" would read as an option to git.
   if (!ref || ref.startsWith("-")) return { ok: false, commit: ref, base, reason: "커밋을 알 수 없어요" };
-  let sha;
-  try { sha = (await git(root, "rev-parse", "--verify", "--quiet", `${ref}^{commit}`)).stdout.trim(); }
-  catch { return { ok: false, commit: ref, base, reason: `${ref} 커밋을 프로젝트 폴더에서 찾을 수 없어요` }; }
+  const sha = await resolveCommit(root, ref);
+  if (!sha) return { ok: false, commit: ref, base, reason: `${ref} 커밋을 프로젝트 폴더에서 찾을 수 없어요` };
   try {
     await git(root, "merge-base", "--is-ancestor", sha, base);
     return { ok: true, commit: sha, base, reason: null };

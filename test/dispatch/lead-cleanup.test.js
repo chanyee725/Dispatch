@@ -1,10 +1,14 @@
+import { execFileSync } from "node:child_process";
+import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { EventEmitter } from "node:events";
 import { afterEach, beforeEach, mock, test } from "node:test";
 import assert from "node:assert/strict";
 import { Hub } from "../../server/dispatch/hub.js";
 import { patchTeam, teamSettings } from "../../server/dispatch/settings.js";
 
-function fixture({ automatic = true, status = "idle", card = true } = {}) {
+function fixture({ automatic = true, status = "idle", card = true, root = "/tmp" } = {}) {
   const lead = { id: "L", canSpawn: true, provider: "openai", status: "idle" };
   const sessions = { L: lead };
   const tasks = card ? { T: { id: "T", lead: "L", stage: "done", commit: "a".repeat(7), mergeCheck: { ok: true, commit: "a".repeat(40) } } } : {};
@@ -12,7 +16,7 @@ function fixture({ automatic = true, status = "idle", card = true } = {}) {
   const team = { autoRemoveFinishedLeads: automatic };
   const store = { data: { sessions, tasks, tickets, settings: { team } }, save() {} };
   const spawnCli = mock.fn(() => { throw new Error("Cleanup must not start a CLI"); });
-  const hub = new Hub({ root: "/tmp", store, models: [], roles: [], limits: new EventEmitter(), spawnCli });
+  const hub = new Hub({ root, store, models: [], roles: [], limits: new EventEmitter(), spawnCli });
   lead.status = status;
   const events = [];
   hub.on("leadFinished", e => events.push(e));
@@ -238,4 +242,93 @@ for (const finalText of [null, "Work complete."]) {
     assert.equal(sessions.L, finalText ? undefined : lead);
     assert.deepEqual(events, finalText ? [{ id: "L", reason: "explicit" }] : []);
   });
+}
+
+function scratchGit(t) {
+  const root = mkdtempSync(join(tmpdir(), "dispatch-lead-cleanup-"));
+  t.after(() => rmSync(root, { recursive: true, force: true }));
+  const git = (...args) => execFileSync("git", ["-C", root, ...args], { encoding: "utf8" }).trim();
+  const commit = () => git("-c", "user.name=test", "-c", "user.email=test@example.invalid", "commit", "-q", "--allow-empty", "-m", "test");
+  git("init", "-qb", "develop");
+  commit();
+  git("switch", "-qc", "fix/candidate");
+  commit();
+  git("switch", "-q", "develop");
+  git("merge", "-q", "--ff-only", "fix/candidate");
+  return { root, git, commit };
+}
+
+for (const automatic of [true, false]) {
+  test(`${automatic ? "auto-close" : "explicit done"} branch proof must still match at arming and expiry`, async t => {
+    const { root, git, commit } = scratchGit(t);
+    const { hub, lead, cleanup, tasks, sessions } = fixture({ root, automatic, status: "running", card: false });
+    const ref = "fix/candidate";
+    const card = await hub.setTask(lead.id, { title: "Merged work", stage: "merge", commit: ref });
+    if (automatic) assert.deepEqual(await hub.autoCloseTasks(), [card.id]);
+    else await hub.setTask(lead.id, { id: card.id, stage: "done" });
+    const original = git("rev-parse", ref);
+    assert.equal(card.mergeCheck.commit, original);
+
+    git("switch", "-q", ref);
+    commit();
+    const unmerged = git("rev-parse", "HEAD");
+    git("switch", "-q", "develop");
+    lead.status = "idle";
+    const settle = () => cleanup.pending.get(lead.id)?.checking;
+    const arm = () => automatic ? cleanup.reconcile() : cleanup.request(lead.id);
+
+    arm();
+    await settle();
+    assert.equal(cleanup.scheduled(lead), false, "moved ref cannot start grace");
+    git("branch", "-D", ref);
+    arm();
+    await settle();
+    assert.equal(cleanup.scheduled(lead), false, "unresolved ref cannot start grace");
+
+    for (const move of [() => git("branch", "-f", ref, unmerged), () => git("branch", "-D", ref)]) {
+      git("branch", "-f", ref, original);
+      arm();
+      await settle();
+      assert.equal(cleanup.scheduled(lead), true);
+      move();
+      mock.timers.tick(120_000);
+      await settle();
+      assert.equal(sessions.L, lead, "moved or deleted ref cannot authorize removal");
+      assert.equal(tasks[card.id], card);
+    }
+
+    git("branch", ref, original);
+    arm();
+    await settle();
+    mock.timers.tick(120_000);
+    await settle();
+    assert.equal(sessions.L, undefined, "a ref matching the proof can authorize cleanup");
+  });
+}
+
+for (const atExpiry of [false, true]) {
+  for (const change of ["card", "lead"]) {
+    test(`branch lookup rechecks the ${change} after awaiting Git at ${atExpiry ? "expiry" : "arming"}`, async t => {
+      const { root, git } = scratchGit(t);
+      const { lead, cleanup, tasks, sessions } = fixture({ root });
+      const ref = "fix/candidate";
+      const sha = git("rev-parse", ref);
+      Object.assign(tasks.T, { commit: ref, mergeCheck: { ok: true, commit: sha, candidate: ref } });
+      cleanup.reconcile();
+      if (atExpiry) {
+        await cleanup.pending.get(lead.id)?.checking;
+        assert.equal(cleanup.scheduled(lead), true);
+        mock.timers.tick(120_000);
+      }
+      const checking = cleanup.pending.get(lead.id)?.checking;
+      if (change === "card") {
+        // Both cards pass the structural check, but Git verified only the original.
+        tasks.T = { ...tasks.T, commit: "other", mergeCheck: { ok: true, commit: sha, candidate: "other" } };
+      } else lead.status = "running";
+      await checking;
+      assert.equal(sessions.L, lead);
+      assert.equal(cleanup.scheduled(lead), false);
+      assert.equal(cleanup.pending.has(lead.id), false);
+    });
+  }
 }
