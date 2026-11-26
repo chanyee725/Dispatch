@@ -188,3 +188,31 @@ test("lead cleanup is opt-in and has a setting independent of teammate cleanup",
   assert.equal(disabled.autoRemoveFinishedLeads, false);
   assert.equal(disabled.autoRemoveDone, false);
 });
+
+for (const automatic of [true, false]) {
+  test(`${automatic ? "automatic" : "explicit"} lead cleanup preserves finished teammates with undelivered reports`, () => {
+    const { hub, lead, sessions, cleanup, events } = fixture({ automatic });
+    const teammate = sessions.K = { id: "K", parent: lead.id, status: "done" };
+    const queue = hub.rt(teammate.id).pendingReports;
+    hub.runBlock = () => "provider hold";
+    hub.queueLeadReport(teammate, "Work complete.");
+    assert.equal(queue.length, 1);
+
+    cleanup.reconcile();
+    assert.equal(cleanup.scheduled(lead), false);
+    assert.deepEqual(cleanup.request(lead.id), { ok: false, reason: "waiting" });
+
+    const report = queue.pop();
+    if (automatic) cleanup.reconcile();
+    else assert.deepEqual(cleanup.request(lead.id), { ok: true });
+    assert.equal(cleanup.scheduled(lead), true);
+
+    // A report can be queued after arming. Expiry checks the runtime even without a hub event.
+    queue.push(report);
+    mock.timers.tick(120_000);
+    assert.equal(sessions.L, lead);
+    assert.equal(sessions.K, teammate);
+    assert.deepEqual(queue, [report]);
+    assert.deepEqual(events, []);
+  });
+}

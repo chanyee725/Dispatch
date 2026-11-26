@@ -32,7 +32,7 @@ export class LeadCleanup {
     const { hub } = this;
     if (this.stopped) return "status";
     const runtime = hub.live.get(lead.id);
-    if (lead.asksUser || runtime?.perms.size || runtime?.leadInbox.length ||
+    if (lead.asksUser || runtime?.perms.size || !hub.leadInboxQueues(lead).next().done ||
         runtime?.leadInboxHeld || runtime?.drainingLeadInbox || lead.interrupted || hub.holdTeam?.(lead.id)) return "waiting";
     if (lead.status !== "idle" && !(endingTurn && lead.status === "running")) return "status";
     if (Object.values(hub.store.data.tickets || {}).some(t => t.lead === lead.id && t.status === "open")) return "ticket";
