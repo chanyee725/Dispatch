@@ -244,6 +244,37 @@ for (const finalText of [null, "Work complete."]) {
   });
 }
 
+for (const retryFinish of [false, true]) {
+  test(`Claude finish without a final answer blocks automatic rearming until a valid ${retryFinish ? "finish" : "report"}`, () => {
+    const { hub, lead, sessions, cleanup, events } = fixture({ status: "running" });
+    Object.assign(lead, { provider: "claude", turns: 0 });
+    const assistant = (...content) => hub.onClaude(lead, { type: "assistant", message: { content } });
+    const finish = () => {
+      assistant({ type: "text", text: "I will finish now." }, { type: "tool_use", name: "finish", id: "finish" });
+      assert.deepEqual(cleanup.request(lead.id), { ok: true });
+      hub.onClaude(lead, { type: "user", message: { content: [{ type: "tool_result", tool_use_id: "finish", content: "{}" }] } });
+    };
+    finish();
+    hub.onClaude(lead, { type: "result", subtype: "success", result: "" });
+    assert.equal(cleanup.scheduled(lead), false);
+    for (let cycle = 0; cycle < 5; cycle++) {
+      cleanup.reconcile();
+      assert.equal(cleanup.scheduled(lead), false, "a later automatic check must still require a final answer");
+      mock.timers.tick(30_000);
+    }
+    assert.equal(sessions.L, lead);
+    assert.deepEqual(events, []);
+
+    if (retryFinish) finish();
+    assistant({ type: "text", text: "Work complete." });
+    hub.onClaude(lead, { type: "result", subtype: "success", result: "Work complete." });
+    assert.equal(cleanup.scheduled(lead), true);
+    mock.timers.tick(120_000);
+    assert.equal(sessions.L, undefined);
+    assert.deepEqual(events, [{ id: lead.id, reason: retryFinish ? "explicit" : "automatic" }]);
+  });
+}
+
 function scratchGit(t) {
   const root = mkdtempSync(join(tmpdir(), "dispatch-lead-cleanup-"));
   t.after(() => rmSync(root, { recursive: true, force: true }));

@@ -70,7 +70,10 @@ export class LeadCleanup {
     job.explicit = true;
     if (lead.status === "running") {
       job.reportAfterTurn = lead.turns ?? 0;
-      if (lead.provider === "claude") job.reportAfterSeq = this.hub.live.get(id)?.seq ?? 0;
+      if (lead.provider === "claude") {
+        const runtime = this.hub.rt(id);
+        runtime.finishReportAfterSeq = runtime.seq;
+      }
     }
     this.refresh(lead);
     return { ok: true };
@@ -125,15 +128,21 @@ export class LeadCleanup {
       return;
     }
     if (lead.status !== "idle" || job?.timer || job?.checking) return;
+    const runtime = this.hub.live.get(id);
+    // Keep the report requirement across cancelled jobs and later automatic checks.
+    if (runtime?.finishReportAfterSeq !== undefined) {
+      if ((runtime.claudeFinalSeq ?? 0) <= runtime.finishReportAfterSeq) {
+        this.cancel(id);
+        return;
+      }
+      delete runtime.finishReportAfterSeq;
+    }
     if (job?.reportAfterTurn !== undefined) {
-      const runtime = this.hub.live.get(id);
-      if ((lead.turns ?? 0) <= job.reportAfterTurn || !runtime?.lastText?.trim() ||
-          (job.reportAfterSeq !== undefined && (runtime.claudeFinalSeq ?? 0) <= job.reportAfterSeq)) {
+      if ((lead.turns ?? 0) <= job.reportAfterTurn || !runtime?.lastText?.trim()) {
         this.cancel(id);
         return;
       }
       delete job.reportAfterTurn;
-      delete job.reportAfterSeq;
     }
     if (!job) this.pending.set(id, job = { lead, timer: null });
     this.checkCandidates(id, job, () => {
