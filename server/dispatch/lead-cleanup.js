@@ -187,10 +187,10 @@ export class LeadCleanup {
     const { hub } = this;
     job.removing = true;
     try {
-      // Hub.remove removes session records synchronously. The strict worktree check completes separately.
+      // An editor can save an ignored file after any Git status check, so retain the worktrees.
       const children = hub.sessions.filter(s => s.parent === id);
-      for (const child of children) hub.remove(child.id, { strict: true });
-      hub.remove(id, { strict: true });
+      for (const child of children) hub.remove(child.id, { keepWorktree: true });
+      hub.remove(id, { keepWorktree: true });
       hub.emit("leadFinished", { id, reason: job.explicit ? "explicit" : "automatic" });
     } finally {
       this.cancel(id);

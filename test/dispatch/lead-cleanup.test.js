@@ -1,10 +1,11 @@
 import { execFileSync } from "node:child_process";
-import { mkdtempSync, rmSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { EventEmitter } from "node:events";
 import { afterEach, beforeEach, mock, test } from "node:test";
 import assert from "node:assert/strict";
+import { which } from "../../server/dispatch/cli.js";
 import { Hub } from "../../server/dispatch/hub.js";
 import { patchTeam, teamSettings } from "../../server/dispatch/settings.js";
 
@@ -44,7 +45,7 @@ test("automatic cleanup gives the lead and finished teammates the full grace per
   assert.deepEqual(Object.keys(sessions), ["U"]);
   assert.equal(kill.mock.callCount(), 1);
   assert.equal(hub.spawnCli.mock.callCount(), 0);
-  assert.deepEqual(remove.mock.calls.map(c => c.arguments), [["K", { strict: true }], ["L", { strict: true }]]);
+  assert.deepEqual(remove.mock.calls.map(c => c.arguments), [["K", { keepWorktree: true }], ["L", { keepWorktree: true }]]);
   assert.deepEqual(events, [{ id: "L", reason: "automatic" }]);
 });
 
@@ -362,4 +363,52 @@ for (const atExpiry of [false, true]) {
       assert.equal(cleanup.pending.has(lead.id), false);
     });
   }
+}
+
+for (const automatic of [true, false]) {
+  test(`${automatic ? "automatic cleanup" : "explicit finish"} retains lead and teammate worktrees after a late ignored save`, async t => {
+    const { root, git } = scratchGit(t);
+    writeFileSync(join(root, ".git", "info", "exclude"), "draft.local\n");
+    const dirs = ["lead", "teammate"].map(name => {
+      const dir = join(root, name);
+      git("worktree", "add", "-qb", name, dir);
+      return dir;
+    });
+    const { hub, lead, cleanup, sessions } = fixture({ root, automatic });
+    Object.assign(lead, { cwd: dirs[0], worktree: true });
+    sessions.K = { id: "K", parent: lead.id, status: "done", cwd: dirs[1], worktree: true };
+    hub.dropDelayMs = 1;
+    const remove = mock.method(hub, "remove");
+    const realGit = which("git");
+    const bin = join(root, "bin");
+    mkdirSync(bin);
+    // Model an editor saving an ignored file immediately after Git has read a clean status.
+    writeFileSync(join(bin, "git"), `#!${process.execPath}
+import { execFileSync } from "node:child_process";
+import { writeFileSync } from "node:fs";
+import { join } from "node:path";
+const args = process.argv.slice(2);
+const out = execFileSync(${JSON.stringify(realGit)}, args);
+if (${JSON.stringify(dirs)}.includes(args[1]) && args[2] === "status" && args.includes("--ignored=matching")) {
+  writeFileSync(join(args[1], "draft.local"), "late save");
+}
+process.stdout.write(out);
+`, { mode: 0o755 });
+    const originalPath = process.env.PATH;
+    process.env.PATH = `${bin}:${originalPath}`;
+    t.after(() => { process.env.PATH = originalPath; });
+
+    if (automatic) cleanup.reconcile();
+    else assert.deepEqual(cleanup.request(lead.id), { ok: true });
+    mock.timers.tick(120_000);
+    mock.timers.tick(1);
+    await Promise.all(remove.mock.calls.map(call => call.result));
+    assert.deepEqual(Object.keys(sessions), []);
+    for (const dir of dirs) {
+      assert.ok(existsSync(dir), "session cleanup must retain the worktree after an ignored save");
+      // With no removal attempt, the editor can still save after a clean status.
+      execFileSync("git", ["-C", dir, "status", "--porcelain", "--ignored=matching"]);
+      assert.equal(readFileSync(join(dir, "draft.local"), "utf8"), "late save");
+    }
+  });
 }
