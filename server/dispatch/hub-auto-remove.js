@@ -19,6 +19,7 @@ export class HubAutoRemove {
     if (s.asksUser) return "asks";
     const r = this.live.get(s.id);
     if (r?.perms.size) return "perm";
+    if (r?.proc && r.pendingClaudeInputs?.size) return "input";
     if (r?.pendingReports.length) return "report"; // not delivered yet
     return null;
   }

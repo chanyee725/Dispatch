@@ -818,19 +818,27 @@ export class Hub extends EventEmitter {
       return this.rotate(s, text, images, onDelivery && sent);
     }
     if (s.provider === "claude" && r.proc) {
-      if (r.proc.stdin.destroyed || r.proc.stdin.writableEnded) throw new Error("Claude에 메시지를 보낼 수 없어요");
-      const line = JSON.stringify({ type: "user", message: { role: "user", content: userContent(text, images) } }) + "\n";
+      const proc = r.proc;
+      if (proc.stdin.destroyed || proc.stdin.writableEnded) throw new Error("Claude에 메시지를 보낼 수 없어요");
+      // Claude can merge follow-ups into one turn, so track the inputs it has yet to replay.
+      const queued = s.parent && !s.canSpawn && (s.status === "running" || s.status === "waiting" || r.pendingClaudeInputs?.size);
+      const uuid = queued ? randomUUID() : undefined;
+      const pending = uuid ? (r.pendingClaudeInputs ??= new Set()) : null;
+      const line = JSON.stringify({ type: "user", uuid, message: { role: "user", content: userContent(text, images) } }) + "\n";
+      let writeFailed = false;
+      const written = error => {
+        writeFailed = Boolean(error);
+        if (error) pending?.delete(uuid);
+        if (!onDelivery) return;
+        if (this.get(s.id) !== s || s._killed || r.proc !== proc) return sent(false);
+        if (error) this.touch(s, { status: "error", error: "Claude에 메시지를 보낼 수 없어요" });
+        sent(!error);
+      };
+      proc.stdin.write(line, onDelivery || pending ? written : undefined);
+      if (!writeFailed) pending?.add(uuid);
       if (onDelivery) {
-        let writeFailed = false;
-        r.proc.stdin.write(line, error => {
-          if (this.get(s.id) !== s || s._killed) return sent(false);
-          writeFailed = Boolean(error);
-          if (error) this.touch(s, { status: "error", error: "Claude에 메시지를 보낼 수 없어요" });
-          sent(!error);
-        });
         if (!writeFailed) this.touch(s, { status: "running", error: null });
       } else {
-        r.proc.stdin.write(line);
         sent();
         this.touch(s, { status: "running" });
       }
