@@ -132,6 +132,21 @@ test("lead finish defers automatic rotation until a new message needs the sessio
   assert.equal(hub.leadCleanup.scheduled(lead), false);
 });
 
+test("a lead does not rotate while finish is resolving a branch candidate", async () => {
+  const { hub, store, root, lead, kid } = makeHub();
+  execFileSync("git", ["-C", root, "branch", "fix/candidate"]);
+  hub.touch(kid, { status: "done" });
+  const task = await hub.setTask(lead.id, { title: "Merged work", stage: "merge", commit: "fix/candidate" });
+  await hub.setTask(lead.id, { id: task.id, stage: "done" });
+  assert.deepEqual(hub.leadCleanup.request(lead.id), { ok: true });
+
+  const checking = hub.leadCleanup.pending.get(lead.id).checking;
+  hub.endTurn(lead);
+  await checking;
+  assert.equal(store.data.sessions.L, lead);
+  assert.equal(fresh(store, "L"), undefined);
+});
+
 test("patchTeam saves autoRotateLong; it is on by default", () => {
   const store = { data: { settings: {} } };
   assert.equal(teamSettings(store).autoRotateLong, true);

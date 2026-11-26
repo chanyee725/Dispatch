@@ -102,8 +102,8 @@ export class LeadCleanup {
 
   scheduled(lead) {
     const job = this.pending.get(lead.id);
-    return !!job?.timer && !this.blocked(lead, { explicit: job.explicit }) &&
-      (job.explicit || this.automaticEnabled());
+    // Do not rotate the lead while its cleanup eligibility is being verified.
+    return !!(job?.timer || job?.checking) && this.eligible(lead.id, job);
   }
 
   reconcile() {
