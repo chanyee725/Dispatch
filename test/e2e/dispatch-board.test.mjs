@@ -271,3 +271,99 @@ test('작업 보드 shows tasks by stage and follows live changes', options, (t)
     await rowFor(finished).waitFor({ state: 'detached' });
     await row.waitFor();
   }));
+
+test('session board groups by manager and keeps the project task scope', options, (t) =>
+  withBoard(t, async ({ at, call, page, BASE }) => {
+    at('create managers and sessions through the Dispatch API');
+    await call('POST', '/api/providers/claude/login');
+    const make = async (role, { folder, parent } = {}) => (await call('POST', '/api/sessions', {
+      items: [{ role, model: 'claude-sonnet-5-5', task: 'test' }], worktree: false, folder, parent,
+    })).sessions[0];
+    const first = await make('lead', { folder: 'alpha' });
+    const second = await make('lead', { folder: 'beta' });
+    const member = await make('impl', { parent: first.id });
+    const nested = await make('review', { parent: member.id });
+    const other = await make('impl', { parent: second.id });
+    const independent = await make('impl', { folder: 'alpha' });
+    const alphaTask = await call('POST', '/api/tasks', { lead: first.id, title: '작업 A', stage: 'impl' });
+    const betaTask = await call('POST', '/api/tasks', { lead: second.id, title: '작업 B', stage: 'impl' });
+
+    await page.setViewportSize({ width: 1600, height: 900 });
+    await page.goto(`${BASE}/#board`);
+    const sessions = page.locator('[data-card="sessions"]');
+    const filter = sessions.getByRole('group', { name: '관리자 필터' });
+    const pick = (name) => filter.getByRole('button', { name, exact: true });
+    const tasks = page.locator('[data-card="tasks"]');
+    const row = (task) => tasks.locator(`[data-row="${task.id}"]`);
+    const ids = async (root) => (await root.locator('[data-agent]').evaluateAll((cards) =>
+      cards.map((card) => card.dataset.agent))).sort();
+    const has = async (root, expected) => {
+      await root.locator(`[data-agent="${expected[0].id}"]`).waitFor({ state: 'attached' });
+      assert.deepEqual(await ids(root), expected.map((session) => session.id).sort());
+    };
+    await pick('전체').waitFor();
+    await row(alphaTask).waitFor();
+    await row(betaTask).waitFor();
+
+    at('all sessions are grouped exactly once, with unlinked sessions last');
+    const groups = sessions.locator('[data-session-grid]');
+    assert.deepEqual((await groups.evaluateAll((lists) => lists.map((list) => list.getAttribute('aria-label')))).slice(0, -1).sort(),
+      [first.name, second.name].sort());
+    await has(sessions.getByRole('list', { name: first.name, exact: true }), [first, member, nested]);
+    await has(sessions.getByRole('list', { name: second.name, exact: true }), [second, other]);
+    assert.equal(await groups.last().getAttribute('aria-label'), '관리자 연결 없음');
+    await has(groups.last(), [independent]);
+    if (SHOTS) await sessions.screenshot({ path: join(SHOTS, 'session-board-managers-wide.png') });
+
+    at('the filter is right of tokens and shows only the selected manager descendants');
+    const [tokens, control, card] = await Promise.all([
+      sessions.locator('[aria-label="요약"]').getByText(/^토큰/).boundingBox(), filter.boundingBox(), sessions.boundingBox(),
+    ]);
+    assert.ok(tokens && control && card);
+    assert.ok(tokens.x + tokens.width < control.x && Math.abs(tokens.y + tokens.height / 2 - control.y - control.height / 2) <= 1);
+    assert.ok(card.x + card.width - control.x - control.width <= 32);
+    await pick(first.name).click();
+    await has(sessions, [member, nested]);
+    assert.equal(await pick(first.name).getAttribute('aria-pressed'), 'true');
+    assert.equal(await row(alphaTask).count(), 1);
+    assert.equal(await row(betaTask).count(), 1);
+    await pick(second.name).click();
+    await has(sessions, [other]);
+    await pick('전체').click();
+    await has(sessions, [first, second, member, nested, other, independent]);
+
+    at('the narrow filter fits and works with the keyboard');
+    await page.setViewportSize({ width: 320, height: 800 });
+    await pick('전체').focus();
+    await page.keyboard.press('Tab');
+    const focused = filter.locator('button:focus');
+    const chosen = await focused.textContent();
+    assert.ok([first.name, second.name].includes(chosen));
+    await page.keyboard.press('Enter');
+    await has(sessions, chosen === first.name ? [member, nested] : [other]);
+    assert.ok(await filter.evaluate((el) => {
+      const { right } = el.getBoundingClientRect();
+      return el.scrollWidth === el.clientWidth && right <= innerWidth
+        && Math.abs(right - el.parentElement.getBoundingClientRect().right) <= 1;
+    }));
+    if (SHOTS) await sessions.screenshot({ path: join(SHOTS, 'session-board-managers-narrow.png') });
+    await pick('전체').focus();
+    await page.keyboard.press('Space');
+    await has(sessions, [first, second, member, nested, other, independent]);
+
+    at('a removed selection resets to all and reparented members follow their new manager');
+    await pick(first.name).click();
+    const replacement = await make('lead', { folder: 'alpha' });
+    await call('POST', `/api/sessions/${member.id}/parent`, { parent: replacement.id });
+    await call('POST', `/api/sessions/${first.id}/remove`);
+    await filter.locator('button[aria-pressed="true"]').filter({ hasText: /^전체$/ }).waitFor();
+    await has(sessions.getByRole('list', { name: replacement.name, exact: true }), [replacement, member, nested]);
+    await pick(replacement.name).click();
+    await has(sessions, [member, nested]);
+
+    at('project scope still reaches the task board');
+    await page.goto(`${BASE}/#board&folder=alpha`);
+    await row(alphaTask).waitFor();
+    await row(betaTask).waitFor({ state: 'detached' });
+    assert.equal(await sessions.locator(`[data-agent="${other.id}"]`).count(), 0);
+  }));
