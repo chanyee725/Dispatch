@@ -75,31 +75,35 @@ export async function codexLimits(dir = CODEX_SESSIONS, now = Date.now()) {
 
 const GEMINI_WINDOW_LABELS = { weekly: "주간", daily: "일간", "5h": "5시간", five_hour: "5시간", monthly: "월간" };
 
-/** Usage windows ({ label, used 0..1, reset epoch ms }) from agy's /usage JSON; [] when the shape is not there. */
-export function geminiUsageWindows(out) {
+function readGeminiUsage(out) {
   let data;
-  try { data = typeof out === "string" ? JSON.parse(out) : out; } catch { return []; }
+  try { data = typeof out === "string" ? JSON.parse(out) : out; } catch { return { status: "error", windows: [] }; }
+  if (data?.status && data.status !== "SUCCESS") return { status: "error", windows: [] };
   const groups = data?.command?.name === "usage" ? data.command.data?.groups : null;
-  if (!Array.isArray(groups)) return [];
+  if (!Array.isArray(groups)) return { status: "unavailable", windows: [] };
   const windows = [];
+  let incomplete = false;
   for (const g of groups) {
     if (!/gemini/i.test(String(g?.name ?? ""))) continue;
     for (const b of Array.isArray(g.buckets) ? g.buckets : []) {
       const left = b?.remaining_fraction;
-      if (typeof left !== "number" || !Number.isFinite(left)) continue;
+      if (typeof left !== "number" || !Number.isFinite(left) || left < 0 || left > 1) {
+        incomplete = true;
+        continue;
+      }
       const reset = typeof b.reset_time === "string" ? Date.parse(b.reset_time) : NaN;
-      windows.push({
-        label: GEMINI_WINDOW_LABELS[b.window] ?? (typeof b.window === "string" && b.window.length <= 12 ? b.window : "한도"),
-        used: Math.min(1, Math.max(0, 1 - left)),
-        reset: Number.isFinite(reset) ? reset : null,
-      });
+      const label = Object.hasOwn(GEMINI_WINDOW_LABELS, b.window) ? GEMINI_WINDOW_LABELS[b.window] : "기간 미확인";
+      incomplete ||= !Number.isFinite(reset) || label === "기간 미확인";
+      windows.push({ label, used: 1 - left, reset: Number.isFinite(reset) ? reset : null });
     }
   }
-  return windows;
+  return { status: windows.length ? (incomplete ? "partial" : "available") : "unavailable", windows };
 }
 
+export const geminiUsageWindows = out => readGeminiUsage(out).windows;
+
 export const GEMINI_USAGE_MS = 5 * 60_000;
-let geminiCache = null; // { at, value } — value null when agy gave no windows
+let geminiCache = null;
 let geminiPending = null;
 /** Forgets the cached /usage answer (tests). */
 export const resetGeminiUsageCache = () => { geminiCache = null; geminiPending = null; };
@@ -108,20 +112,24 @@ export const resetGeminiUsageCache = () => { geminiCache = null; geminiPending =
  * Gemini's usage windows via `run` (runCli from cli.js: agy -p /usage), cached for five minutes so the 30 s
  * poll of GET /api/limits starts at most one agy every five minutes. Null when agy failed or gave no windows.
  */
-export async function geminiUsage(run, now = Date.now()) {
-  if (geminiCache && now - geminiCache.at < GEMINI_USAGE_MS) return geminiCache.value;
+export async function geminiUsageResult(run, now = Date.now()) {
+  if (geminiCache && now - geminiCache.at < (geminiCache.value.status === "error" ? 10_000 : GEMINI_USAGE_MS)) return geminiCache.value;
   geminiPending ??= (async () => {
-    let value = null;
+    let result;
     try {
       const { stdout } = await run("agy", ["-p", "/usage", "--output-format", "json", "--print-timeout", "20s", "--mode", "plan"], { cwd: os.tmpdir(), timeout: 30_000, maxBuffer: 1024 * 1024 });
-      const windows = geminiUsageWindows(stdout);
-      value = windows.length ? { windows } : null;
-    } catch { value = null; }
+      result = readGeminiUsage(stdout);
+    } catch { result = { status: "error", windows: [] }; }
+    const value = { ...result, updatedAt: now, legacy: result.windows.length ? { windows: result.windows } : null };
     geminiCache = { at: now, value };
     geminiPending = null;
     return value;
   })();
   return geminiPending;
+}
+
+export async function geminiUsage(run, now = Date.now()) {
+  return (await geminiUsageResult(run, now)).legacy;
 }
 
 /** "Resets in 3h20m" / "Resets in 45m" from a Gemini quota error, as an epoch ms. */
@@ -141,13 +149,24 @@ export const isQuotaError = text => /RESOURCE_EXHAUSTED|quota reached|code 429/i
 export const LIMITS_FILE = path.join(userDir({}), "limits.json");
 // fable: the weekly window the CLI reports as seven_day_overage_included (models with their own weekly
 // bucket, Fable today). Only Fable turns carry it, so it keeps its last value between them.
-const EMPTY_CLAUDE = () => ({ five: null, seven: null, fable: null, fiveReset: null, sevenReset: null, fableReset: null, updatedAt: null });
+const CLAUDE_WINDOWS = ["five", "seven", "fable"];
+const EMPTY_CLAUDE = () => ({
+  five: null, seven: null, fable: null,
+  fiveReset: null, sevenReset: null, fableReset: null,
+  fiveObservedAt: null, sevenObservedAt: null, fableObservedAt: null,
+  updatedAt: null,
+});
 const num = v => (typeof v === "number" && Number.isFinite(v) ? v : null);
 
 /** Keeps the known number fields only; anything else in the input is dropped. */
 export function cleanClaude(l) {
   const c = EMPTY_CLAUDE();
-  if (l && typeof l === "object") for (const k of Object.keys(c)) c[k] = num(l[k]);
+  if (!l || typeof l !== "object") return c;
+  for (const k of Object.keys(c)) c[k] = num(l[k]);
+  for (const slot of CLAUDE_WINDOWS) {
+    const key = `${slot}ObservedAt`;
+    if (c[slot] != null && !Object.hasOwn(l, key)) c[key] = c.updatedAt;
+  }
   return c;
 }
 const newer = (a, b) => (a ?? -Infinity) > (b ?? -Infinity);
@@ -245,11 +264,12 @@ export class SharedLimits extends EventEmitter {
 
   /** Records new values (each section only if newer) and writes the merged result. */
   async write(patch) {
-    this.data = mergeLimits(this.data, patch);
+    if (typeof patch !== "function") this.data = mergeLimits(this.data, patch);
     const unlock = await this.lock();
     try {
       const { data } = await this.read();
       this.data = mergeLimits(this.data, data);
+      if (typeof patch === "function") this.data = mergeLimits(this.data, patch(this.data));
       const tmp = `${this.file}.${process.pid}.${randomBytes(4).toString("hex")}.tmp`;
       try {
         await writeFile(tmp, JSON.stringify(this.data, null, 2));
@@ -268,5 +288,22 @@ export class SharedLimits extends EventEmitter {
   // or mergeLimits (newer wins) would drop the second one.
   stamp(prev) { return Math.max(Date.now(), (prev ?? 0) + 1); }
   setClaude(l) { return this.write({ claude: { ...l, updatedAt: l.updatedAt ?? this.stamp(this.data.claude?.updatedAt) } }); }
+  observeClaude(windows) {
+    // Apply partial events to the latest shared snapshot under the file lock.
+    return this.write(({ claude }) => {
+      const updatedAt = this.stamp(claude.updatedAt);
+      const next = { ...claude, updatedAt };
+      for (const slot of CLAUDE_WINDOWS) {
+        const window = windows[slot];
+        const used = num(window?.utilization);
+        if (used != null) {
+          next[slot] = used;
+          next[`${slot}ObservedAt`] = updatedAt;
+        }
+        if (window?.resetsAt) next[`${slot}Reset`] = window.resetsAt * 1000;
+      }
+      return { claude: next };
+    });
+  }
   setGemini(g) { return this.write({ gemini: { ...g, at: g.at ?? this.stamp(this.data.gemini?.at) } }); }
 }

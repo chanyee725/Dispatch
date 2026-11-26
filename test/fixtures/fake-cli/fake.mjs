@@ -124,6 +124,11 @@ export function run(bin) {
     rl.on("line", line => {
       const { id, method, params } = JSON.parse(line);
       if (method === "initialize") reply(id, {});
+      if (method === "account/rateLimits/read") {
+        const usage = scenario(bin).find(line => line.rateLimits || line.rateLimitsByLimitId || line.error);
+        if (usage?.error) emit([{ id, error: usage.error }]);
+        else reply(id, usage ?? { rateLimits: null });
+      }
       if (method === "thread/start" || method === "thread/resume") {
         threadId = params.threadId ?? threadId;
         const type = params.sandbox === "read-only" ? "readOnly" : "workspaceWrite";

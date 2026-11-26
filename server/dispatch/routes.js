@@ -3,6 +3,7 @@
 import { readdir, readFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import path from "node:path";
+import { accountUsage } from "./account-usage.js";
 import { agentsSummary } from "./agents-summary.js";
 import { createChatStore } from "./chat-store.js";
 import { branchGraph, diff } from "./git.js";
@@ -145,6 +146,7 @@ export function routeTable(d) {
       if (!p || p.startsWith(".") || /[\/\\\0]/.test(p)) throw fail(400, "folder가 올바르지 않아요");
       return hub.folderUsage(p);
     }],
+    ["GET", /^\/api\/usage\/limits\/(claude|openai|gemini)$/, async ([id]) => accountUsage(id, d)],
     ["GET", /^\/api\/projects$/, async () => ({ projects: await d.projects() })],
     ["GET", /^\/api\/service-projects$/, async () => ({ projects: await d.serviceProjects() })],
     ["POST", /^\/api\/settings$/, async (_, b) => {

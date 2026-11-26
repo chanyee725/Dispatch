@@ -4,6 +4,7 @@
 import { useEffect, useId, useMemo, useState, type ReactNode } from 'react';
 import { TriangleAlert } from 'lucide-react';
 import { Button } from '../components/ui/button';
+import { BTN } from '../settings/LimitsForm';
 import { cn } from '../lib/utils';
 import { roleColor } from './lib/roles';
 import { burnWarnText, fmtK, fmtRate, fmtUsd, pct, totalTok, until } from './lib/format.ts';
@@ -43,31 +44,202 @@ function Panel({ title, note, children, className }: { title: string; note?: str
 
 const Empty = ({ children }: { children: ReactNode }) => <p className="py-6 text-center text-sm text-muted-foreground">{children}</p>;
 
-/** Claude 5-hour / weekly / Fable limits from the CLI's own rate-limit events, with the reset countdown. */
+type AccountProvider = 'claude' | 'openai' | 'gemini';
+type AccountWindow = { label: string | null; used: number; reset: number | null; observedAt?: number | null };
+type AccountUsage = {
+  connection: 'connected' | 'disconnected' | 'unverified';
+  status: 'available' | 'partial' | 'empty' | 'unavailable' | 'error' | null;
+  windows: AccountWindow[];
+  updatedAt?: number | null;
+  reached?: boolean;
+  reset?: number | null;
+};
+
+type AccountLoad = {
+  data?: AccountUsage;
+  previous?: AccountUsage;
+  failed: boolean;
+  pending: boolean;
+  showRetry: boolean;
+};
+
+const dayMinutes = 24 * 60;
+
+function windowMinutes(label: AccountWindow['label']) {
+  if (label === '일간') return dayMinutes;
+  if (label === '주간' || label === 'Fable 주간') return 7 * dayMinutes;
+  // Allow for the longest calendar month.
+  if (label === '월간') return 31 * dayMinutes;
+  const match = /^([1-9]\d*)(분|시간|일)$/.exec(label ?? '');
+  if (!match) return null;
+  const [, count, unit] = match;
+  return Number(count) * (unit === '일' ? dayMinutes : unit === '시간' ? 60 : 1);
+}
+
+const initialAccountLoad: AccountLoad = { failed: false, pending: false, showRetry: false };
+const usageNotes = {
+  empty: '아직 사용량 정보가 없어요. 세션이 돌면 채워져요.',
+  unavailable: '이 모델은 사용량을 알려주지 않아요.',
+  partial: '일부 기간만 알려줘요.',
+};
+
+function useAccountLimit(id: AccountProvider) {
+  const provider = useDispatch(s => s.providers[id]);
+  const observed = useDispatch(s => id === 'claude' ? s.limits.updatedAt : null);
+  const [load, setLoad] = useState(initialAccountLoad);
+  const [attempt, retry] = useState(0);
+  const connected = provider?.connected;
+  const method = provider?.method;
+
+  useEffect(() => {
+    if (!connected) {
+      setLoad(initialAccountLoad);
+      return;
+    }
+    const controller = new AbortController();
+    let next: ReturnType<typeof setTimeout>;
+    async function refresh() {
+      setLoad(state => ({ ...state, pending: true }));
+      try {
+        const signal = AbortSignal.any([controller.signal, AbortSignal.timeout(35_000)]);
+        const data = await api<AccountUsage>('GET', `/api/usage/limits/${id}`, undefined, signal);
+        if (controller.signal.aborted) return;
+        if (!Array.isArray(data.windows)) throw new Error('Invalid usage response');
+        const failed = data.status === 'error';
+        setLoad(state => ({
+          data,
+          previous: data.windows.length ? data : failed ? state.previous : undefined,
+          failed, pending: false, showRetry: failed || state.showRetry,
+        }));
+      } catch {
+        if (controller.signal.aborted) return;
+        setLoad(state => ({ ...state, failed: true, pending: false, showRetry: true }));
+      } finally {
+        if (!controller.signal.aborted) next = setTimeout(refresh, 60_000);
+      }
+    }
+    void refresh();
+    return () => {
+      controller.abort();
+      clearTimeout(next);
+    };
+  }, [id, connected, method, observed, attempt]);
+
+  return {
+    ...load,
+    connection: !provider ? 'unverified' : !connected ? 'disconnected'
+      : load.data?.connection ?? (id === 'gemini' ? 'unverified' : 'connected'),
+    waiting: !provider || (connected && !load.data && !load.failed),
+    retry: () => { if (!load.pending) retry(n => n + 1); },
+  } as const;
+}
+
+/** Provider-reported account limits live separately from per-session context and cost. */
 function LimitsPanel() {
-  const limits = useDispatch(s => s.limits);
+  const claude = useAccountLimit('claude');
+  const codex = useAccountLimit('openai');
+  const gemini = useAccountLimit('gemini');
   const guard = useDispatch(s => s.settings.guard);
-  const rows = [
-    { label: '5시간', value: limits.five, reset: limits.fiveReset },
-    { label: '주간', value: limits.seven, reset: limits.sevenReset },
-    { label: 'Fable', value: limits.fable ?? null, reset: limits.fableReset ?? null },
-  ].filter(r => r.value != null);
+  const now = Date.now();
+
   return (
-    <Panel title="한도 · 계정 전체" note={guard.enabled ? `5시간 ${pct(guard.five)} · 주간 ${pct(guard.seven)}부터 새 작업을 막아요` : '자동 차단이 꺼져 있어요'}>
-      {rows.length ? (
-        <ul className="flex flex-col gap-3">
-          {rows.map(r => (
-            <li key={r.label} data-limit={r.label} className="grid grid-cols-[56px_1fr_48px] items-center gap-3 text-sm">
-              <span>{r.label}</span>
-              <Meter value={r.value} label={`${r.label} 한도 ${pct(r.value)}`} />
-              <span className="text-right tabular-nums">{pct(r.value)}</span>
-              {r.reset && <span className="col-start-2 col-end-4 -mt-2 text-xs text-muted-foreground">{until(r.reset)} 뒤 초기화</span>}
-            </li>
-          ))}
-        </ul>
-      ) : (
-        <Empty>아직 한도 정보가 없어요. Claude 세션이 돌면 채워져요.</Empty>
-      )}
+    <Panel title="한도 · 계정 전체" note={guard.enabled ? `Claude 5시간 ${pct(guard.five)} · 주간 ${pct(guard.seven)}부터 새 작업을 막아요` : '자동 차단이 꺼져 있어요'}>
+      <div className="grid grid-cols-3 gap-3 max-lg:grid-cols-1">
+        {([
+          { id: 'claude', name: 'Claude', load: claude },
+          { id: 'openai', name: 'OpenAI Codex', load: codex },
+          { id: 'gemini', name: 'Gemini', load: gemini },
+        ] as const).map(({ id, name, load }) => {
+          const disconnected = load.connection === 'disconnected';
+          const shown = disconnected ? undefined : load.previous;
+          const data = disconnected ? undefined : load.data;
+          const rows = shown?.windows ?? [];
+          const staleAges = rows.flatMap(({ label, reset, observedAt = shown?.updatedAt }) => {
+            const age = observedAt == null ? null : Math.max(0, Math.floor((now - observedAt) / 60_000));
+            const minutes = windowMinutes(label);
+            const resetExpired = reset != null && reset <= now;
+            const observationExpired = minutes != null && age != null && age >= minutes;
+            const stale = load.failed || resetExpired || observationExpired;
+            return stale ? [age] : [];
+          });
+          const staleAge = staleAges.reduce<number | null>((oldest, age) =>
+            age == null ? oldest : Math.max(oldest ?? age, age), null);
+          const partial = shown?.status === 'partial';
+          const expected = ['5시간', '주간'];
+          const missing = partial && id !== 'gemini' && rows.some(w => w.label != null && expected.includes(w.label))
+            ? expected.filter(label => !rows.some(w => w.label === label))
+            : [];
+          const note = disconnected ? '연결하면 사용량이 보여요.'
+            : load.waiting ? '불러오는 중이에요…'
+            : !load.failed && data?.reached == null && data?.status === 'unavailable' ? usageNotes.unavailable
+            : !load.failed && data?.status === 'empty' ? usageNotes.empty
+            : partial ? usageNotes.partial : null;
+
+          return (
+            <div key={id} data-account-usage={id} className="flex min-w-0 flex-col gap-2.5 rounded-card bg-background px-4 py-3.5">
+              <h3 className="flex flex-wrap items-center gap-2 text-sm font-medium">
+                {name}
+                {load.connection !== 'unverified' && (
+                  <span className="rounded-full bg-(--sunken) px-2 text-2xs font-normal text-muted-foreground">
+                    {disconnected ? '연결 안 됨' : '연결됨'}
+                  </span>
+                )}
+              </h3>
+              {note && <p className="text-sm text-muted-foreground">{note}</p>}
+              {rows.length > 0 && (
+                <ul className="flex flex-col gap-3">
+                  {rows.map((w, index) => {
+                    const label = w.label ?? '기간 미확인';
+                    const expired = w.reset != null && w.reset <= now;
+                    return (
+                      <li key={index} data-limit={label} className="grid grid-cols-[minmax(0,88px)_minmax(0,1fr)_48px] items-center gap-3 text-sm">
+                        <span className="text-muted-foreground">{label}</span>
+                        <Meter value={w.used} label={`${name} ${label} ${pct(w.used)}`} className="bg-(color:--line-strong)" />
+                        <span className="text-right tabular-nums">{pct(w.used)}</span>
+                        <span className="col-start-2 col-end-4 -mt-2 text-xs text-muted-foreground tabular-nums">
+                          {w.reset == null ? '초기화 시각을 몰라요.' : (
+                            <time dateTime={new Date(w.reset).toISOString()} title={new Date(w.reset).toLocaleString('ko-KR')}>
+                              {expired ? '초기화 시각이 지났어요.' : `${until(w.reset, now)} 뒤 초기화`}
+                            </time>
+                          )}
+                        </span>
+                      </li>
+                    );
+                  })}
+                  {missing.map(label => <li key={label} className="text-xs text-muted-foreground">{label} · 정보 없음</li>)}
+                </ul>
+              )}
+              {data?.reached != null && (
+                <p className="text-sm text-muted-foreground tabular-nums">
+                  {data.reached ? '한도에 닿았어요.' : '한도에 닿지 않았어요.'}
+                  {data.reached && data.reset != null && data.reset > now && ` ${until(data.reset, now)} 뒤 풀려요.`}
+                  {rows.length === 0 && ' 사용률은 알려주지 않아요.'}
+                </p>
+              )}
+              <div role="status" className="empty:absolute">
+                {!disconnected && load.failed && (
+                  <p className="flex items-start gap-1.5 text-sm text-muted-foreground">
+                    <TriangleAlert aria-hidden className="mt-0.5 size-3.5 shrink-0 text-destructive" />
+                    사용량을 불러오지 못했어요.
+                  </p>
+                )}
+                {staleAges.length > 0 && (
+                  <p className="flex items-start gap-1.5 text-xs text-muted-foreground tabular-nums">
+                    <TriangleAlert aria-hidden className="size-3.5 shrink-0 text-warn" />
+                    {staleAge == null ? '지난 숫자예요.' : `${staleAge}분 전 숫자예요.`}
+                  </p>
+                )}
+              </div>
+              {!disconnected && load.showRetry && (
+                <button type="button" onClick={load.retry} aria-disabled={load.pending || undefined}
+                  className={cn(BTN, 'self-start bg-card shadow-(--shadow-card) forced-colors:border')}>
+                  다시 불러오기
+                </button>
+              )}
+            </div>
+          );
+        })}
+      </div>
     </Panel>
   );
 }
@@ -198,16 +370,7 @@ export function UsagePage() {
   const top = topSessions(scoped);
   const sessionTotal = scoped.reduce((a, s) => a + (s.cost ?? 0), 0) || 1;
 
-  if (firstLoadFailed) return (
-    <div role="alert" className="flex items-center gap-3 p-6 text-sm text-destructive">
-      <p>사용량을 불러오지 못했어요: {error}</p>
-      <Button size="sm" variant="outline" aria-disabled={loading || undefined} onClick={() => refetcher.reload()}>다시 불러오기</Button>
-    </div>
-  );
-  if (!days) return <p className="p-6 text-sm text-muted-foreground">불러오는 중이에요…</p>;
-
-  return (
-    <div className="mx-auto flex w-full max-w-[1400px] shrink-0 grow flex-col gap-4 p-6 max-md:p-4">
+  const costs = <>
       {scope !== undefined && <ProjectPanel name={scope === null ? UNFILED : names.get(scope) ?? scope} folder={scope} sessions={scoped} />}
       <div className="grid grid-cols-4 gap-3 max-xl:grid-cols-2 max-sm:grid-cols-1">
         <Stat label={scope === undefined ? '오늘' : '오늘 · 계정 전체'} value={fmtUsd(t.today)} hint="Claude API 요금으로 환산" />
@@ -217,8 +380,7 @@ export function UsagePage() {
         <Stat label={scope === undefined ? '캐시 적중률' : '캐시 적중률 · 계정 전체'} value={pct(cache)} hint="최근 7일 입력 중 캐시에서 읽은 비율" />
       </div>
 
-      <div className="grid grid-cols-3 gap-3 max-xl:grid-cols-2 max-lg:grid-cols-1">
-        <LimitsPanel />
+      <div className="grid grid-cols-2 gap-3 max-lg:grid-cols-1">
         <DailyPanel days={list} />
         <Panel title="역할별 비용" note={scope === undefined ? '최근 7일' : '최근 7일 · 계정 전체'}>
           {roles.length ? (
@@ -304,6 +466,17 @@ export function UsagePage() {
           ) : <Empty>비용을 알리는 세션이 없어요.</Empty>}
         </Panel>
       </div>
+  </>;
+
+  return (
+    <div className="mx-auto flex w-full max-w-[1400px] shrink-0 grow flex-col gap-4 p-6 max-md:p-4">
+      <LimitsPanel />
+      {firstLoadFailed ? (
+        <div role="alert" className="flex items-center gap-3 py-3 text-sm text-destructive">
+          <p>사용량을 불러오지 못했어요.</p>
+          <Button size="sm" variant="outline" aria-disabled={loading || undefined} onClick={() => refetcher.reload()}>다시 불러오기</Button>
+        </div>
+      ) : !days ? <p className="py-3 text-sm text-muted-foreground">불러오는 중이에요…</p> : costs}
     </div>
   );
 }
