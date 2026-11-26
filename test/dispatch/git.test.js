@@ -49,6 +49,22 @@ test("unknown or option-like refs fail without running them", async () => {
   } finally { rmSync(dir, { recursive: true, force: true }); }
 });
 
+test("merge proof resolves the branch and full SHA independently of same-name tags", async t => {
+  const { dir, g } = scratchRepo();
+  t.after(() => rmSync(dir, { recursive: true, force: true }));
+  const tip = g("rev-parse", "refs/heads/feat/x");
+  const merged = g("rev-parse", "refs/heads/develop");
+  g("tag", "feat/x", merged);
+  g("tag", tip, merged);
+  for (const candidate of ["feat/x", "refs/heads/feat/x", tip]) {
+    const proof = await verifyMerged(dir, candidate);
+    assert.equal(proof.commit, tip);
+    assert.equal(proof.ok, false);
+  }
+  g("branch", "-D", "feat/x");
+  assert.equal((await verifyMerged(dir, "feat/x")).ok, false);
+});
+
 test("branchStatus: ahead/behind, last commit time and merge state", async () => {
   const { dir, g } = scratchRepo();
   try {

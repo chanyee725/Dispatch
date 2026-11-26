@@ -339,6 +339,40 @@ for (const automatic of [true, false]) {
 }
 
 for (const atExpiry of [false, true]) {
+  for (const automatic of [true, false]) {
+    test(`${automatic ? "auto-close" : "explicit done"} rejects a tag after branch deletion before ${atExpiry ? "expiry" : "arming"}`, async t => {
+      const { root, git } = scratchGit(t);
+      const { hub, lead, cleanup, sessions } = fixture({ root, automatic, status: "running", card: false });
+      const ref = "fix/candidate";
+      const card = await hub.setTask(lead.id, { title: "Merged work", stage: "merge", commit: ref });
+      if (automatic) assert.deepEqual(await hub.autoCloseTasks(), [card.id]);
+      else await hub.setTask(lead.id, { id: card.id, stage: "done" });
+      const tip = git("rev-parse", `refs/heads/${ref}`);
+      assert.equal(card.mergeCheck.commit, tip);
+      git("tag", ref, tip);
+
+      lead.status = "idle";
+      const arm = () => automatic ? cleanup.reconcile() : cleanup.request(lead.id);
+      const settle = () => cleanup.pending.get(lead.id)?.checking;
+      if (atExpiry) {
+        arm();
+        await settle();
+        assert.equal(cleanup.scheduled(lead), true);
+      }
+
+      git("branch", "-D", ref);
+      assert.equal(git("branch", "--list", ref), "");
+      assert.equal(git("rev-parse", `refs/tags/${ref}`), tip);
+      if (atExpiry) mock.timers.tick(120_000);
+      else arm();
+      await settle();
+      assert.equal(sessions.L, lead);
+      assert.equal(cleanup.scheduled(lead), false);
+    });
+  }
+}
+
+for (const atExpiry of [false, true]) {
   for (const change of ["card", "lead"]) {
     test(`branch lookup rechecks the ${change} after awaiting Git at ${atExpiry ? "expiry" : "arming"}`, async t => {
       const { root, git } = scratchGit(t);

@@ -207,10 +207,25 @@ export async function integrationBranch(root, base = "develop") {
   return [base, "main", "master"].find(b => branches.includes(b)) ?? (await currentBranch(root)) ?? "HEAD";
 }
 
-/** Resolves a local commit candidate, or returns null if Git cannot resolve it. */
-export async function resolveCommit(root, candidate) {
-  if (!candidate || candidate.startsWith("-")) return null;
-  try { return (await git(root, "rev-parse", "--verify", "--quiet", `${candidate}^{commit}`)).stdout.trim() || null; }
+export function isCommitSha(candidate) {
+  return /^[0-9a-f]{7,40}$/i.test(candidate ?? "");
+}
+
+function localBranchRef(branch) {
+  return branch.startsWith("refs/heads/") ? branch : `refs/heads/${branch}`;
+}
+
+/** Resolves the exact local branch ref, including when a tag has the same name. */
+export async function resolveBranchTip(root, branch) {
+  try { return (await git(root, "show-ref", "--verify", "--hash", localBranchRef(branch))).stdout.trim() || null; }
+  catch { return null; }
+}
+
+async function resolveCommitSha(root, candidate) {
+  try {
+    const sha = (await git(root, "rev-parse", "--verify", "--quiet", `${candidate}^{commit}`)).stdout.trim();
+    return sha.startsWith(candidate.toLowerCase()) ? sha : null;
+  }
   catch { return null; }
 }
 
@@ -224,7 +239,7 @@ export async function verifyMerged(root, commit) {
   const base = await integrationBranch(root);
   // A leading "-" would read as an option to git.
   if (!ref || ref.startsWith("-")) return { ok: false, commit: ref, base, reason: "커밋을 알 수 없어요" };
-  const sha = await resolveCommit(root, ref);
+  const sha = await (isCommitSha(ref) ? resolveCommitSha(root, ref) : resolveBranchTip(root, ref));
   if (!sha) return { ok: false, commit: ref, base, reason: `${ref} 커밋을 프로젝트 폴더에서 찾을 수 없어요` };
   try {
     await git(root, "merge-base", "--is-ancestor", sha, base);
@@ -246,11 +261,12 @@ export async function verifyMerged(root, commit) {
  */
 export async function branchStatus(root, branch, base) {
   const sh = async (...a) => { try { return (await git(root, ...a)).stdout.trim(); } catch { return ""; } };
+  const ref = localBranchRef(branch);
   const [counts, ct, tip, born] = await Promise.all([
-    sh("rev-list", "--left-right", "--count", `${base}...${branch}`),
-    sh("log", "-1", "--format=%ct", branch),
-    sh("rev-parse", branch),
-    sh("reflog", "show", "--format=%H", branch).then(r => r.split("\n").filter(Boolean).at(-1) || ""),
+    sh("rev-list", "--left-right", "--count", `${base}...${ref}`),
+    sh("log", "-1", "--format=%ct", ref),
+    resolveBranchTip(root, ref),
+    sh("reflog", "show", "--format=%H", ref).then(r => r.split("\n").filter(Boolean).at(-1) || ""),
   ]);
   const [behind, ahead] = counts.split(/\s+/).map(n => +n || 0);
   const state = ahead > 0 ? "open" : born && born !== tip ? "merged" : "empty";

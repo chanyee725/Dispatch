@@ -1,7 +1,5 @@
-import { resolveCommit } from "./git.js";
+import { isCommitSha, resolveBranchTip } from "./git.js";
 import { taskIssue } from "./task-close.js";
-
-const SHA = /^[0-9a-f]{7,40}$/i;
 
 function hasCurrentMergeProof(card) {
   const proof = card.mergeCheck;
@@ -11,7 +9,7 @@ function hasCurrentMergeProof(card) {
     // An issue-linked PR can close the card, but cannot prove a named commit or branch merged.
     return candidate === null && proof.candidate === null && proof.issue != null && proof.issue === taskIssue(card);
   }
-  if (SHA.test(candidate ?? "")) {
+  if (isCommitSha(candidate)) {
     // Older successful checks stored the resolved SHA without the original candidate.
     return proof.commit?.toLowerCase().startsWith(candidate.toLowerCase()) === true;
   }
@@ -34,7 +32,7 @@ export class LeadCleanup {
   }
 
   branchCandidates(id) {
-    return this.cards(id).filter(t => t.commit && !SHA.test(t.commit))
+    return this.cards(id).filter(t => t.commit && !isCommitSha(t.commit))
       .map(card => ({ card, ref: card.commit, sha: card.mergeCheck?.commit }));
   }
 
@@ -155,7 +153,7 @@ export class LeadCleanup {
     const candidates = this.branchCandidates(id);
     if (!candidates.length) return proceed();
 
-    job.checking = Promise.all(candidates.map(({ ref }) => resolveCommit(this.hub.root, ref))).then(tips => {
+    job.checking = Promise.all(candidates.map(({ ref }) => resolveBranchTip(this.hub.root, ref))).then(tips => {
       if (this.pending.get(id) !== job) return;
       job.checking = null;
       const current = this.branchCandidates(id);
