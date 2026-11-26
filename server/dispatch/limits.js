@@ -149,13 +149,24 @@ export const isQuotaError = text => /RESOURCE_EXHAUSTED|quota reached|code 429/i
 export const LIMITS_FILE = path.join(userDir({}), "limits.json");
 // fable: the weekly window the CLI reports as seven_day_overage_included (models with their own weekly
 // bucket, Fable today). Only Fable turns carry it, so it keeps its last value between them.
-const EMPTY_CLAUDE = () => ({ five: null, seven: null, fable: null, fiveReset: null, sevenReset: null, fableReset: null, updatedAt: null });
+const CLAUDE_WINDOWS = ["five", "seven", "fable"];
+const EMPTY_CLAUDE = () => ({
+  five: null, seven: null, fable: null,
+  fiveReset: null, sevenReset: null, fableReset: null,
+  fiveObservedAt: null, sevenObservedAt: null, fableObservedAt: null,
+  updatedAt: null,
+});
 const num = v => (typeof v === "number" && Number.isFinite(v) ? v : null);
 
 /** Keeps the known number fields only; anything else in the input is dropped. */
 export function cleanClaude(l) {
   const c = EMPTY_CLAUDE();
-  if (l && typeof l === "object") for (const k of Object.keys(c)) c[k] = num(l[k]);
+  if (!l || typeof l !== "object") return c;
+  for (const k of Object.keys(c)) c[k] = num(l[k]);
+  for (const slot of CLAUDE_WINDOWS) {
+    const key = `${slot}ObservedAt`;
+    if (c[slot] != null && !Object.hasOwn(l, key)) c[key] = c.updatedAt;
+  }
   return c;
 }
 const newer = (a, b) => (a ?? -Infinity) > (b ?? -Infinity);
@@ -253,11 +264,12 @@ export class SharedLimits extends EventEmitter {
 
   /** Records new values (each section only if newer) and writes the merged result. */
   async write(patch) {
-    this.data = mergeLimits(this.data, patch);
+    if (typeof patch !== "function") this.data = mergeLimits(this.data, patch);
     const unlock = await this.lock();
     try {
       const { data } = await this.read();
       this.data = mergeLimits(this.data, data);
+      if (typeof patch === "function") this.data = mergeLimits(this.data, patch(this.data));
       const tmp = `${this.file}.${process.pid}.${randomBytes(4).toString("hex")}.tmp`;
       try {
         await writeFile(tmp, JSON.stringify(this.data, null, 2));
@@ -276,5 +288,22 @@ export class SharedLimits extends EventEmitter {
   // or mergeLimits (newer wins) would drop the second one.
   stamp(prev) { return Math.max(Date.now(), (prev ?? 0) + 1); }
   setClaude(l) { return this.write({ claude: { ...l, updatedAt: l.updatedAt ?? this.stamp(this.data.claude?.updatedAt) } }); }
+  observeClaude(windows) {
+    // Apply partial events to the latest shared snapshot under the file lock.
+    return this.write(({ claude }) => {
+      const updatedAt = this.stamp(claude.updatedAt);
+      const next = { ...claude, updatedAt };
+      for (const slot of CLAUDE_WINDOWS) {
+        const window = windows[slot];
+        const used = num(window?.utilization);
+        if (used != null) {
+          next[slot] = used;
+          next[`${slot}ObservedAt`] = updatedAt;
+        }
+        if (window?.resetsAt) next[`${slot}Reset`] = window.resetsAt * 1000;
+      }
+      return { claude: next };
+    });
+  }
   setGemini(g) { return this.write({ gemini: { ...g, at: g.at ?? this.stamp(this.data.gemini?.at) } }); }
 }

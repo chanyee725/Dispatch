@@ -64,9 +64,9 @@ export async function codexAccountUsage(spawn = spawnCli) {
 
 function claudeAccountUsage(limits) {
   const windows = [
-    { label: "5시간", used: limits.five, reset: timestamp(limits.fiveReset) },
-    { label: "주간", used: limits.seven, reset: timestamp(limits.sevenReset) },
-    { label: "Fable 주간", used: limits.fable, reset: timestamp(limits.fableReset) },
+    { label: "5시간", used: limits.five, reset: timestamp(limits.fiveReset), observedAt: timestamp(limits.fiveObservedAt) },
+    { label: "주간", used: limits.seven, reset: timestamp(limits.sevenReset), observedAt: timestamp(limits.sevenObservedAt) },
+    { label: "Fable 주간", used: limits.fable, reset: timestamp(limits.fableReset), observedAt: timestamp(limits.fableObservedAt) },
   ].filter(window => finite(window.used) && window.used >= 0 && window.used <= 1);
   const status = windows.length === 0 ? "empty"
     : windows.filter(window => window.label !== "Fable 주간").length < 2 || windows.some(window => window.reset == null)

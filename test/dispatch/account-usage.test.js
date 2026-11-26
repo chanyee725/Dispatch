@@ -50,7 +50,7 @@ test("Gemini usage separates a reported weekly limit, partial buckets, no quota 
 
 test("account usage respects Dispatch connections and Gemini distinguishes installation from verified account access", async () => {
   const providers = {};
-  const ctx = { providers: () => providers, hub: { limits: { five: 0.4, fiveReset: 123, updatedAt: 12 } } };
+  const ctx = { providers: () => providers, hub: { limits: { five: 0.4, fiveReset: 123, fiveObservedAt: 10, updatedAt: 12 } } };
   const blocked = () => assert.fail("a disconnected provider must not be queried");
   for (const id of ["claude", "openai", "gemini"]) {
     assert.deepEqual(await accountUsage(id, ctx, { codex: blocked, gemini: blocked }),
@@ -58,7 +58,7 @@ test("account usage respects Dispatch connections and Gemini distinguishes insta
     providers[id] = { connected: true };
   }
   assert.deepEqual(await accountUsage("claude", ctx), {
-    connection: "connected", status: "partial", windows: [{ label: "5시간", used: 0.4, reset: 123 }], updatedAt: 12,
+    connection: "connected", status: "partial", windows: [{ label: "5시간", used: 0.4, reset: 123, observedAt: 10 }], updatedAt: 12,
   });
   providers.openai.method = "API 키";
   assert.deepEqual(await accountUsage("openai", ctx, { codex: blocked }),

@@ -45,7 +45,7 @@ function Panel({ title, note, children, className }: { title: string; note?: str
 const Empty = ({ children }: { children: ReactNode }) => <p className="py-6 text-center text-sm text-muted-foreground">{children}</p>;
 
 type AccountProvider = 'claude' | 'openai' | 'gemini';
-type AccountWindow = { label: string | null; used: number; reset: number | null };
+type AccountWindow = { label: string | null; used: number; reset: number | null; observedAt?: number | null };
 type AccountUsage = {
   connection: 'connected' | 'disconnected' | 'unverified';
   status: 'available' | 'partial' | 'empty' | 'unavailable' | 'error' | null;
@@ -154,14 +154,14 @@ function LimitsPanel() {
           const shown = disconnected ? undefined : load.previous;
           const data = disconnected ? undefined : load.data;
           const rows = shown?.windows ?? [];
-          const age = shown?.updatedAt == null ? null : Math.max(0, Math.floor((now - shown.updatedAt) / 60_000));
-          const stale = rows.some(({ label, reset }) => {
-            if (load.failed) return true;
-            if (reset != null) return reset <= now;
-            if (age == null) return false;
+          const staleAges = rows.flatMap(({ label, reset, observedAt = shown?.updatedAt }) => {
+            const age = observedAt == null ? null : Math.max(0, Math.floor((now - observedAt) / 60_000));
             const minutes = windowMinutes(label);
-            return minutes != null && age >= minutes;
+            const stale = load.failed || (reset != null ? reset <= now : minutes != null && age != null && age >= minutes);
+            return stale ? [age] : [];
           });
+          const staleAge = staleAges.reduce<number | null>((oldest, age) =>
+            age == null ? oldest : Math.max(oldest ?? age, age), null);
           const partial = shown?.status === 'partial';
           const expected = ['5시간', '주간'];
           const missing = partial && id !== 'gemini' && rows.some(w => w.label != null && expected.includes(w.label))
@@ -221,10 +221,10 @@ function LimitsPanel() {
                     사용량을 불러오지 못했어요.
                   </p>
                 )}
-                {stale && (
+                {staleAges.length > 0 && (
                   <p className="flex items-start gap-1.5 text-xs text-muted-foreground tabular-nums">
                     <TriangleAlert aria-hidden className="size-3.5 shrink-0 text-warn" />
-                    {age == null ? '지난 숫자예요.' : `${age}분 전 숫자예요.`}
+                    {staleAge == null ? '지난 숫자예요.' : `${staleAge}분 전 숫자예요.`}
                   </p>
                 )}
               </div>

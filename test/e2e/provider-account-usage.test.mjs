@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { execFileSync, spawn } from 'node:child_process';
 import { once } from 'node:events';
-import { mkdirSync, mkdtempSync, rmSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { createServer } from 'node:net';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
@@ -26,8 +26,17 @@ test('account usage shows verified windows, missing data, stale values and keybo
   const repo = join(dir, 'repo');
   const home = join(dir, 'home');
   mkdirSync(repo);
-  mkdirSync(home);
+  const now = Date.now();
+  const limitsDir = join(home, '.dispatch');
+  mkdirSync(limitsDir, { recursive: true });
+  writeFileSync(join(limitsDir, 'limits.json'), JSON.stringify({
+    claude: { five: 0.65, fiveReset: null, updatedAt: now - 86_400_000 },
+  }));
   const fake = fakeCliBin({ scenarios: {
+    claude: [
+      { type: 'rate_limit_event', rate_limit_info: { unifiedWindows: { seven_day: { utilization: 0.3 } } } },
+      { type: 'result', subtype: 'success' },
+    ],
     codex: [{ rateLimits: { primary: {
       usedPercent: 37, windowDurationMins: 300, resetsAt: Math.floor(Date.now() / 1000) + 3600,
     } } }],
@@ -59,8 +68,11 @@ test('account usage shows verified windows, missing data, stale values and keybo
   server.stdout.on('data', data => { ready ||= data.toString().includes(`workspace ${repo}`); });
   await until(() => ready, 10_000);
 
-  const call = async (path, method = 'GET') => {
-    const response = await fetch(base + path, { method, headers: { 'x-drawing': '1' } });
+  const call = async (path, method = 'GET', body) => {
+    const response = await fetch(base + path, {
+      method, headers: { 'x-drawing': '1', 'content-type': 'application/json' },
+      body: body && JSON.stringify(body),
+    });
     assert.ok(response.ok, `${method} ${path} returned ${response.status}`);
     return response.json();
   };
@@ -79,7 +91,12 @@ test('account usage shows verified windows, missing data, stale values and keybo
   for (const id of ['claude', 'openai', 'gemini']) {
     assert.equal((await call(`/api/providers/${id}/login`, 'POST')).connected, true);
   }
-  await claude.getByText('아직 사용량 정보가 없어요. 세션이 돌면 채워져요.').waitFor();
+  const stale = claude.getByRole('status').getByText(/144\d분 전 숫자예요/);
+  await stale.waitFor();
+  await call('/api/sessions', 'POST', { items: [{ role: 'impl', prompt: 'Report usage.' }], worktree: false });
+  await claude.getByRole('progressbar', { name: 'Claude 주간 30%' }).waitFor();
+  await claude.getByRole('progressbar', { name: 'Claude 5시간 65%' }).waitFor();
+  await stale.waitFor({ timeout: 5_000 });
   await codex.getByText('연결됨', { exact: true }).waitFor();
   await codex.getByRole('progressbar', { name: 'OpenAI Codex 5시간 37%' }).waitFor();
   await codex.getByText('일부 기간만 알려줘요.').waitFor();
@@ -91,11 +108,10 @@ test('account usage shows verified windows, missing data, stale values and keybo
   if (process.env.DRAW_ACCOUNT_USAGE_SHOT) await page.screenshot({ path: process.env.DRAW_ACCOUNT_USAGE_SHOT });
 
   // Replace only the account responses to exercise the states the fake CLI cannot change mid-run.
-  const now = Date.now();
   const expired = { connection: 'connected', status: 'partial', updatedAt: now - 120_000,
     windows: [{ label: '5시간', used: 0.37, reset: now - 60_000 }, { label: '주간', used: 0.45, reset: null }] };
   const noUsage = { connection: 'unverified', status: 'unavailable', windows: [] };
-  const claudeUsage = { connection: 'connected', status: 'partial', updatedAt: now - 86_400_000,
+  const claudeUsage = { connection: 'connected', status: 'partial', updatedAt: now - 60_000,
     windows: [{ label: '5시간', used: 0.65, reset: null }] };
   await page.route('**/api/usage/limits/claude', route => route.fulfill({ json: claudeUsage }));
   let geminiState = noUsage;
@@ -105,7 +121,7 @@ test('account usage shows verified windows, missing data, stale values and keybo
   await page.route('**/api/usage/limits/gemini', route => route.fulfill({ json: geminiState }));
   await page.reload();
   await claude.getByRole('progressbar', { name: 'Claude 5시간 65%' }).waitFor();
-  await claude.getByRole('status').getByText(/분 전 숫자예요/).waitFor({ timeout: 5_000 });
+  assert.equal(await claude.getByRole('status').getByText(/분 전 숫자예요/).count(), 0);
   await codex.getByRole('status').getByText(/분 전 숫자예요/).waitFor();
   await codex.getByText('초기화 시각을 몰라요.').waitFor();
   await codex.getByRole('progressbar', { name: 'OpenAI Codex 5시간 37%' }).waitFor();
@@ -114,10 +130,7 @@ test('account usage shows verified windows, missing data, stale values and keybo
 
   geminiState = { ...noUsage, reached: true, reset: now + 3600_000 };
   codexState = null;
-  claudeUsage.updatedAt = now - 60_000;
   await page.reload();
-  await claude.getByRole('progressbar', { name: 'Claude 5시간 65%' }).waitFor();
-  assert.equal(await claude.getByRole('status').getByText(/분 전 숫자예요/).count(), 0);
   await gemini.getByText(/한도에 닿았어요.*사용률은 알려주지 않아요/).waitFor();
   await codex.getByRole('status').getByText('사용량을 불러오지 못했어요.').waitFor();
   await codex.getByText('연결됨', { exact: true }).waitFor();

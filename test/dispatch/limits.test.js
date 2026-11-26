@@ -23,7 +23,7 @@ test("mergeLimits: the Claude section with the newer updatedAt wins", () => {
 test("mergeLimits: Claude and Gemini sections keep numbers only; keys this server does not know pass through untouched", () => {
   const other = { reached: true, note: "kept as it is" };
   const m = mergeLimits({ claude: { ...claude(0.3, 1), email: "x@y", token: "t" }, gemini: { reached: true, reset: 5, at: 100, account: "a" }, other }, null);
-  assert.deepEqual(Object.keys(m.claude).sort(), ["fable", "fableReset", "five", "fiveReset", "seven", "sevenReset", "updatedAt"]);
+  assert.deepEqual(Object.keys(m.claude).sort(), ["fable", "fableObservedAt", "fableReset", "five", "fiveObservedAt", "fiveReset", "seven", "sevenObservedAt", "sevenReset", "updatedAt"]);
   assert.deepEqual(m.gemini, { reached: true, reset: 5, at: 100 });
   assert.deepEqual(m.other, other);
 });
@@ -179,6 +179,50 @@ test("Hub: Fable's weekly window shows on its own and keeps its value across oth
   l = await hub.providerLimits();
   assert.equal(l.claude.windows[0].used, 0.2);
   assert.equal(l.fable.windows[0].used, 0.04);
+});
+
+test("Hub: a weekly-only Claude update keeps the 5h observation from a legacy cache", async t => {
+  const { Hub } = await import("../../server/dispatch/hub.js");
+  const { accountUsage } = await import("../../server/dispatch/account-usage.js");
+  const file = await tmpFile(t);
+  const yesterday = Date.now() - 86_400_000;
+  await writeFile(file, JSON.stringify({ claude: { five: 0.65, fiveReset: null, updatedAt: yesterday } }));
+  const makeHub = async () => {
+    const limits = new SharedLimits(file);
+    await limits.load();
+    const store = { data: { sessions: {}, settings: {} }, save() {} };
+    return new Hub({ root: path.dirname(file), store, models: [], roles: [], port: 0, limits });
+  };
+  const hub = await makeHub();
+  const other = await makeHub();
+  const report = async (target, unifiedWindows) => {
+    const done = new Promise(resolve => target.once("limits", resolve));
+    target.onClaude({ id: "fixture" }, { type: "rate_limit_event", rate_limit_info: { unifiedWindows } });
+    await done;
+  };
+  const read = hub => accountUsage("claude", { hub, providers: () => ({ claude: { connected: true } }) });
+  await report(hub, { seven_day: { utilization: 0.3 } });
+  const weeklyUpdate = await read(hub);
+  assert.deepEqual(weeklyUpdate.windows, [
+    { label: "5시간", used: 0.65, reset: null, observedAt: yesterday },
+    { label: "주간", used: 0.3, reset: null, observedAt: weeklyUpdate.updatedAt },
+  ]);
+  assert.ok(weeklyUpdate.updatedAt > yesterday);
+
+  // Another Hub that loaded the old cache adds Fable without overwriting either observation.
+  await report(other, { seven_day_overage_included: { utilization: 0.1 } });
+  const reopened = await makeHub();
+  assert.deepEqual((await read(reopened)).windows.slice(0, 2), weeklyUpdate.windows);
+
+  // Legacy events without window values, including reset-only data, cannot re-date the percentage.
+  await report(reopened, undefined);
+  assert.deepEqual((await read(reopened)).windows.slice(0, 2), weeklyUpdate.windows);
+  const reset = Math.floor(Date.now() / 1000) + 3600;
+  await report(reopened, { five_hour: { resetsAt: reset } });
+  assert.deepEqual((await read(reopened)).windows[0], { ...weeklyUpdate.windows[0], reset: reset * 1000 });
+  await report(reopened, { five_hour: { utilization: 0 } });
+  const refreshed = await read(reopened);
+  assert.deepEqual(refreshed.windows[0], { label: "5시간", used: 0, reset: reset * 1000, observedAt: refreshed.updatedAt });
 });
 
 test("SharedLimits: two updates in the same millisecond both land, the later one wins", async t => {
