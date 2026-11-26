@@ -51,11 +51,11 @@ test("automatic cleanup gives the lead and finished teammates the full grace per
 
 test("explicit finish works with auto cleanup disabled and waits for the final turn", () => {
   const { hub, lead, sessions, cleanup, events } = fixture({ automatic: false, status: "running", card: false });
+  Object.assign(lead, { provider: "gemini", turns: 0 });
   assert.deepEqual(cleanup.request(lead.id), { ok: true });
   mock.timers.tick(240_000);
   assert.ok(sessions.L);
-  hub.rt("L").lastText = "done";
-  hub.touch(lead, { status: "idle", turns: 1 });
+  hub.onGemini(lead, { event: "result", result: { status: "OK", response: "Work complete." } });
   mock.timers.tick(119_999);
   assert.ok(sessions.L);
   mock.timers.tick(1);
@@ -152,8 +152,9 @@ test("a new turn during the explicit grace period cancels that request", () => {
 test("a question in the final answer cancels an explicit finish requested in that turn", () => {
   const { hub, lead, sessions, cleanup, events } = fixture({ status: "running" });
   assert.deepEqual(cleanup.request("L"), { ok: true });
-  hub.rt("L").lastText = "어느 쪽으로 할까요?";
-  hub.touch(lead, { status: "idle", turns: 1 });
+  Object.assign(lead, { provider: "gemini", turns: 0 });
+  hub.onGemini(lead, { event: "result", result: { status: "OK", response: "어느 쪽으로 할까요?" } });
+  assert.equal(lead.asksUser, true);
   mock.timers.tick(120_000);
   assert.ok(sessions.L);
   assert.deepEqual(events, []);
@@ -273,6 +274,40 @@ for (const retryFinish of [false, true]) {
     mock.timers.tick(120_000);
     assert.equal(sessions.L, undefined);
     assert.deepEqual(events, [{ id: lead.id, reason: retryFinish ? "explicit" : "automatic" }]);
+  });
+}
+
+for (const automatic of [false, true]) {
+  test(`Gemini empty success cannot satisfy finish with automatic cleanup ${automatic ? "on" : "off"}`, () => {
+    const { hub, lead, sessions, cleanup, events } = fixture({ automatic, status: "running" });
+    Object.assign(lead, { provider: "gemini", turns: 0 });
+    const step = step_update => hub.onGemini(lead, { event: "step_update", step_update });
+    const success = result => hub.onGemini(lead, { event: "result", result: { status: "OK", ...result } });
+    assert.deepEqual(cleanup.request(lead.id), { ok: true });
+    if (automatic) step({ step_type: "agent_response", text_delta: "Finishing now." });
+    step({ step_type: "tool", state: "DONE" });
+    success({ response: " " });
+
+    assert.equal(cleanup.scheduled(lead), false);
+    cleanup.reconcile();
+    assert.equal(cleanup.scheduled(lead), false);
+    mock.timers.tick(120_000);
+    assert.equal(sessions.L, lead);
+    assert.deepEqual(events, []);
+
+    hub.rt(lead.id).agyTurn = { text: "", ended: false };
+    hub.touch(lead, { status: "running" });
+    if (automatic) {
+      step({ step_type: "agent_response", text_delta: "Work complete." });
+      success();
+    } else {
+      assert.deepEqual(cleanup.request(lead.id), { ok: true });
+      success({ response: "Work complete." });
+    }
+    assert.equal(cleanup.scheduled(lead), true);
+    mock.timers.tick(120_000);
+    assert.equal(sessions.L, undefined);
+    assert.deepEqual(events, [{ id: lead.id, reason: automatic ? "automatic" : "explicit" }]);
   });
 }
 

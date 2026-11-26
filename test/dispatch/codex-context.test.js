@@ -188,3 +188,45 @@ test("a confirmed looser sandbox stops before turn/start", async t => {
   assert.equal(proc.requests.some(req => req.method === "turn/start"), false);
   assert.equal(hub.get(session.id).status, "error");
 });
+
+for (const automatic of [false, true]) {
+  test(`Codex commentary cannot satisfy finish with automatic cleanup ${automatic ? "on" : "off"}`, async t => {
+    t.mock.timers.enable({ apis: ["setTimeout"] });
+    const lead = {
+      id: "L", status: "idle", provider: "openai", model: MODEL.id, role: ROLE.id,
+      perm: "plan", effort: "low", turns: 0, canSpawn: true,
+    };
+    const { hub, store, processes } = await setup(t, { L: lead });
+    const cleanup = hub.leadCleanup;
+    hub.startCodex(lead, "test");
+    handshake(processes[0]);
+    store.data.tasks ??= {};
+    store.data.tasks.T = { id: "T", lead: lead.id, stage: "done", commit: "a".repeat(7), mergeCheck: { ok: true, commit: "a".repeat(40) } };
+    store.data.settings.team.autoRemoveFinishedLeads = automatic;
+    cleanup.settingsChanged();
+
+    const item = (proc, turnId, item) => proc.send({ method: "item/completed", params: { threadId: THREAD, turnId, item } });
+    item(processes[0], TURN, { type: "agentMessage", id: "progress", phase: "commentary", text: "Finishing now." });
+    assert.deepEqual(cleanup.request(lead.id), { ok: true });
+    item(processes[0], TURN, { type: "mcpToolCall", id: "tool", server: "dispatch", tool: "finish", status: "completed" });
+    item(processes[0], TURN, { type: "agentMessage", id: "post-tool", phase: "commentary", text: "The finish tool returned." });
+    processes[0].send(finished());
+    processes[0].emit("close", 0);
+
+    assert.equal(cleanup.scheduled(lead), false);
+    cleanup.reconcile();
+    assert.equal(cleanup.scheduled(lead), false);
+    t.mock.timers.tick(120_000);
+    assert.equal(hub.get(lead.id), lead);
+
+    hub.startCodex(lead, "test");
+    const nextTurn = "turn-2";
+    handshake(processes[1], { resume: true, turnId: nextTurn });
+    if (!automatic) assert.deepEqual(cleanup.request(lead.id), { ok: true });
+    item(processes[1], nextTurn, { type: "agentMessage", id: "report", phase: "final_answer", text: "Work complete." });
+    processes[1].send(finished(nextTurn));
+    assert.equal(cleanup.scheduled(lead), true);
+    t.mock.timers.tick(120_000);
+    assert.equal(hub.get(lead.id), undefined);
+  });
+}

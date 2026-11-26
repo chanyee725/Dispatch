@@ -67,11 +67,9 @@ export class LeadCleanup {
     // Promote an already armed automatic job without extending its grace period.
     job.explicit = true;
     if (lead.status === "running") {
-      job.reportAfterTurn = lead.turns ?? 0;
-      if (lead.provider === "claude") {
-        const runtime = this.hub.rt(id);
-        runtime.finishReportAfterSeq = runtime.seq;
-      }
+      job.awaitingReport = true;
+      const runtime = this.hub.rt(id);
+      runtime.finishReportAfterSeq = runtime.seq;
     }
     this.refresh(lead);
     return { ok: true };
@@ -121,7 +119,7 @@ export class LeadCleanup {
     const explicit = job?.explicit === true;
     // A finish request made inside a running turn waits until that turn posts its final answer.
     if ((!explicit && !this.automaticEnabled()) ||
-        this.blocked(lead, { explicit, endingTurn: explicit && job.reportAfterTurn !== undefined })) {
+        this.blocked(lead, { explicit, endingTurn: explicit && job.awaitingReport })) {
       this.cancel(id);
       return;
     }
@@ -129,19 +127,13 @@ export class LeadCleanup {
     const runtime = this.hub.live.get(id);
     // Keep the report requirement across cancelled jobs and later automatic checks.
     if (runtime?.finishReportAfterSeq !== undefined) {
-      if ((runtime.claudeFinalSeq ?? 0) <= runtime.finishReportAfterSeq) {
+      if ((runtime.finalReportSeq ?? 0) <= runtime.finishReportAfterSeq) {
         this.cancel(id);
         return;
       }
       delete runtime.finishReportAfterSeq;
     }
-    if (job?.reportAfterTurn !== undefined) {
-      if ((lead.turns ?? 0) <= job.reportAfterTurn || !runtime?.lastText?.trim()) {
-        this.cancel(id);
-        return;
-      }
-      delete job.reportAfterTurn;
-    }
+    if (job) delete job.awaitingReport;
     if (!job) this.pending.set(id, job = { lead, timer: null });
     this.checkCandidates(id, job, () => {
       job.timer = setTimeout(() => this.expire(id, job), this.config.autoRemoveGraceSec * 1000);
