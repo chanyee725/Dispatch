@@ -68,7 +68,7 @@ const dayMinutes = 24 * 60;
 function windowMinutes(label: AccountWindow['label']) {
   if (label === '일간') return dayMinutes;
   if (label === '주간' || label === 'Fable 주간') return 7 * dayMinutes;
-  // When the monthly reset is unknown, allow for the longest calendar month.
+  // Allow for the longest calendar month.
   if (label === '월간') return 31 * dayMinutes;
   const match = /^([1-9]\d*)(분|시간|일)$/.exec(label ?? '');
   if (!match) return null;
@@ -157,7 +157,9 @@ function LimitsPanel() {
           const staleAges = rows.flatMap(({ label, reset, observedAt = shown?.updatedAt }) => {
             const age = observedAt == null ? null : Math.max(0, Math.floor((now - observedAt) / 60_000));
             const minutes = windowMinutes(label);
-            const stale = load.failed || (reset != null ? reset <= now : minutes != null && age != null && age >= minutes);
+            const resetExpired = reset != null && reset <= now;
+            const observationExpired = minutes != null && age != null && age >= minutes;
+            const stale = load.failed || resetExpired || observationExpired;
             return stale ? [age] : [];
           });
           const staleAge = staleAges.reduce<number | null>((oldest, age) =>

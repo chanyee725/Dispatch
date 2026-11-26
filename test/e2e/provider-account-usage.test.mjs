@@ -32,9 +32,16 @@ test('account usage shows verified windows, missing data, stale values and keybo
   writeFileSync(join(limitsDir, 'limits.json'), JSON.stringify({
     claude: { five: 0.65, fiveReset: null, updatedAt: now - 86_400_000 },
   }));
+  const resetOnlyGate = join(dir, 'reset-only');
+  const freshUsageGate = join(dir, 'fresh-usage');
+  const fiveReset = Math.floor(now / 1000) + 3600;
   const fake = fakeCliBin({ scenarios: {
     claude: [
       { type: 'rate_limit_event', rate_limit_info: { unifiedWindows: { seven_day: { utilization: 0.3 } } } },
+      { $waitFor: resetOnlyGate },
+      { type: 'rate_limit_event', rate_limit_info: { unifiedWindows: { five_hour: { resetsAt: fiveReset } } } },
+      { $waitFor: freshUsageGate },
+      { type: 'rate_limit_event', rate_limit_info: { unifiedWindows: { five_hour: { utilization: 0.2 } } } },
       { type: 'result', subtype: 'success' },
     ],
     codex: [{ rateLimits: { primary: {
@@ -97,6 +104,15 @@ test('account usage shows verified windows, missing data, stale values and keybo
   await claude.getByRole('progressbar', { name: 'Claude 주간 30%' }).waitFor();
   await claude.getByRole('progressbar', { name: 'Claude 5시간 65%' }).waitFor();
   await stale.waitFor({ timeout: 5_000 });
+  writeFileSync(resetOnlyGate, '');
+  const resetTime = new Date(fiveReset * 1000).toISOString();
+  await claude.locator(`[data-limit="5시간"] time[datetime="${resetTime}"]`).waitFor({ timeout: 5_000 });
+  await claude.getByRole('progressbar', { name: 'Claude 5시간 65%' }).waitFor();
+  await stale.waitFor({ timeout: 5_000 });
+
+  writeFileSync(freshUsageGate, '');
+  await claude.getByRole('progressbar', { name: 'Claude 5시간 20%' }).waitFor({ timeout: 5_000 });
+  assert.equal(await claude.getByRole('status').getByText(/분 전 숫자예요/).count(), 0);
   await codex.getByText('연결됨', { exact: true }).waitFor();
   await codex.getByRole('progressbar', { name: 'OpenAI Codex 5시간 37%' }).waitFor();
   await codex.getByText('일부 기간만 알려줘요.').waitFor();
