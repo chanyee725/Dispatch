@@ -32,6 +32,7 @@ import { knownFolders, scopePending, type Scope } from './lib/folder.ts';
 import { isOpen, stateOf } from './lib/format.ts';
 import { ScopeProvider, useScoped } from './scope';
 import { openAgentLive, useAgentLiveTarget } from '../live/store';
+import { SessionTimelineSplit } from './SessionTimelineSplit';
 import { TimelineCard } from './TimelineCard';
 import { TaskBoardCard } from './TaskBoard';
 import { UsagePage } from './UsagePage';
@@ -140,8 +141,10 @@ export default function SessionBoard(p: BoardProps) {
               {/* No 프로젝트 card: this server holds one project (#778). Left 60%: 세션; right 40%: 작업 보드, whose card
                   takes the spare height so neither column leaves an empty band (#879). */}
               <DashColumn label="세션" fill>
-                <SessionsCard onCreate={() => setCreating(true)} />
-                <TimelineCard projectId={scope} onOpen={(id) => openSession(id)} focus={p.tab === 'timeline'} />
+                <SessionTimelineSplit
+                  sessions={<SessionsCard onCreate={() => setCreating(true)} />}
+                  timeline={<TimelineCard projectId={scope} onOpen={(id) => openSession(id)} focus={p.tab === 'timeline'} />}
+                />
               </DashColumn>
               {/* Sticky on a wide pane: 작업 보드 stays in view while 세션 scrolls. */}
               <DashColumn label="현황" fill>
@@ -301,7 +304,7 @@ function SessionsCard({ onCreate }: { onCreate: () => void }) {
   }, [sessions, tasks, issues]);
 
   return (
-    <Card id="sessions" fill={1} title="세션" count={pending ? undefined : sessions.filter(isOpen).length}>
+    <Card id="sessions" scroll className="h-full" title="세션" count={pending ? undefined : sessions.filter(isOpen).length}>
       <div className="flex min-w-0 flex-col gap-4">
         <div className="flex min-w-0 flex-wrap items-center justify-between gap-x-4 gap-y-2">
           <SummaryLine />
