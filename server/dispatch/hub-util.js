@@ -56,6 +56,27 @@ export const SESSION_ENV = { PLAYWRIGHT_MCP_HEADLESS: "true", PLAYWRIGHT_MCP_ISO
 // DRAWING_SESSION: the session's id, sent back as `x-drawing-session` on its workspace API writes so its cursor is
 // credited for certain, not guessed (#656).
 export const sessionEnv = s => ({ ...SESSION_ENV, ...ownGitEnv(), DRAWING_SESSION: s.id });
+export const COMMIT_SHA = /^[0-9a-f]{7,40}$/i;
+
+// Board cards may record either a full SHA or an abbreviated one.
+export function sameCommitSha(a, b) {
+  if (typeof a !== "string" || typeof b !== "string" || !COMMIT_SHA.test(a) || !COMMIT_SHA.test(b)) return false;
+  a = a.toLowerCase();
+  b = b.toLowerCase();
+  return a.startsWith(b) || b.startsWith(a);
+}
+
+// A prefix can identify a candidate only when all known matches agree.
+export function uniqueCommitSha(commits, sha) {
+  let match = null;
+  for (const commit of commits) {
+    if (!sameCommitSha(commit, sha)) continue;
+    if (match && !sameCommitSha(commit, match)) return null;
+    if (!match || commit.length > match.length) match = commit;
+  }
+  return match?.toLowerCase() ?? null;
+}
+
 export const isOpenStatus = st => !["done", "error"].includes(st);
 export const clip = (s, n = 2000) => { s = String(s ?? ""); return s.length > n ? s.slice(0, n) + "…" : s; };
 

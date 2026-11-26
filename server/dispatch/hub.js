@@ -19,7 +19,7 @@ import { deriveFolder } from "./session-folder.js";
 import { LiveTracker } from "./live.js";
 import { issueNumber } from "./ledger.js";
 import {
-  mixin, badRequest, PROVIDERS, UNSUPPORTED_MODEL, PROVIDER_NAMES, checkPerm, checkEffort, MAX_TRANSCRIPT, RESUME_TEXT, isOpenStatus, clip, RESUME_ID, userContent, activityOf, maskedPerm,
+  mixin, badRequest, COMMIT_SHA, sameCommitSha, PROVIDERS, UNSUPPORTED_MODEL, PROVIDER_NAMES, checkPerm, checkEffort, MAX_TRANSCRIPT, RESUME_TEXT, isOpenStatus, clip, RESUME_ID, userContent, activityOf, maskedPerm,
 } from "./hub-util.js";
 import { HubAutoRemove } from "./hub-auto-remove.js";
 import { HubLeadInbox } from "./hub-lead-inbox.js";
@@ -42,6 +42,7 @@ export class Hub extends EventEmitter {
     this.shared = limits || new SharedLimits();
     this.shared.on("change", () => { this.emit("limits", this.currentLimits()); this.checkTickets(); });
     this.leadReportSeq = 0;
+    this.previousTaskCommits = new WeakMap();
     this.live = new Map(); // id -> { proc, transcript, perms, seenMsgIds }
     // The live view per session (#728): metadata only, in memory, sent as throttled `live` events.
     this.liveView = new LiveTracker({ workspaceDir, emit: ev => this.emit("live", ev), known: id => !!this.get(id) });
@@ -358,6 +359,10 @@ export class Hub extends EventEmitter {
       .sort((a, b) => a.createdAt - b.createdAt);
   }
 
+  taskCommits(task) {
+    return [task.commit, ...(this.previousTaskCommits.get(task) ?? [])];
+  }
+
   /**
    * Creates or updates a task (matched by id, else by lead + title). Closing one as done with a
    * `commit` (hash or branch) first checks the commit is on the integration branch; if not, the
@@ -375,6 +380,10 @@ export class Hub extends EventEmitter {
     }
     let created = false;
     let t = (input.id && all[input.id]) || Object.values(all).find(x => x.lead === lead && x.title === title && x.stage !== "done");
+    // The merge role can update by ID alone. A caller supplying a lead must still own the card.
+    if (t && lead != null && t.lead !== lead) {
+      throw Object.assign(new Error("현재 작업 관리자만 갱신할 수 있어요"), { status: 409 });
+    }
     if (!t) {
       if (!title) throw new Error("title이 필요해요");
       // Closing work by creating a fresh "done" task left the real one open with a stale eta.
@@ -389,17 +398,30 @@ export class Hub extends EventEmitter {
       all[t.id] = t;
       created = true;
     }
-    if (title) t.title = title;
-    if (input.commit !== undefined) t.commit = input.commit ? String(input.commit).trim().slice(0, 80) || null : null;
+    const commit = input.commit === undefined ? t.commit : String(input.commit || "").trim().slice(0, 80) || null;
     let stage = input.stage && STAGES.includes(input.stage) && input.stage !== t.stage ? input.stage : null;
     if (stage === "done") {
-      if (t.commit) {
-        const check = await verifyMerged(this.root, t.commit);
+      if (commit) {
+        const owner = t.lead;
+        const check = await verifyMerged(this.root, commit);
+        if (all[t.id] !== t || t.lead !== owner) {
+          throw Object.assign(new Error("병합을 확인하는 동안 작업 관리자가 바뀌었어요"), { status: 409 });
+        }
         t.mergeCheck = { ...check, at: Date.now() };
         if (!check.ok) stage = null; // stays open; the attention strip shows mergeCheck
       } else {
         t.mergeCheck = { ok: null, commit: null, base: null, reason: "커밋 없이 닫혀 병합을 확인하지 않았어요", at: Date.now() };
       }
+    }
+    if (title) t.title = title;
+    if (input.commit !== undefined) {
+      // A review can finish after a newer candidate is already on the board.
+      if (COMMIT_SHA.test(t.commit ?? "") && t.commit !== commit) {
+        const previous = this.previousTaskCommits.get(t) ?? new Set();
+        previous.add(t.commit);
+        this.previousTaskCommits.set(t, previous);
+      }
+      t.commit = commit;
     }
     if (stage) enterStage(t, stage);
     if (input.lane !== undefined) t.lane = checkLane(input.lane) ?? null;
@@ -424,6 +446,63 @@ export class Hub extends EventEmitter {
     this.store.save();
     this.emit("tasks", this.tasks);
     return t;
+  }
+
+  // Manual lead replacement names a card and any teammates it needs. Validate the entire move
+  // before publishing either the board or the parent changes, then let queued reports follow.
+  handoffTask(id, { fromLead, toLead, sessionIds = [], resolvedReviewCommits = [] }) {
+    const validId = value => typeof value === "string" && /^[\w-]{1,128}$/.test(value);
+    if (!validId(fromLead) || !validId(toLead) || fromLead === toLead ||
+        !Array.isArray(sessionIds) || !sessionIds.every(validId) || new Set(sessionIds).size !== sessionIds.length) {
+      throw badRequest("인계할 관리자와 팀원 ID를 확인해 주세요");
+    }
+    const task = this.store.data.tasks?.[id];
+    if (task?.id !== id) throw Object.assign(new Error("작업이 없어요"), { status: 404 });
+    if (task.lead !== fromLead) throw Object.assign(new Error("현재 작업 관리자가 fromLead와 달라요"), { status: 409 });
+
+    const next = this.get(toLead);
+    if (next?.id !== toLead) throw Object.assign(new Error("관리자 세션이 없어요"), { status: 404 });
+    if (!next.canSpawn || next._killed || next.status === "done") throw badRequest("작업을 받을 수 있는 관리자 세션이 아니에요");
+    const previous = this.get(fromLead);
+    const folder = task.folder === undefined ? previous?.folder : task.folder;
+    if (folder === undefined) throw Object.assign(new Error("작업의 원래 프로젝트를 확인할 수 없어요"), { status: 409 });
+    if (folder !== next.folder) {
+      throw Object.assign(new Error("같은 프로젝트의 관리자에게만 작업을 인계할 수 있어요"), { status: 409 });
+    }
+
+    if (!Array.isArray(resolvedReviewCommits) || resolvedReviewCommits.some(commit =>
+      typeof commit !== "string" || !COMMIT_SHA.test(commit) || sameCommitSha(commit, task.commit)
+    ) || (resolvedReviewCommits.length && (typeof task.commit !== "string" || !COMMIT_SHA.test(task.commit)))) {
+      throw badRequest("해결한 리뷰에는 현재 후보와 다른 이전 커밋 SHA를 적어 주세요");
+    }
+    const resolved = new Set(resolvedReviewCommits.map(commit => commit.toLowerCase()));
+
+    const moved = [];
+    for (const sessionId of sessionIds) {
+      const s = this.get(sessionId);
+      if (s?.id !== sessionId) throw Object.assign(new Error("인계할 세션이 없어요"), { status: 404 });
+      if (s.parent === toLead) continue;
+      if (s.parent !== fromLead) throw Object.assign(new Error("인계할 세션의 관리자가 fromLead와 달라요"), { status: 409 });
+      moved.push(s);
+    }
+    const ancestors = new Set();
+    for (let s = next; s && !ancestors.has(s.id); s = s.parent && this.get(s.parent)) ancestors.add(s.id);
+    if (moved.some(s => ancestors.has(s.id))) throw badRequest("팀원과 관리자 관계가 순환할 수 없어요");
+    const active = this.sessions.filter(s => s.parent === toLead && isOpenStatus(s.status)).length;
+    const max = this.team().maxChildren;
+    const incoming = moved.filter(s => isOpenStatus(s.status)).length;
+    if (incoming && active + incoming > max) {
+      throw badRequest(`관리자 한 명이 동시에 둘 수 있는 세션은 ${max}개까지예요 (현재 ${active}개)`);
+    }
+
+    task.lead = toLead;
+    for (const s of moved) s.parent = toLead;
+    if (resolved.size) this.resolveQueuedReviews(next, task, resolved);
+    this.store.save();
+    this.emit("tasks", this.tasks);
+    for (const s of moved) this.touch(s);
+    if (moved.length) this.refreshParentInboxes(previous, next);
+    return task;
   }
 
   /**
@@ -1086,6 +1165,10 @@ export class Hub extends EventEmitter {
     const previous = s.parent && this.get(s.parent);
     const next = parent && this.get(parent);
     this.touch(s, { parent: parent || null });
+    this.refreshParentInboxes(previous, next);
+  }
+
+  refreshParentInboxes(previous, next) {
     for (const lead of new Set([previous, next])) {
       if (!lead || lead.status === "done") continue;
       this.emit("session", this.publicSession(lead));

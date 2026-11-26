@@ -243,6 +243,7 @@ export function routeTable(d) {
       // A new task also gets the ETA of past runs in its lane, so the lead's estimate starts from real numbers.
       return isNew && t.lead ? { ...t, open: hub.openTasks(t.lead, t.id), etaHint: hub.etaHint(t.lane) } : t;
     }],
+    ["POST", /^\/api\/tasks\/([\w-]+)\/handoff$/, async ([id], b) => hub.handoffTask(id, b)],
     ["POST", /^\/api\/tasks\/([\w-]+)\/remove$/, async ([id]) => { hub.removeTask(id); return { ok: true }; }],
     ["POST", /^\/api\/sessions\/([\w-]+)\/to-lead$/, async ([id], b) => hub.messageLead(id, required(b?.text), b?.messageId)],
     ["POST", /^\/api\/sessions\/([\w-]+)\/task$/, async ([id], b) => { hub.setSessionTask(id, typeof b?.task === "string" ? b.task : ""); return { ok: true }; }],
