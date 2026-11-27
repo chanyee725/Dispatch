@@ -23,6 +23,8 @@
     "longDescription": "Drive a local Dispatch server (127.0.0.1) from Codex: agent sessions and teams in git worktrees, the task board, chat, usage, limits and settings.",
     "developerName": "chanyee725",
     "category": "Productivity",
+    "logo": "./assets/dispatch-logo.png",
+    "composerIcon": "./assets/dispatch-logo.png",
     "capabilities": [
       "Interactive",
       "Read",
