@@ -1,6 +1,7 @@
 {
   "name": "dispatch",
   "version": "1.2.0",
+  "icon": "./.claude-plugin/icon.png",
   "description": "Dispatch skills and hooks: start Dispatch in a project, run teams, quickfixes and single sessions, and watch status, limits and settings.",
   "author": {
     "name": "chanyee725",
