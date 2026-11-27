@@ -1,8 +1,8 @@
 // Board order for 세션: the session that needs a person most comes first. Pure.
 import type { Session, SessionState } from '../../../../shared/dispatch/types.ts';
 
-/** 실패 > 사람 기다림 > 멈춤 > 작업 중 > 쉼 > 완료. */
-export const URGENCY: Record<SessionState, number> = { failed: 0, waiting: 1, stuck: 2, working: 3, resting: 4, done: 5 };
+/** 실패 > 사람 기다림 > 멈춤 > 작업 중 > 팀원 기다림 > 쉼 > 완료. */
+export const URGENCY: Record<SessionState, number> = { failed: 0, waiting: 1, stuck: 2, working: 3, 'waiting-teammate': 4, resting: 5, done: 6 };
 
 type Sortable = Pick<Session, 'id' | 'startedAt' | 'stateSince' | 'stuck'>;
 

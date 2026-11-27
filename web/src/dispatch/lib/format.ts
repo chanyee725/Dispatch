@@ -32,6 +32,7 @@ export type Tone = 'ok' | 'warn' | 'bad' | 'idle';
 export const STATE: Record<SessionState, { label: string; tone: Tone }> = {
   working: { label: '작업 중', tone: 'ok' },
   waiting: { label: '사람 기다림', tone: 'warn' },
+  'waiting-teammate': { label: '팀원 기다림', tone: 'idle' },
   stuck: { label: '멈춤', tone: 'warn' },
   failed: { label: '실패', tone: 'bad' },
   resting: { label: '쉼', tone: 'idle' },

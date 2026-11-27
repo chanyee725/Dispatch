@@ -43,6 +43,7 @@ const known = (st: string): SessionState => (st in STATE ? (st as SessionState) 
 const MARK: Record<SessionState, { className: string; style?: CSSProperties }> = {
   working: { className: 'h-2 rounded-[2px] forced-colors:border forced-colors:border-[CanvasText]', style: { background: 'var(--ok)' } },
   waiting: { className: 'h-2 rounded-[2px] border border-warn' },
+  'waiting-teammate': { className: 'h-[2px] border-t-2 border-dotted border-muted-foreground' },
   stuck: { className: 'h-2 rounded-[2px] border border-dashed border-muted-foreground' },
   failed: { className: 'h-[2px] border-t border-destructive/70' },
   resting: { className: 'h-[2px] border-t-2 border-dotted border-muted-foreground' },
@@ -50,7 +51,8 @@ const MARK: Record<SessionState, { className: string; style?: CSSProperties }> =
 };
 /** The dot next to a row's current state: colour only where it asks for attention. */
 const DOT: Record<SessionState, string> = {
-  working: 'bg-ok', waiting: 'bg-warn', failed: 'bg-destructive', stuck: 'bg-muted-foreground', resting: 'bg-muted-foreground/60', done: 'bg-muted-foreground/60',
+  working: 'bg-ok', waiting: 'bg-warn', failed: 'bg-destructive', stuck: 'bg-muted-foreground',
+  'waiting-teammate': 'bg-muted-foreground/60', resting: 'bg-muted-foreground/60', done: 'bg-muted-foreground/60',
 };
 const FORCED_FAIL = 'forced-colors:bg-[Highlight]';
 /** Each 5s update moves marks along in 300ms linear (#944); reduced motion jumps. */
@@ -131,7 +133,7 @@ function TeamRows({ team, open, onToggle, spansOf, roleOf, geo, onOpen }: {
   if (!members.length) return <MemberRow s={lead} role={roleOf(lead)} data={spansOf(lead.id)} geo={geo} onOpen={() => onOpen(lead.id)} lone />;
   // The folded row speaks for the whole team: its state is the strongest any member is in now.
   const states = all.map(stateOf);
-  const teamState = (['working', 'waiting', 'stuck', 'failed', 'resting', 'done'] as const).find(st => states.includes(st)) ?? 'resting';
+  const teamState = (['working', 'waiting', 'stuck', 'failed', 'waiting-teammate', 'resting', 'done'] as const).find(st => states.includes(st)) ?? 'resting';
   const panel = `team-${lead.id}`;
   return (
     <div data-team={lead.id}>

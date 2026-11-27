@@ -39,6 +39,14 @@ test("watchdog stall on a resting session shows as stuck; done sessions never sh
   assert.equal(items[0].reason, "관리자가 듣지 않아요");
 });
 
+test("a lead waiting on a working teammate stays out of attention even with an older stall flag", () => {
+  const items = run({ sessions: [
+    ses({ id: "lead", state: "waiting-teammate", stall: { reason: "팀 전체 대기", since: NOW - MIN } }),
+    ses({ id: "ask", state: "waiting" }),
+  ] });
+  assert.deepEqual(items.map(i => i.sessionId), ["ask"]);
+});
+
 test("late tasks link to their owner, failed merge checks to the lead", () => {
   const sessions = [ses({ id: "lead1", name: "Faye", state: "resting", attention: null }), ses({ id: "r", name: "Remy", state: "working", attention: null })];
   const items = run({ sessions, tasks: [

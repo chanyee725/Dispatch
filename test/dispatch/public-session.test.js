@@ -34,6 +34,52 @@ test("session event: payload carries no history", () => {
   assert.ok(hub.timeline().sessions.a.length >= 1, "history is served by the timeline instead");
 });
 
+test("an idle lead follows working teammate transitions without a person alert", () => {
+  const lead = session({ id: "lead", canSpawn: true, status: "running" });
+  const first = session({ id: "first", parent: lead.id, name: "Jae", status: "running" });
+  const second = session({ id: "second", parent: lead.id, name: "Bo" });
+  const { hub, events } = fakeHub([lead, first, second]);
+  const sentLead = () => events.filter(([ev, data]) => ev === "session" && data.id === lead.id).at(-1)?.[1];
+
+  hub.rt(lead.id).lastText = "다음:\n- 결과가 올라오면 다시 확인할까요?";
+  hub.touch(lead, { status: "idle" });
+  assert.equal(sentLead().state, "waiting-teammate");
+  assert.equal(sentLead().waitingTeammate, "Jae");
+  assert.equal(sentLead().attention, null);
+  assert.equal(lead.asksUser, false);
+
+  hub.touch(second, { status: "starting" });
+  assert.equal(sentLead().state, "waiting-teammate");
+  assert.equal(sentLead().waitingTeammate, null);
+  hub.touch(first, { status: "idle" });
+  assert.equal(sentLead().waitingTeammate, "Bo");
+  hub.touch(second, { status: "done" });
+  assert.equal(sentLead().state, "resting");
+  assert.deepEqual(lead.history.map(([, state]) => state), ["waiting-teammate", "resting"]);
+});
+
+test("a lead's explicit question or permission prompt takes priority over teammate waiting", () => {
+  const lead = session({ id: "lead", canSpawn: true, status: "running" });
+  const child = session({ id: "child", parent: lead.id, status: "running" });
+  const { hub } = fakeHub([lead, child]);
+  const rt = hub.rt(lead.id);
+  rt.lastText = "질문 1/2: 어느 쪽으로 갈까요?\n1. A안\n2. B안";
+  hub.touch(lead, { status: "idle" });
+  assert.equal(hub.publicSession(lead).state, "waiting");
+  assert.match(hub.publicSession(lead).attention.reason, /어느 쪽으로 갈까요\?/);
+
+  hub.touch(lead, { status: "running" });
+  for (const tool of ["Bash", "AskUserQuestion"]) {
+    rt.perms.set("request", { requestId: "request", tool });
+    hub.touch(lead, { status: "waiting" });
+    const current = hub.publicSession(lead);
+    assert.equal(current.state, "waiting");
+    assert.equal(current.pending[0].tool, tool);
+    assert.equal(current.attention.reason, "권한 승인을 기다려요");
+    rt.perms.clear();
+  }
+});
+
 test("setSessionTask: one line of at most 80 characters on the session; empty clears it (#912)", () => {
   const s = session();
   const { hub, events } = fakeHub([s]);

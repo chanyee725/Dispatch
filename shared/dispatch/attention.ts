@@ -109,7 +109,7 @@ export function attentionItems(
     const a = ACTIVE.includes(state) ? sessionAttention(s, state) : null;
     if (a) {
       out.push({ key: `s:${s.id}`, kind: "session", level: a.level, state, who: s.name, role: s.role, reason: a.reason, since: a.since, sessionId: s.id, flagged: state === "stuck" });
-    } else if (s.stall && state !== "done") {
+    } else if (s.stall && state !== "done" && state !== "waiting-teammate") {
       // Watchdog flag on an otherwise quiet session (no lead hears it, or the team idles).
       out.push({ key: `s:${s.id}`, kind: "session", level: "warn", state: "stuck", who: s.name, role: s.role, reason: s.stall.reason, since: s.stall.since, sessionId: s.id });
     }

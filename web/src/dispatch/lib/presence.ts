@@ -7,7 +7,8 @@ import type { Session, SessionState } from '../../../../shared/dispatch/types.ts
 export function presenceOf(s: Session, stateOf: (s: Session) => SessionState): AgentPresence {
   const state = stateOf(s);
   // What the card shows under the name: why a person should look, else what it does now.
-  const reason = (state === 'waiting' || state === 'stuck' || state === 'failed') && s.attention?.reason ? s.attention.reason : s.stall?.reason;
+  const reason = state === 'waiting-teammate' ? '팀원 보고를 기다려요'
+    : (state === 'waiting' || state === 'stuck' || state === 'failed') && s.attention?.reason ? s.attention.reason : s.stall?.reason;
   return {
     sid: s.id,
     name: s.name,

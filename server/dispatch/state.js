@@ -5,13 +5,14 @@ import { createHash } from "node:crypto";
 //
 //   working  — a turn is running
 //   waiting  — a person has to act: a permission prompt, or a top-level session ended its turn asking the user
+//   waiting-teammate — an idle lead has a teammate still working
 //   stuck    — looks stuck (set by the per-session stuck check; s.stuck = { reason, label, count?, sinceMs })
 //   failed   — the last turn ended in an error
 //   resting  — turn finished, nothing asked; waiting for the next instruction
 //   done     — closed
 import { askIndex, askLineOf, linesOf } from "../../shared/dispatch/ask.ts";
 
-export const STATES = ["working", "waiting", "stuck", "failed", "resting", "done"];
+export const STATES = ["working", "waiting", "waiting-teammate", "stuck", "failed", "resting", "done"];
 
 /** True when a final answer ends by asking its reader something (see shared/dispatch/ask.ts). */
 export function asksUser(text) {
@@ -26,7 +27,7 @@ export const askOf = text => (text ? askLineOf(text) : "");
  * A session's monitoring state. `pending` is the number of open permission prompts.
  * Only a session without a lead asks *the user*: a teammate's question goes to its lead.
  */
-export function sessionState(s, pending = 0) {
+export function sessionState(s, pending = 0, hasWorkingTeammates = false) {
   if (s.status === "done") return "done";
   if (s.status === "error") return "failed";
   if (pending > 0 || s.status === "waiting") return "waiting";
@@ -34,6 +35,7 @@ export function sessionState(s, pending = 0) {
   if (s.status === "running" || s.status === "starting") return "working";
   // Waiting on the user only with a question to show (#886): a flag without one (an older record) rests.
   if (s.asksUser && s.ask && !s.parent) return "waiting";
+  if (s.status === "idle" && s.canSpawn && hasWorkingTeammates) return "waiting-teammate";
   return "resting";
 }
 
