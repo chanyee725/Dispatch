@@ -1,5 +1,7 @@
 <div align="center">
 
+<img src="./web/brand/dispatch-logo.png" alt="Dispatch Modules logo" width="56">
+
 # Dispatch
 
 **Run and watch AI agent sessions in one local app.**<br>
