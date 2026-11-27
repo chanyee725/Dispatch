@@ -5,7 +5,7 @@
 import { useSyncExternalStore } from 'react';
 import { returnToOrigin } from './origin.ts';
 
-export type LiveFrom = 'sidebar' | 'doc' | 'board' | 'node' | 'palette';
+export type LiveFrom = 'sidebar' | 'doc' | 'board' | 'node' | 'palette' | 'sheet';
 
 const AGENT_RE = /(?:^#|&)agent=([^&]*)/;
 
@@ -32,6 +32,7 @@ let trigger: HTMLElement | null = null;
 /** The path the panel head shows before the agent's name (#942), e.g. ['대시보드', '실행 중인 세션']. */
 let trail: readonly string[] = [];
 let hashRead = false;
+let sheets = 0;
 const subs = new Set<() => void>();
 const notify = () => {
   for (const f of subs) f();
@@ -74,7 +75,7 @@ export function followHash(): void {
 export function openAgentLive(sid: string, opts: { trigger?: HTMLElement | null; from?: LiveFrom; trail?: readonly string[] } = {}): void {
   readHashOnce();
   if (!sid) return;
-  if (target === sid) return closeAgentLive();
+  if (target === sid && opts.from !== 'sheet') return closeAgentLive();
   target = sid;
   trigger = opts.trigger !== undefined ? opts.trigger : (typeof document !== 'undefined' && document.activeElement instanceof HTMLElement ? document.activeElement : null);
   trail = opts.trail ?? [];
@@ -104,11 +105,30 @@ const subscribe = (f: () => void) => {
 };
 const read = () => target;
 const readTrail = () => trail;
+const readSheets = () => sheets > 0;
 
 /** Which sid is open (for aria-expanded on triggers), null when closed. */
 export const useAgentLiveTarget = () => useSyncExternalStore(subscribe, read, read);
 /** The open panel's path (empty when opened from somewhere without one, e.g. a reload or the address bar). */
 export const useAgentLiveTrail = () => useSyncExternalStore(subscribe, readTrail, readTrail);
+
+/**
+ * A modal session sheet (SessionSheet) is open: the panel hides under it and shows again when it closes.
+ * Returns the function that marks it closed.
+ */
+export function holdForSheet(): () => void {
+  sheets++;
+  notify();
+  let done = false;
+  return () => {
+    if (done) return;
+    done = true;
+    sheets--;
+    notify();
+  };
+}
+
+export const useSheetOpen = () => useSyncExternalStore(subscribe, readSheets, readSheets);
 
 /** Tests only. */
 export function resetLiveStore() {
@@ -116,5 +136,6 @@ export function resetLiveStore() {
   trigger = null;
   trail = [];
   hashRead = true;
+  sheets = 0;
   notify();
 }

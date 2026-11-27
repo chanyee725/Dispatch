@@ -72,7 +72,7 @@ export default function SessionBoard(p: BoardProps) {
   const ctx = useMemo(() => ({ scope, known, names, pending }), [scope, known, names, pending]);
   useEffect(() => connect(), []);
 
-  // Open the session’s live progress view from the board (#728).
+  // The one place a session opens (design §4): its live progress view (#728). The sheet (chat, stop) is reached from there.
   const openSession = (id: string, from?: HTMLElement | null) => openAgentLive(id, { trigger: from ?? undefined, from: 'board' });
   const open = useAgentLiveTarget();
   const liveRef = useRef(open);

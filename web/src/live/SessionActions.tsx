@@ -1,4 +1,5 @@
-// Session controls in the live panel header. 종료 and 지우기 ask first.
+// 중단 · 종료 (or 목록에서 지우기) as small icon buttons in the live panel's head (#915). Loaded lazily with the
+// panel's first visit to 대화. 종료 and 지우기 ask first.
 import { Power, Square, Trash2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { askConfirm } from '../appDialog';
