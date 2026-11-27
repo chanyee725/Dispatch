@@ -2,15 +2,19 @@
 // 대시보드, 세션 보드, 브랜치/사용량 and 최근 share it so every top-level screen starts the same way.
 import type { ReactNode } from 'react';
 import { Menu } from 'lucide-react';
+import dispatchLogo from '../../brand/favicon-64.png?no-inline';
 import { SidebarTrigger } from './ui/sidebar';
 
 export function PageHeader({ title, narrow, actions }: { title: ReactNode; narrow?: boolean; actions?: ReactNode }) {
   return (
     <header className="flex h-(--h-bar) shrink-0 items-center gap-3 pr-3 pl-5">
       {narrow && (
-        <SidebarTrigger aria-label="메뉴 열기">
-          <Menu className="size-[17px]" />
-        </SidebarTrigger>
+        <>
+          <SidebarTrigger aria-label="메뉴 열기">
+            <Menu className="size-[17px]" />
+          </SidebarTrigger>
+          <img src={dispatchLogo} width={22} height={22} alt="" className="shrink-0" />
+        </>
       )}
       <h1 className="m-0 min-w-0 shrink truncate text-base font-semibold tracking-[-0.01em]">{title}</h1>
       <span className="ml-auto flex shrink-0 items-center gap-1">
