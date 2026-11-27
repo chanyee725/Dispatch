@@ -14,7 +14,9 @@ import {
   SidebarMenuItem,
   useSidebar,
 } from './components/ui/sidebar';
+import { isOpen } from './dispatch/lib/format';
 import { api, useDispatch } from './dispatch/store';
+import { cn } from './lib/utils';
 import type { BoardTab, Section } from './projectNav';
 import { SettingsEntry } from './settings/SettingsEntry';
 import { SidebarModels } from './SidebarModels';
@@ -46,7 +48,7 @@ function Row({ id, label, icon: Icon, current, onClick }: {
   );
 }
 
-type ServiceProject = { name: string; port: number; current: boolean };
+type ServiceProject = { name: string; port: number; current: boolean; sessionCount?: number | null };
 const SERVICE_REFRESH_MS = 15_000;
 const SERVICE_LABELS = new Map([
   ['keeper2-bridge', 'Keeper2 Bridge'],
@@ -82,6 +84,7 @@ export function Sidebar(p: Props) {
   const online = useDispatch((state) => state.online);
   const unavailable = useDispatch((state) => state.unavailable);
   const projects = useServiceProjects(online);
+  const localSessionCount = useDispatch((state) => state.sessions.filter(isOpen).length);
   const projectLabelId = useId();
   const names = new Map<string, number>();
   const s = p.section;
@@ -105,18 +108,30 @@ export function Sidebar(p: Props) {
             </SidebarGroupLabel>
             {projects?.length ? (
               <SidebarMenu>
-                {projects.map(({ name, port, current }) => {
+                {projects.map(({ name, port, current, sessionCount }) => {
                   const occurrence = names.get(name) ?? 0;
                   names.set(name, occurrence + 1);
                   const label = SERVICE_LABELS.get(name) ?? name;
+                  const count = current ? localSessionCount : sessionCount;
+                  const countId = `${projectLabelId}-${port}`;
                   return (
                     <SidebarMenuItem key={`${name}:${occurrence}`}>
-                      <SidebarMenuButton asChild aria-current={current ? 'location' : undefined} className="aria-[current=location]:font-semibold">
-                        <a href={current ? '/#board' : `http://127.0.0.1:${port}/#board`} onClick={() => { if (isMobile) setOpenMobile(false); }}>
+                      <SidebarMenuButton
+                        asChild
+                        aria-current={current ? 'location' : undefined}
+                        className={cn(
+                          'aria-[current=location]:relative aria-[current=location]:bg-sidebar-accent aria-[current=location]:font-semibold aria-[current=location]:text-sidebar-accent-foreground',
+                          'aria-[current=location]:before:absolute aria-[current=location]:before:inset-y-1.5 aria-[current=location]:before:start-0 aria-[current=location]:before:rounded-full aria-[current=location]:before:border-s-2 aria-[current=location]:before:border-sidebar-primary',
+                          'forced-colors:aria-[current=location]:before:border-[Highlight]',
+                        )}
+                      >
+                        <a href={current ? '/#board' : `http://127.0.0.1:${port}/#board`} aria-describedby={countId} onClick={() => { if (isMobile) setOpenMobile(false); }}>
                           <FolderClosed aria-hidden />
                           <span className={NAME} title={label}>{label}</span>
+                          <SidebarMenuBadge aria-hidden className={count ? 'text-sidebar-foreground' : undefined}>{count ?? '—'}</SidebarMenuBadge>
                         </a>
                       </SidebarMenuButton>
+                      <span id={countId} hidden>{count == null ? '열린 세션 수를 확인할 수 없어요.' : `열린 세션 ${count}개`}</span>
                     </SidebarMenuItem>
                   );
                 })}

@@ -274,14 +274,29 @@ test('an orphaned card without saved project evidence cannot be handed off', asy
   }
 });
 
-test('removed routes: no cross-project probing', async () => {
+test('project identity reports all open sessions on the local server', async () => {
   const { root, ws } = scratchRepo();
   const { deps } = fakeDeps(root);
-  const { base, stop } = await start(ws, deps);
+  const { app, base, stop } = await start(ws, deps);
   try {
-    const { projects } = await (await fetch(`${base}/api/projects`)).json();
-    assert.equal(projects.length, 1);
-    assert.equal(projects[0].current, true);
+    const { store } = app.ctx.modules.dispatch;
+    Object.assign(store.data.sessions, {
+      lead: { id: 'lead', role: 'lead', status: 'running' },
+      waiting: { id: 'waiting', parent: 'lead', status: 'waiting' },
+      idle: { id: 'idle', parent: 'lead', status: 'idle' },
+      starting: { id: 'starting', status: 'starting' },
+      done: { id: 'done', parent: 'lead', status: 'done' },
+      error: { id: 'error', status: 'error' },
+    });
+    const projects = async () => (await (await fetch(`${base}/api/projects`)).json()).projects;
+    const entries = await projects();
+    assert.equal(entries.length, 1);
+    const [project] = entries;
+    assert.equal(project.current, true);
+    assert.equal(project.sessionCount, 4);
+
+    store.data.sessions.waiting.status = 'done';
+    assert.equal((await projects())[0].sessionCount, 3);
   } finally {
     await stop();
     rmSync(root, { recursive: true, force: true });
