@@ -1,5 +1,7 @@
 <div align="center">
 
+<img src="./web/brand/dispatch-logo.png" alt="Dispatch Modules 로고" width="56">
+
 # Dispatch
 
 **AI 에이전트 세션을 한 화면에서 돌리고 지켜봐요. 내 컴퓨터에서만 도는 앱이에요.**<br>
