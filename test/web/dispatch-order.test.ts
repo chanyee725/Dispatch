@@ -6,9 +6,9 @@ import type { SessionState } from '../../shared/dispatch/types.ts';
 type S = { id: string; startedAt: number; stateSince?: number; stuck?: { reason: string; label: string; sinceMs: number | null } | null; st: SessionState };
 const mk = (id: string, st: SessionState, startedAt: number, stateSince?: number): S => ({ id, st, startedAt, stateSince });
 
-test('failed, waiting, stuck, working, resting, done', () => {
-  const list = [mk('d', 'done', 1), mk('r', 'resting', 1), mk('w', 'working', 1), mk('s', 'stuck', 1), mk('q', 'waiting', 1), mk('f', 'failed', 1)];
-  assert.deepEqual(byUrgency(list, s => s.st).map(s => s.id), ['f', 'q', 's', 'w', 'r', 'd']);
+test('failed, waiting, stuck, working, waiting for a teammate, resting, done', () => {
+  const list = [mk('d', 'done', 1), mk('r', 'resting', 1), mk('t', 'waiting-teammate', 1), mk('w', 'working', 1), mk('s', 'stuck', 1), mk('q', 'waiting', 1), mk('f', 'failed', 1)];
+  assert.deepEqual(byUrgency(list, s => s.st).map(s => s.id), ['f', 'q', 's', 'w', 't', 'r', 'd']);
 });
 
 test('inside one state the longest-standing comes first, then start time, then id', () => {

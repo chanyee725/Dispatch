@@ -69,7 +69,7 @@ export function topSessions<T extends Pick<Session, 'cost'>>(sessions: readonly 
 }
 
 /** Always-on order: needs-a-person states first; inside a state by start time then id, so tiles only move on a state change. */
-const RANK: Record<SessionState, number> = { failed: 0, stuck: 1, waiting: 2, working: 3, resting: 4, done: 5 };
+const RANK: Record<SessionState, number> = { failed: 0, stuck: 1, waiting: 2, working: 3, 'waiting-teammate': 4, resting: 5, done: 6 };
 export function alwaysOnOrder<T extends { id: string; startedAt: number }>(list: readonly T[], stateOf: (s: T) => SessionState): T[] {
   return [...list].sort((a, b) => (RANK[stateOf(a)] ?? 9) - (RANK[stateOf(b)] ?? 9) || a.startedAt - b.startedAt || a.id.localeCompare(b.id));
 }

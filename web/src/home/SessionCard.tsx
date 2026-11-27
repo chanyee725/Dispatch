@@ -33,7 +33,7 @@ export function SessionGrid({ label, children }: { label: string; children: Reac
  * (isEditingDiagram); otherwise the name is plain. The card's body opens the session's live view; the file it holds
  * is its own link under the body (shown once, there).
  */
-export function SessionCard({ agent: a, leadInboxCount = 0, summary, title, onOpen, trail }: { agent: AgentPresence; leadInboxCount?: number; summary: TaskSummary | null; title: string | null; onOpen: (p: string) => void; trail: readonly string[] }) {
+export function SessionCard({ agent: a, leadInboxCount = 0, waitingTeammate, summary, title, onOpen, trail }: { agent: AgentPresence; leadInboxCount?: number; waitingTeammate?: string | null; summary: TaskSummary | null; title: string | null; onOpen: (p: string) => void; trail: readonly string[] }) {
   const busy = isBusy(a);
   // The card that opened the live view keeps a ring while it is open (#942, data-origin + aria-current).
   const selected = useAgentLiveTarget() === a.sid;
@@ -42,7 +42,7 @@ export function SessionCard({ agent: a, leadInboxCount = 0, summary, title, onOp
   const look = !busy && needsLook(a);
   const editing = isEditingDiagram(a);
   const model = a.modelLabel || a.model;
-  const state = agentStateLabel(a);
+  const state = a.state === 'waiting-teammate' && waitingTeammate ? `${waitingTeammate} 기다림` : agentStateLabel(a);
   // Second line (refresh mock, #889): the plan step, else what it does now, else the file it holds.
   const detail = a.step || a.statusLabel || null;
   // Working shows a loader icon; waiting gets the amber dot, idle a muted one (12px text-ok misses contrast on light).

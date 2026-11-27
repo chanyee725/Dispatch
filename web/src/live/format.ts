@@ -36,6 +36,7 @@ export function middle(s: string, max = 44): string {
 const LABEL: Record<SessionState, string> = {
   working: '작업 중',
   waiting: '사람 기다림',
+  'waiting-teammate': '팀원 기다림',
   stuck: '멈춤',
   failed: '실패',
   resting: '쉼',

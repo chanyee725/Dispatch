@@ -361,7 +361,7 @@ function SessionList({ label, heading, sessions, summaries }: { label: string; h
         <div className="-mx-2">
           <SessionGrid label={label}>
             {shown.map((s) => (
-              <SessionCard key={s.id} agent={presenceOf(s, stateOf)} leadInboxCount={s.canSpawn ? s.leadInboxCount : undefined} summary={summaries.get(s.id) ?? null} title={null} onOpen={() => undefined} trail={TRAIL.board} />
+              <SessionCard key={s.id} agent={presenceOf(s, stateOf)} waitingTeammate={s.waitingTeammate} leadInboxCount={s.canSpawn ? s.leadInboxCount : undefined} summary={summaries.get(s.id) ?? null} title={null} onOpen={() => undefined} trail={TRAIL.board} />
             ))}
           </SessionGrid>
         </div>

@@ -2,7 +2,7 @@
 export type Provider = "claude";
 export type Status = "starting" | "running" | "waiting" | "idle" | "done" | "error";
 /** Monitoring state decided by the server: what the session needs from a person. */
-export type SessionState = "working" | "waiting" | "stuck" | "failed" | "resting" | "done";
+export type SessionState = "working" | "waiting" | "waiting-teammate" | "stuck" | "failed" | "resting" | "done";
 export interface Attention { level: "bad" | "warn"; reason: string; since: number | null }
 
 export interface Usage { input: number; output: number; cacheRead: number; cacheWrite: number }
@@ -71,6 +71,8 @@ export interface Session {
   leadInboxCount?: number;
   /** Server-decided state; older servers omit it (see stateOf). */
   state?: SessionState;
+  /** Display name when a waiting lead has exactly one working teammate. */
+  waitingTeammate?: string | null;
   /** When the session entered its current state. */
   stateSince?: number;
   /** Why a person should look (failed, waiting, stuck); null otherwise. */

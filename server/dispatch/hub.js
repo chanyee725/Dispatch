@@ -34,6 +34,8 @@ function sameTaskCandidate(tasks, task, snapshot) {
     ["id", "lead", "folder", "owner", "title", "commit", "stage"].every(key => task[key] === snapshot[key]);
 }
 
+const workingStatus = status => status === "starting" || status === "running";
+
 export class Hub extends EventEmitter {
   constructor({ root, store, models, roles, port, limits, workspaceDir = null, spawnCli: spawner = spawnCli }) {
     super();
@@ -135,11 +137,14 @@ export class Hub extends EventEmitter {
 
   publicSession(s) {
     const r = this.live.get(s.id);
-    const busy = s.status === "running" || s.status === "starting";
+    const busy = workingStatus(s.status);
+    const teammates = s.canSpawn && s.status === "idle"
+      ? this.sessions.filter(child => child.parent === s.id && workingStatus(child.status))
+      : [];
     // The UI gets a masked copy; the raw input stays in r.perms for the allow answer.
     const pending = r ? [...r.perms.values()].map(maskedPerm) : [];
     // stateSince moves only on a change of state, so "사람 기다림 · 8분째" counts from the real start.
-    const state = sessionState(s, pending.length);
+    const state = sessionState(s, pending.length, teammates.length > 0);
     if (state !== s.state) { s.state = state; s.stateSince = Date.now(); }
     // Timeline history: `[at, state]` only, capped per session. Sessions from before it was kept start
     // from their current state.
@@ -149,6 +154,7 @@ export class Hub extends EventEmitter {
     if (h[h.length - 1][1] !== before) this.store.save();
     const { history: _h, ...rest } = s;
     return { ...rest, pending, leadInboxCount: s.canSpawn ? this.leadInboxSize(s) : 0, activity: busy ? r?.activity ?? null : null,
+      waitingTeammate: state === "waiting-teammate" && teammates.length === 1 ? teammates[0].name ?? null : null,
       attention: attentionOf(s, state, pending.length, s.stateSince), ...this.burn?.fields(s, this.sessions) };
   }
 
@@ -180,6 +186,7 @@ export class Hub extends EventEmitter {
       patch.ask = ask || null;
     }
     const prev = s.status;
+    const firstUpdate = s.state === undefined;
     // Error and reply clips reach the UI and memory only after key- and email-shaped parts are masked.
     for (const k of ["error", "last"]) if (typeof patch[k] === "string") patch[k] = redact(patch[k]);
     Object.assign(s, patch, { updatedAt: Date.now() });
@@ -199,6 +206,11 @@ export class Hub extends EventEmitter {
     if (s.stuck && patch.status) this.refreshStuck(s, Date.now(), false);
     this.store.save();
     this.emit("session", this.publicSession(s));
+    // A teammate starts or finishes a turn independently of the idle lead.
+    if (workingStatus(prev) !== workingStatus(s.status) || (firstUpdate && workingStatus(s.status))) {
+      const lead = s.parent && this.get(s.parent);
+      if (lead?.status === "idle") this.emit("session", this.publicSession(lead));
+    }
   }
 
   push(s, entry) {

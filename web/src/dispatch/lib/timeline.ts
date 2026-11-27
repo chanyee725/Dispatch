@@ -53,7 +53,7 @@ export const teamBusy = (states: readonly SessionState[]) => states.some(s => BU
 
 export type Span = { state: string; from: number; to: number };
 /** Which state wins when team members overlap on the folded lead row: work first, then what needs a person. */
-const RANK = ['working', 'waiting', 'stuck', 'failed', 'resting', 'done'];
+const RANK = ['working', 'waiting', 'stuck', 'failed', 'waiting-teammate', 'resting', 'done'];
 const weight = (st: string) => {
   const i = RANK.indexOf(st);
   return i < 0 ? RANK.length : i;
@@ -61,7 +61,7 @@ const weight = (st: string) => {
 
 /**
  * One row of spans for a folded team: at every moment the strongest state any member was in (working over
- * waiting over stuck over failed over resting over done), neighbours of the same state joined. Failure ticks
+ * waiting over stuck over failed over teammate waiting over resting over done), neighbours of the same state joined. Failure ticks
  * are the union of the members' ticks, sorted and deduplicated.
  */
 export function mergeSpans(rows: readonly { spans: readonly Span[]; fails: readonly number[] }[]): { spans: Span[]; fails: number[] } {
