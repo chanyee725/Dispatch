@@ -12,10 +12,12 @@ export const ITEM: RegExp = /^\s*(?:[-*•]|\d{1,2}[.)]|[A-Za-z][.)]|[①-⑩])\
 export const plain = (l: string): string => l.replace(/[*_`]+/g, "").replace(/^[\s>#]+/, "").trim();
 
 /** Headings used for status updates and handoffs, including those stored as older question summaries. */
-export const isReportLine = (line: string): boolean =>
-  /^(?:남은\s*(?:것|일|작업)|다음(?:\s*(?:단계|일|작업|행동))?|remaining(?: work)?|next(?: steps?)?)\s*[:：]/i.test(
-    plain(ITEM.exec(line)?.[1] ?? line),
+export function isReportLine(line: string): boolean {
+  const heading = /^(?:남은\s*(?:것|일|작업)|다음(?:\s*(?:단계|일|작업|행동))?|remaining(?: work)?|next(?: steps?)?)\s*([:：]|$)/i.exec(
+    plain(ITEM.exec(line)?.[1] ?? line).replace(/\s+#+$/, ""),
   );
+  return !!heading && (heading[1] !== "" || /^\s*#{1,6}\s/.test(line));
+}
 
 /** Non-blank lines of a text, right-trimmed. */
 export const linesOf = (text: string | null | undefined): string[] => String(text ?? "").split("\n").map(l => l.replace(/\s+$/, "")).filter(l => l.trim());
@@ -32,8 +34,15 @@ export function askIndex(lines: string[]): number {
   const reportList = lines.slice(Math.max(0, listTop - 1)).some(isReportLine);
   for (let i = reportList ? listTop - 1 : lines.length - 1; i >= Math.max(0, listTop - 3); i--) {
     if (i < lines.length - 3 && i >= listTop) continue;
-    if (isReportLine(lines[i]!)) return -1;
-    if (ASK.test(plain(lines[i]!).replace(/[>#\s]+$/g, ""))) return i;
+    const line = lines[i]!;
+    const asks = ASK.test(plain(line).replace(/[>#\s]+$/g, ""));
+    if (isReportLine(line)) {
+      // A question on the heading itself can introduce explicit numbered choices.
+      if (asks && i === listTop - 1 && lines.length - listTop >= 2
+        && lines.slice(listTop).every(choice => /^\s*\d{1,2}[.)]\s+/.test(choice))) return i;
+      return -1;
+    }
+    if (asks) return i;
   }
   return -1;
 }

@@ -1,6 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { Hub } from "../../server/dispatch/hub.js";
+import { questionOf } from "../../web/src/dispatch/lib/question.ts";
 
 // /api/state and the `session` SSE event both go through publicSession; the timeline history
 // is served only by GET /api/timeline and must stay out of both.
@@ -79,6 +80,34 @@ test("a lead's explicit question or permission prompt takes priority over teamma
     rt.perms.clear();
   }
 });
+
+for (const { name, text, expected } of [
+  {
+    name: "a next-step question with numbered choices waits for a person",
+    text: "다음 단계: 어느 환경에서 빌드할까요?\n1. 격리 환경\n2. 개발 환경",
+    expected: {
+      state: "waiting",
+      ask: "다음 단계: 어느 환경에서 빌드할까요?",
+      question: { summary: "다음 단계: 어느 환경에서 빌드할까요?", options: ["격리 환경", "개발 환경"] },
+    },
+  },
+  {
+    name: "a Markdown status heading with a question in its task list waits for the teammate",
+    text: "## 남은 작업\n- 테스트 결과가 같은지 확인할까요?",
+    expected: { state: "waiting-teammate", ask: null, question: null },
+  },
+]) {
+  test(name, () => {
+    const lead = session({ id: "lead", canSpawn: true, status: "running" });
+    const child = session({ id: "child", parent: lead.id, status: "running" });
+    const { hub } = fakeHub([lead, child]);
+    hub.rt(lead.id).lastText = text;
+    hub.touch(lead, { status: "idle" });
+
+    const { state, ask } = hub.publicSession(lead);
+    assert.deepEqual({ state, ask, question: questionOf(text) }, expected);
+  });
+}
 
 test("setSessionTask: one line of at most 80 characters on the session; empty clears it (#912)", () => {
   const s = session();
