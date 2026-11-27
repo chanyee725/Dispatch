@@ -39,7 +39,7 @@ async function peerFixture(t, count) {
     await register(path, port);
     return { name, path, port, current: true };
   }));
-  const query = { root, port: 4100, deployments: peers.map((peer) => peer.path), workspaces: [] };
+  const query = { root, port: 4100, sessionCount: 0, deployments: peers.map((peer) => peer.path), workspaces: [] };
   return { peers, query };
 }
 
@@ -82,21 +82,25 @@ test('service projects use recorded ports and require a matching live Dispatch i
     calls.push(port);
     const service = live.get(port);
     if (!service) throw new Error('offline');
-    return Response.json({ projects: service.map(([name, path]) => ({ name, path, port, current: true })) });
+    const counts = new Map([[4000, 3], [4001, 0], [4016, -1]]);
+    return Response.json({ projects: service.map(([name, path]) => ({
+      name, path, port, current: true, sessionCount: counts.get(port),
+    })) });
   });
 
   const query = {
     root,
     port: 4003,
+    sessionCount: 2,
     deployments: [client, studio, keeper, offline, dead, noPid, mismatched, wrong, sameName, ambiguous, invalid, internal, alias, '~/missing'],
     workspaces: [{ path: join(client, '.dispatch') }],
   };
   assert.deepEqual(await listServiceProjects(query), [
-    { name: 'Dispatch', port: 4003, current: true },
-    { name: 'keeper2-bridge', port: 4002, current: false },
-    { name: 'sim-client', port: 4000, current: false },
-    { name: 'sim-client', port: 4016, current: false },
-    { name: 'sim-studio', port: 4001, current: false },
+    { name: 'Dispatch', port: 4003, current: true, sessionCount: 2 },
+    { name: 'keeper2-bridge', port: 4002, current: false, sessionCount: null },
+    { name: 'sim-client', port: 4000, current: false, sessionCount: 3 },
+    { name: 'sim-client', port: 4016, current: false, sessionCount: null },
+    { name: 'sim-studio', port: 4001, current: false, sessionCount: 0 },
   ]);
   assert.deepEqual(calls.slice().sort(), [4000, 4001, 4002, 4010, 4015, 4016]);
 
@@ -195,7 +199,7 @@ test('concurrent service requests share matching work and only one scan runs per
     release.resolve();
   }
   const [result, shared] = await Promise.all([first, concurrent]);
-  assert.deepEqual(unrelated, [{ name: 'Dispatch', port: 4100, current: true }]);
+  assert.deepEqual(unrelated, [{ name: 'Dispatch', port: 4100, current: true, sessionCount: 0 }]);
   assert.deepEqual(shared, result);
   assert.deepEqual(result.map((entry) => entry.port), [4100, 4101]);
   assert.deepEqual(calls, [4101]);
@@ -219,7 +223,7 @@ test('a slow settings read counts toward the deadline and starts no scan after i
   const start = performance.now();
   const result = await listServiceProjects({ ...query, deployments: [], workspaces });
   const elapsed = performance.now() - start;
-  assert.deepEqual(result, [{ name: 'Dispatch', port: 4100, current: true }]);
+  assert.deepEqual(result, [{ name: 'Dispatch', port: 4100, current: true, sessionCount: 0 }]);
   assert.ok(elapsed < 1_700, `answered after ${Math.round(elapsed)}ms`);
 
   await settingsRead.promise;
@@ -256,7 +260,7 @@ test('a request joining after a slow settings read keeps its own deadline', { ti
   release.resolve();
   const [, discovered] = await Promise.all([first, second]);
 
-  assert.deepEqual(resultAtDeadline, [{ name: 'Dispatch', port: 4100, current: true }]);
+  assert.deepEqual(resultAtDeadline, [{ name: 'Dispatch', port: 4100, current: true, sessionCount: 0 }]);
   assert.deepEqual(discovered.map((entry) => entry.port), [4100, 4101]);
   assert.equal(fetchPeer.mock.callCount(), 1);
 });

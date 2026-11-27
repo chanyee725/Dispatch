@@ -14,6 +14,7 @@ import { currentBranch } from "./git.js";
 import { Ledger } from "./ledger.js";
 import { accountLabelOf } from "../../shared/dispatch/accounts.ts";
 import { Hub } from "./hub.js";
+import { isOpenStatus } from "./hub-util.js";
 import { createPrStatus } from "./pr-status.js";
 import { createBranchTree, createLiveBranches } from "./live-branches.js";
 import { createIssueList } from "./issues.js";
@@ -159,10 +160,14 @@ export async function createDispatch({ root, broadcast, port, workspaceDir, layo
   }
 
   // The identity endpoint stays local so peer lookups never recurse.
-  const projects = async () => [{ port: hub.port, name: path.basename(root), path: tilde(root), current: true }];
+  const sessionCount = () => hub.sessions.filter(s => isOpenStatus(s.status)).length;
+  const projects = async () => [{
+    port: hub.port, name: path.basename(root), path: tilde(root), current: true, sessionCount: sessionCount(),
+  }];
   const serviceProjects = () => listServiceProjects({
     root,
     port: hub.port,
+    sessionCount: sessionCount(),
     // Loaded inside the lookup so a slow settings read stays within its deadline.
     workspaces: async () => (await userDefaults.current()).workspaces ?? [],
   });

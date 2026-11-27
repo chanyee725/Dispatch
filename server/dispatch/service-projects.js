@@ -134,7 +134,9 @@ async function scanServices(root, port, candidates, peers, signal) {
         const [project] = reported;
         if (reported.length === 1 && project.port === peerPort && project.name === name &&
             expandHome(project.path) === dir && pidAlive(service.pid)) {
-          peers[i + offset] = { name: project.name, port: peerPort, current: false };
+          const count = project.sessionCount;
+          const sessionCount = Number.isSafeInteger(count) && count >= 0 ? count : null;
+          peers[i + offset] = { name: project.name, port: peerPort, current: false, sessionCount };
           return;
         }
       }
@@ -146,7 +148,7 @@ async function scanServices(root, port, candidates, peers, signal) {
  * Only skill-registered servers, with peer identities confirmed against their project roots.
  * `workspaces` may be a loader; its wait counts toward the same deadline as the scan.
  */
-export async function listServiceProjects({ root, port, workspaces, deployments = DEPLOYMENTS }) {
+export async function listServiceProjects({ root, port, sessionCount, workspaces, deployments = DEPLOYMENTS }) {
   const controller = new AbortController();
   let timer;
   const deadline = new Promise((resolve) => {
@@ -162,7 +164,7 @@ export async function listServiceProjects({ root, port, workspaces, deployments 
     .then(() => (typeof workspaces === 'function' ? workspaces() : workspaces))
     .catch(() => []);
   const current = await Promise.race([currentProject(root, port, controller.signal), deadline]);
-  const local = current ? [current] : [];
+  const local = current ? [{ ...current, sessionCount }] : [];
   const entries = await Promise.race([load, deadline]);
   // A slow settings read must not start a scan after the deadline.
   if (controller.signal.aborted) return local;
