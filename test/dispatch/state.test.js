@@ -60,3 +60,10 @@ test("askOf: the asking line of a final answer (#886)", () => {
   assert.equal(askOf("테스트 통과했어요."), "");
   assert.equal(askOf(null), "");
 });
+
+test("askOf: status report headings do not turn listed work into a question", () => {
+  assert.equal(askOf("검사를 마쳤어요.\n**남은 것:**\n- ‘다시 시도할까요?’ 문구를 확인할까요?"), "");
+  assert.equal(askOf("## 다음:\n1. 선택지에서 어느 쪽으로 갈까요? 문구 확인\n2. 알림이 뜰까요?"), "");
+  assert.equal(askOf("다음: 검사를 마치면 결과를 알려 주세요."), "");
+  assert.equal(askOf("남은 것: 검사\n질문 1/2: 어느 쪽으로 갈까요?\n1. A안\n2. B안"), "질문 1/2: 어느 쪽으로 갈까요?");
+});

@@ -2,6 +2,10 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { NO_QUESTION, answerQuestion, answerQuestions, answerValue, answersMessage, questionOf, questionSetKey, questionsOf } from '../../web/src/dispatch/lib/question.ts';
 
+test('questionOf ignores a status report list', () => {
+  assert.equal(questionOf('**남은 작업:**\n- 테스트를 다시 돌릴까요?'), null);
+});
+
 test('no question in an answer that asks nothing', () => {
   assert.equal(questionOf(''), null);
   assert.equal(questionOf(null), null);
